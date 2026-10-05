@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Admin dashboard, Omixa{% endblock %}
+{% block content %}
+<div class="dash-header cta-row">
+  <div>
+    <h2 style="margin:0;">Admin command center</h2>
+    <p style="margin:4px 0 0;">Operational metadata only &mdash; never dataset contents.</p>
+  </div>
+  <div style="display:flex; gap:8px; align-items:center;">
+    <select id="windowSelect" class="btn btn-secondary btn-sm" style="width:auto;">
+      <option value="24h">Last 24h</option>
+      <option value="7d">Last 7 days</option>
+      <option value="30d">Last 30 days</option>
+      <option value="all" selected>All time</option>
+    </select>
+    <button id="purgeBtn" class="btn btn-secondary btn-sm">Purge expired jobs now</button>
+    <form method="post" action="{{ url_for('admin.logout') }}" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-ghost btn-sm">Log out</button>
+    </form>
+  </div>
+</div>
+
+<div class="stat-grid" id="statGrid">
+  <div class="stat-card"><div class="stat-value" id="statTotalJobs">&ndash;</div><div class="stat-label">Total jobs</div></div>
+  <div class="stat-card"><div class="stat-value" id="statSessions">&ndash;</div><div class="stat-label">Distinct sessions</div></div>
+  <div class="stat-card"><div class="stat-value" id="statSuccessRate">&ndash;</div><div class="stat-label">Processing success rate</div></div>
+  <div class="stat-card"><div class="stat-value" id="statAvgTime">&ndash;</div><div class="stat-label">Avg processing time</div></div>
+</div>
+<div class="stat-grid" id="statGrid2">
+  <div class="stat-card"><div class="stat-value" id="statQualityBefore">&ndash;</div><div class="stat-label">Avg quality before</div></div>
+  <div class="stat-card"><div class="stat-value" id="statQualityAfter">&ndash;</div><div class="stat-label">Avg quality after</div></div>
+  <div class="stat-card"><div class="stat-value" id="statFailures">&ndash;</div><div class="stat-label">Failed jobs</div></div>
+  <div class="stat-card"><div class="stat-value" id="statErrors">&ndash;</div><div class="stat-label">System errors logged</div></div>
+</div>
+
+<div class="card">
+  <div class="card-title-row"><h3>Uploads by format</h3></div>
+  <div id="formatBreakdown">Loading&hellip;</div>
+</div>
+
+<div class="card">
+  <div class="card-title-row"><h3>Most-used cleaning rules</h3></div>
+  <div id="ruleBreakdown">Loading&hellip;</div>
+</div>
+
+<div class="card">
+  <div class="card-title-row"><h3>Most common detected issues</h3></div>
+  <div id="issueBreakdown">Loading&hellip;</div>
+</div>
+
+<div class="card">
+  <div class="card-title-row">
+    <h3>Job analytics</h3>
+    <div style="display:flex; gap:8px;">
+      <input type="search" id="jobSearch" placeholder="Search job id or filename">
+      <select id="statusFilter">
+        <option value="">Any status</option>
+        <option value="uploaded">Uploaded</option>
+        <option value="processed">Processed</option>
+        <option value="downloaded">Downloaded</option>
+        <option value="failed">Failed</option>
+        <option value="expired">Expired</option>
+      </select>
+      <select id="formatFilter">
+        <option value="">Any format</option>
+        <option value="csv">CSV</option>
+        <option value="xlsx">XLSX</option>
+        <option value="xls">XLS</option>
+      </select>
+    </div>
+  </div>
+  <div style="overflow-x:auto;">
+  <table>
+    <thead>
+      <tr><th>Job</th><th>File</th><th>Format</th><th>Status</th><th>Rows</th><th>Quality</th><th>Created</th></tr>
+    </thead>
+    <tbody id="jobsTableBody"></tbody>
+  </table>
+  </div>
+  <div id="jobsEmpty" class="empty-state" style="display:none;"><h3>No jobs match</h3></div>
+</div>
+
+<div class="card">
+  <div class="card-title-row"><h3>Recent system errors</h3></div>
+  <div id="errorsList">Loading&hellip;</div>
+</div>
+
+<div class="card">
+  <div class="card-title-row"><h3>Recent admin login activity</h3></div>
+  <div id="loginsList">Loading&hellip;</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script nonce="{{ csp_nonce }}">window.OMIXA_ADMIN_CSRF = {{ csrf_token | tojson }};</script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/admin.js') }}"></script>
+{% endblock %}

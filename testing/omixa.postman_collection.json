@@ -1,0 +1,54 @@
+{
+  "info": {
+    "name": "Omixa Backend V1",
+    "description": "Smoke tests for upload -> process -> download. Set {{job_id}} after step 2.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:5000" },
+    { "key": "job_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Health check",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/api/health"
+      }
+    },
+    {
+      "name": "2. Upload file",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/upload/",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "file", "type": "file", "src": "testing/sample.csv" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "3. Process job",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/api/process/{{job_id}}",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"rules\": [\"missing_values\", \"duplicates\", \"formatting\"]\n}"
+        }
+      }
+    },
+    {
+      "name": "4. Download cleaned file",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/api/download/{{job_id}}"
+      }
+    }
+  ]
+}

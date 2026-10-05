@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Omixa{% endblock %}</title>
+<meta name="description" content="{% block description %}Omixa cleans messy CSV and Excel files in seconds. Upload a file, get clean data and a quality report.{% endblock %}">
+<meta name="theme-color" content="#201159">
+<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+<link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">
+{% block head %}{% endblock %}
+</head>
+<body>
+<div class="app-shell">
+  <header class="topnav">
+    <a class="brand" href="{{ url_for('pages.landing') }}" aria-label="Omixa home">
+      <img src="{{ url_for('static', filename='brand/omixa-icon.png') }}" alt="" width="36" height="36">
+      <span>Omixa</span>
+    </a>
+
+    <nav class="topnav-links" id="navLinks" aria-label="Main">
+      <a href="{{ url_for('pages.landing') }}#how-it-works">How it works</a>
+      <a href="{{ url_for('pages.landing') }}#quality">Quality</a>
+      <a href="{{ url_for('pages.landing') }}#faq">FAQ</a>
+      <a class="nav-cta" href="{{ url_for('workspace.index') }}">Clean a file</a>
+    </nav>
+
+    <button class="hamburger" id="hamburgerBtn" aria-label="Menu" aria-expanded="false" aria-controls="navLinks">
+      <span></span><span></span><span></span>
+    </button>
+  </header>
+
+  <main class="app-main">
+    {% block page %}
+    <div class="container">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ 'error' if category == 'error' else category }}">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </div>
+    {% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <a class="brand brand-light" href="{{ url_for('pages.landing') }}">
+        <img src="{{ url_for('static', filename='brand/omixa-icon.png') }}" alt="" width="40" height="40">
+        <span>Omixa</span>
+      </a>
+      <p class="footer-tag">Trustworthy · Innovative · Professional</p>
+      <p class="footer-copy">&copy; 2026 Omixa. Let's work messy data.</p>
+    </div>
+  </footer>
+</div>
+
+<script nonce="{{ csp_nonce }}">
+  (function () {
+    var btn = document.getElementById('hamburgerBtn');
+    var links = document.getElementById('navLinks');
+    if (!btn || !links) return;
+    btn.addEventListener('click', function () {
+      var open = links.classList.toggle('open');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    links.addEventListener('click', function (e) {
+      if (e.target.tagName === 'A') { links.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); }
+    });
+  })();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

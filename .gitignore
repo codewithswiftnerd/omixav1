@@ -1,0 +1,37 @@
+# Secrets — never commit the real .env
+.env
+.env.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+instance/
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# Temp job files (uploads/cleaned files — never meant to persist)
+temp/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Anything that looks like a credentials/env dump must never be committed
+RAILWAY_ENV_VARS*
+*_ENV_VARS*
+*.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/

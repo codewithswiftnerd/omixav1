@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Omixa – Free Online CSV &amp; Excel Data Cleaner</title>
+<meta name="description" content="Upload a messy CSV or Excel file and Omixa fixes formatting, fills gaps, and removes duplicates in seconds. Nothing is stored — your file is deleted after download.">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#2F6FED">
+<!-- TODO before launch: replace with the production domain -->
+<link rel="canonical" href="https://www.omixa.app/">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+
+<!-- Open Graph / social sharing -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Omixa – Free Online CSV & Excel Data Cleaner">
+<meta property="og:description" content="Messy spreadsheet in, clean dataset out. Upload a CSV or Excel file and Omixa fixes formatting, fills gaps, and drops duplicates.">
+<!-- TODO before launch: replace with the production domain; consider a dedicated 1200x630 og:image (the square logo works but isn't an ideal aspect ratio for link previews) -->
+<meta property="og:url" content="https://www.omixa.app/">
+<meta property="og:image" content="https://www.omixa.app/android-chrome-512x512.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Omixa – Free Online CSV & Excel Data Cleaner">
+<meta name="twitter:description" content="Messy spreadsheet in, clean dataset out. Upload a CSV or Excel file and Omixa fixes formatting, fills gaps, and drops duplicates.">
+<meta name="twitter:image" content="https://www.omixa.app/android-chrome-512x512.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600&family=Roboto+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Omixa",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Any (web-based)",
+  "description": "Omixa cleans messy CSV and Excel files: it fixes formatting, standardizes values, fills gaps, and removes duplicates, then deletes the file after download.",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  }
+}
+</script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <img src="logo.png" alt="" width="26" height="26" class="brand-mark">
+    Omixa
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="hero">
+    <h1>Messy spreadsheet in.<br>Clean dataset out.</h1>
+    <p class="lede">Upload a CSV or Excel file, pick which rules to run, and Omixa fixes formatting, fills gaps, and drops duplicates. Your file is processed temporarily on the server and deleted right after you download it — nothing is stored long-term.</p>
+
+    <div class="preview-strip" aria-hidden="true">
+      <div class="mini-table messy">
+        <div class="mini-row head"><span>name</span><span>city</span></div>
+        <div class="mini-row"><span> raj &nbsp;</span><span>Delhi</span></div>
+        <div class="mini-row"><span>Priya</span><span>&nbsp;</span></div>
+        <div class="mini-row dup"><span>Priya</span><span>&nbsp;</span></div>
+      </div>
+      <svg class="preview-arrow" viewBox="0 0 40 24" width="40" height="24"><path d="M2 12h32M26 4l10 8-10 8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div class="mini-table tidy">
+        <div class="mini-row head"><span>name</span><span>city</span></div>
+        <div class="mini-row"><span>Raj</span><span>Delhi</span></div>
+        <div class="mini-row"><span>Priya</span><span>Unknown</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card dropzone-card">
+    <div class="drop" id="drop" role="button" tabindex="0">
+      <svg class="drop-icon" viewBox="0 0 48 48" width="40" height="40"><path d="M24 6v24m0-24 9 9m-9-9-9 9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 34v4a4 4 0 0 0 4 4h24a4 4 0 0 0 4-4v-4" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+      <p class="big">Drop a file here, or click to browse</p>
+      <p class="muted">.csv · .xlsx · .xls, up to 25MB</p>
+      <div id="fileName" class="file-chip"></div>
+    </div>
+    <label for="fileInput" class="sr-only">Choose a CSV or Excel file to clean</label>
+    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls">
+
+    <ol class="steps" id="steps" aria-label="Progress">
+      <li class="step" data-step="upload"><span class="step-dot">1</span>Upload</li>
+      <li class="step" data-step="review"><span class="step-dot">2</span>Review</li>
+      <li class="step" data-step="clean"><span class="step-dot">3</span>Clean</li>
+      <li class="step" data-step="download"><span class="step-dot">4</span>Download</li>
+    </ol>
+
+    <section class="report-card hidden" id="reportCard">
+      <div class="report-head">
+        <div class="score-badge" id="scoreBadge"><span id="scoreNum">-</span></div>
+        <div>
+          <h2 class="report-title">Data quality report</h2>
+          <p class="report-sub" id="reportSub"></p>
+        </div>
+      </div>
+      <div class="findings" id="findings"></div>
+      <p class="hint" id="noFindings" style="display:none;">No issues found. This file looks clean already.</p>
+    </section>
+
+    <section class="report-card hidden" id="recommendationsCard">
+      <h2 class="rec-title">Recommendations</h2>
+      <p class="hint" id="recHint">Based on the issues found in your file, here's what Omixa suggests.</p>
+
+      <div id="recSafeGroup">
+        <p class="rec-subhead rec-subhead-safe">Safe to auto-fix</p>
+        <div class="rec-list" id="recSafeList"></div>
+        <p class="hint" id="recSafeEmpty" style="display:none;">No auto-fixable issues detected.</p>
+      </div>
+
+      <div id="recAmbiguousGroup">
+        <p class="rec-subhead rec-subhead-ambiguous">Needs your review (not auto-fixed)</p>
+        <div class="rec-list" id="recAmbiguousList"></div>
+        <p class="hint" id="recAmbiguousEmpty" style="display:none;">Nothing flagged for manual review.</p>
+      </div>
+    </section>
+
+    <fieldset class="rules">
+      <legend class="rules-legend">Cleaning rules to run</legend>
+      <label class="rule"><input type="checkbox" value="column_names" checked><span class="rule-body"><strong>Clean column names</strong><em>tidies headers into a consistent snake_case</em></span></label>
+      <label class="rule"><input type="checkbox" value="formatting" checked><span class="rule-body"><strong>Fix formatting</strong><em>trims stray spaces, tidies whitespace</em></span></label>
+      <label class="rule"><input type="checkbox" value="missing_token_normalization" checked><span class="rule-body"><strong>Recognize blank/N-A style values</strong><em>treats "N/A", "null", "-", etc. as missing</em></span></label>
+      <label class="rule"><input type="checkbox" value="numeric_text_cleaning" checked><span class="rule-body"><strong>Clean numeric text</strong><em>strips $, commas, % from numbers stored as text</em></span></label>
+      <label class="rule"><input type="checkbox" value="gender_standardization" checked><span class="rule-body"><strong>Standardize gender</strong><em>MALE/Male/M → male, FEMALE/Female/F → female</em></span></label>
+      <label class="rule"><input type="checkbox" value="country_standardization" checked><span class="rule-body"><strong>Standardize countries</strong><em>NG/nigeria → Nigeria, KE → Kenya, etc.</em></span></label>
+      <label class="rule"><input type="checkbox" value="boolean_standardization" checked><span class="rule-body"><strong>Standardize booleans</strong><em>Yes/No, True/False, Y/N, and 1/0 for flag columns → true/false</em></span></label>
+      <label class="rule"><input type="checkbox" value="categorical_standardization" checked><span class="rule-body"><strong>Standardize categories</strong><em>merges "Male"/"MALE"/"male"-style variants</em></span></label>
+      <label class="rule"><input type="checkbox" value="email_cleaning" checked><span class="rule-body"><strong>Clean emails</strong><em>trims whitespace, lowercases addresses</em></span></label>
+      <label class="rule"><input type="checkbox" value="phone_cleaning" checked><span class="rule-body"><strong>Clean phone formatting</strong><em>strips spaces/brackets/hyphens/dots, recovers safe scientific-notation values</em></span></label>
+      <label class="rule"><input type="checkbox" value="date_standardization" checked><span class="rule-body"><strong>Standardize dates</strong><em>unambiguous dates → YYYY-MM-DD</em></span></label>
+      <label class="rule"><input type="checkbox" value="missing_values" checked><span class="rule-body"><strong>Fill gaps</strong><em>median for numbers, "Unknown" for text</em></span></label>
+      <label class="rule"><input type="checkbox" value="duplicates" checked><span class="rule-body"><strong>Remove duplicates</strong><em>keeps the first occurrence</em></span></label>
+    </fieldset>
+
+    <div class="footer-actions">
+      <button id="runBtn" class="primary" disabled>Clean my data</button>
+      <button class="ghost hidden" id="downloadBtn">Download cleaned file</button>
+      <button class="ghost hidden" id="resetBtn">Start over</button>
+    </div>
+    <div class="stage" id="stage" role="status" aria-live="polite"></div>
+  </section>
+
+  <section class="card results hidden" id="results" aria-labelledby="resultsHeading">
+    <h2 id="resultsHeading" class="sr-only">Cleaning results</h2>
+    <div class="stats" id="stats"></div>
+    <div id="detailBlocks"></div>
+  </section>
+
+</main>
+
+<script src="config.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

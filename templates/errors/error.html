@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ code }}, Omixa{% endblock %}
+{% block content %}
+<div class="empty-state" style="max-width:480px; margin:60px auto;">
+  <h3>Something needs your attention</h3>
+  <p>{{ message }}</p>
+  <a href="{{ url_for('pages.landing') }}" class="btn btn-primary">Back to Omixa</a>
+</div>
+{% endblock %}

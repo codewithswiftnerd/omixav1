@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Page not found, Omixa{% endblock %}
+{% block content %}
+<div class="empty-state" style="max-width:480px; margin:60px auto;">
+  <h3>We couldn't find that page.</h3>
+  <p>The page you're looking for doesn't exist or may have moved.</p>
+  <a href="{{ url_for('pages.landing') }}" class="btn btn-primary">Back to Omixa</a>
+</div>
+{% endblock %}

@@ -1,0 +1,9 @@
+Full Name,Email Addr,Phone Num,Annual Income,Signup Date,Is Active,Satisfaction Score,Gender,Country,Age
+John Smith,JOHN@EMAIL.COM,+234 806-123-4567,"$22,000",2024-04-16,YES,56%,MALE,NG,34
+Jane Doe, jane@email.com ,(234) 806 123 4567,"22,000",28/08/2022,1,44%,Female,nigeria,29
+Mike Ross,mike@email.com,2348061234567,8900,03/04/2025,No,82%,m,KE,41
+Sarah Lee,SARAH@EMAIL.COM,1.343E+12,"$15,500",10/01/2022,true,71%,f,Ghana,N/A
+Tom Grey,tom@email,7871234567,Unknown,2024-04-16,0,Unknown,MALE,gh,200
+Amy Fox,amy@email.com,+60 12-345 6789,"$9,000",N/A,unknown,63%,FEMALE,MY,27
+John Smith,JOHN@EMAIL.COM,+234 806-123-4567,"$22,000",2024-04-16,YES,56%,MALE,NG,34
+Unknown Person,unknown@email.com,N/A,N/A,N/A,N/A,N/A,Unknown,N/A,N/A
