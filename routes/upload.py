@@ -9,6 +9,9 @@ from utils.file_handler import (
 )
 from utils.session import current_session_hash
 import db as metadata_db
+from accounts import auth
+from accounts.entitlements import effective, max_upload_bytes
+from accounts.store import get_store
 
 upload_bp = Blueprint("upload", __name__)
 logger = logging.getLogger("omixa.upload")
@@ -61,6 +64,24 @@ def upload_file():
         size_bytes = os.path.getsize(dest)
     except OSError:
         size_bytes = None
+
+    # Plan limit (clear message, never silent). Free keeps working if accounts are down.
+    is_pro = False
+    uid = auth.current_uid()
+    store = get_store() if uid else None
+    if uid and store is not None:
+        try:
+            is_pro = effective(store.get_user(uid))["is_pro"]
+        except Exception:
+            is_pro = False
+    limit = max_upload_bytes(is_pro)
+    if size_bytes is not None and size_bytes > limit:
+        delete_job(job_id)
+        mb = limit // (1024 * 1024)
+        msg = f"This file is over the {mb} MB limit for your plan."
+        if not is_pro:
+            msg += " Omixa Pro raises it to 25 MB."
+        return jsonify({"error": msg, "upgrade_required": not is_pro}), 402 if not is_pro else 413
 
     metadata_db.record_upload(
         job_id=job_id,

@@ -21,6 +21,10 @@ from routes.upload import upload_bp
 from routes.process import process_bp
 from routes.download import download_bp
 from routes.report import report_bp
+from routes.auth_routes import auth_bp
+from routes.billing import billing_bp
+from routes.profiles import profiles_bp
+from routes.sessions import sessions_bp
 from routes.pages import pages_bp
 from routes.workspace import workspace_bp
 from routes.admin import admin_bp
@@ -62,6 +66,10 @@ def create_app():
     app.register_blueprint(process_bp, url_prefix="/api/process")
     app.register_blueprint(download_bp, url_prefix="/api/download")
     app.register_blueprint(report_bp, url_prefix="/api/report")
+    app.register_blueprint(auth_bp, url_prefix="/api/auth")
+    app.register_blueprint(billing_bp, url_prefix="/api/billing")
+    app.register_blueprint(profiles_bp, url_prefix="/api/profiles")
+    app.register_blueprint(sessions_bp, url_prefix="/api/sessions")
 
     # Page blueprints (server-rendered HTML)
     app.register_blueprint(pages_bp)
@@ -113,7 +121,7 @@ def create_app():
             return response  # not an allowed origin, no CORS headers at all
 
         response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-CSRF-Token"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
         response.headers["Access-Control-Expose-Headers"] = "Content-Disposition, Retry-After"
         return response
 
@@ -123,7 +131,7 @@ def create_app():
     # POSTs, so this holds even when the session cookie is SameSite=None for a split deploy.
     @app.before_request
     def _origin_check():
-        if request.method != "POST" or not request.path.startswith("/api/"):
+        if request.method not in ("POST", "PUT", "PATCH", "DELETE") or not request.path.startswith("/api/"):
             return None
         origin = request.headers.get("Origin")
         if not origin:
@@ -157,13 +165,20 @@ def create_app():
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
 
         nonce = getattr(g, "csp_nonce", "")
+        # Firebase Auth's web SDK is only allowed on the sign-in page.
+        on_login = request.path == "/login"
+        fb_script = " https://www.gstatic.com" if on_login else ""
+        fb_connect = (" https://identitytoolkit.googleapis.com https://securetoken.googleapis.com"
+                      " https://www.googleapis.com https://*.firebaseapp.com") if on_login else ""
+        fb_frame = "frame-src https://*.firebaseapp.com https://accounts.google.com; " if on_login else ""
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            f"script-src 'self' 'nonce-{nonce}'; "
+            f"script-src 'self' 'nonce-{nonce}'{fb_script}; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data:; "
-            "connect-src 'self'; "
+            f"connect-src 'self'{fb_connect}; "
+            f"{fb_frame}"
             "object-src 'none'; "
             "base-uri 'self'; "
             "form-action 'self'; "

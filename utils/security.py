@@ -73,6 +73,8 @@ def check_rate_limit():
 
     if not _is_api_path(request.path):
         return None
+    if request.path == "/api/billing/webhook":  # Paystack: authenticated by signature, must never be throttled
+        return None
 
     allowed, retry_after = _check_window("api", _client_key(), Config.RATE_LIMIT_PER_MINUTE)
     if allowed:

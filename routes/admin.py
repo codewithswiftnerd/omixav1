@@ -104,6 +104,20 @@ def dashboard():
 # JSON data for the dashboard
 # --------------------------------------------------------------------
 
+@admin_bp.get("/api/users")
+@admin_required
+def api_users():
+    """Account counts only (no emails or names). Needs Firebase configured."""
+    from accounts.store import get_store
+    store = get_store()
+    if store is None:
+        return jsonify({"available": False}), 200
+    try:
+        return jsonify({"available": True, **store.user_stats()}), 200
+    except Exception:
+        return jsonify({"available": False}), 200
+
+
 @admin_bp.get("/api/stats")
 @admin_required
 def api_stats():

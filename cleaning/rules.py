@@ -25,7 +25,7 @@ from typing import Optional, List, Tuple
 import re
 import pandas as pd
 
-from cleaning import detectors, profiling
+from cleaning import currencies, detectors, profiling
 from cleaning import model as M
 from cleaning.audit import AuditLog
 from cleaning.rule_registry import spec_for_fixer
@@ -61,7 +61,8 @@ DEFAULT_RULES = [
     "email_cleaning",
     "phone_cleaning",
     "date_standardization",
-    "missing_values",
+    # "missing_values" is deliberately NOT a default: imputation is an estimate, not a
+    # fix. It still runs when explicitly requested (rules=[..., "missing_values"]).
     "duplicates",
 ]
 
@@ -367,7 +368,7 @@ def handle_numeric_text_cleaning(df: pd.DataFrame, details: dict) -> tuple[pd.Da
             # cleaning behavior itself, a column can only be tagged
             # one way even if (rarely) it had both kinds of noise.
             has_percent = bool(non_null.str.contains("%", regex=False).any())
-            has_currency = bool(non_null.str.contains(r"[$€£¥]", regex=True).any())
+            has_currency = bool(non_null.map(currencies.has_currency).any())
             value_kind = "percentage" if has_percent else ("currency" if has_currency else "formatting")
             per_column[col] = {"changed": count, "type": value_kind}
         else:

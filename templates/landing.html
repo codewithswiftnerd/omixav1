@@ -19,7 +19,7 @@
         <div class="drop dropzone" id="drop" role="button" tabindex="0" aria-label="Upload a CSV or Excel file">
           <span class="btn-upload">Upload file</span>
           <p class="drop-or">or drop a file</p>
-          <p class="drop-sub">CSV, XLSX or XLS · up to 25MB</p>
+          <p class="drop-sub">CSV, XLSX or XLS · up to {{ free_mb }} MB free · {{ pro_mb }} MB with Pro</p>
         </div>
         <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" class="hidden" aria-label="Choose a CSV or Excel file to clean">
 
@@ -77,6 +77,12 @@
             <button id="runBtn" class="btn-main" disabled>Clean my data</button>
           </div>
 
+          <div class="card hidden" id="proPanel" style="margin:12px 0;">
+            <label for="profileSelect"><strong>Quality Profile</strong> <span class="badge badge-plan-pro">Pro</span></label>
+            <select id="profileSelect"><option value="">None: general analysis</option></select>
+            <p class="hint">Check this file against a saved standard. <a href="/dashboard">Manage profiles</a></p>
+          </div>
+          <p class="hint" id="proTeaser">Want to check files against your own standard and export a quality report? <a href="/pricing">See Omixa Pro</a></p>
           <details class="fold">
             <summary>What we found</summary>
             <div class="fold-body" id="findings"></div>
@@ -142,6 +148,7 @@
             <button class="btn-ghost hidden" id="resetBtn">Clean another file</button>
           </div>
           <div class="stats" id="stats"></div>
+          <div id="proResults"></div>
           <details class="fold">
             <summary>See full details</summary>
             <div class="fold-body" id="detailBlocks"></div>
@@ -211,7 +218,7 @@
     <section class="m-section faq" id="faq">
       <div class="faq-card">
         <h2 class="m-title">Frequently asked questions</h2>
-        <details class="faq-item"><summary>What files can I upload?</summary><p>CSV, XLSX and XLS files, up to 25MB.</p></details>
+        <details class="faq-item"><summary>What files can I upload?</summary><p>CSV, XLSX and XLS files, up to {{ free_mb }} MB on Free and {{ pro_mb }} MB with Omixa Pro.</p></details>
         <details class="faq-item"><summary>Do I need an account?</summary><p>No. Upload a file and clean it straight away.</p></details>
         <details class="faq-item"><summary>What does Omixa fix?</summary><p>Duplicate rows, inconsistent dates, phone numbers, emails, countries, gender and yes/no values, numbers stored as text, stray spaces and messy column names.</p></details>
         <details class="faq-item"><summary>Will it change my data without asking?</summary><p>Only safe, well-defined fixes are applied by default. Filling gaps with estimates is off unless you turn it on, and anything ambiguous is flagged for your review instead of guessed.</p></details>
@@ -230,6 +237,9 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/config.js') }}"></script>
 <script src="{{ url_for('static', filename='js/samples.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pro-common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pro-report.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pro-panel.js') }}"></script>
 <script src="{{ url_for('static', filename='js/clean.js') }}"></script>
 <script src="{{ url_for('static', filename='js/home.js') }}"></script>
 {% endblock %}

@@ -8,6 +8,11 @@ from utils.session import owns
 from processing.pipeline import DatasetTooLargeError, run_pipeline
 from cleaning.rules import RULE_DISPATCH
 import db as metadata_db
+from accounts import auth
+from accounts.entitlements import effective
+from accounts.store import get_store
+from proquality.analysis import session_record
+from proquality.profiles import ProfileError, normalize_profile
 
 process_bp = Blueprint("process", __name__)
 logger = logging.getLogger("omixa.process")
@@ -74,9 +79,32 @@ def process_file(job_id):
     ):
         return jsonify({"error": "'resolutions' must be a list of objects"}), 400
 
+    # Pro: signed-in subscribers get deep analysis, Quality Profiles and saved history.
+    # Everything is decided server-side from the subscription record, never from the request.
+    is_pro, user, profile = False, None, None
+    uid = auth.current_uid()
+    store = get_store() if uid else None
+    if uid and store is not None:
+        try:
+            user = store.get_user(uid)
+            is_pro = bool(user and effective(user)["is_pro"])
+        except Exception:
+            logger.exception("Could not read the subscription record; processing as Free")
+            is_pro = False
+    profile_id = body.get("profile_id")
+    if profile_id is not None:
+        if not isinstance(profile_id, str):
+            return jsonify({"error": "'profile_id' must be text"}), 400
+        if not is_pro:
+            return jsonify({"error": "Quality Profiles are available with Omixa Pro.", "upgrade_required": True}), 402
+        profile = store.get_profile(uid, profile_id)
+        if not profile:
+            return jsonify({"error": "Quality Profile not found"}), 404
+
     started = time.monotonic()
     try:
-        summary = run_pipeline(job_id, rules=rules, resolutions=resolutions, has_header=has_header)
+        summary = run_pipeline(job_id, rules=rules, resolutions=resolutions, has_header=has_header,
+                               pro=is_pro, profile=profile)
     except DatasetTooLargeError as exc:
         metadata_db.record_failed(job_id, "process", "DatasetTooLargeError", str(exc))
         return jsonify({"status": "failed", "error": str(exc)}), 422
@@ -106,6 +134,20 @@ def process_file(job_id):
         rules_applied=summary.get("rules_applied") or [],
         processing_ms=processing_ms,
     )
+
+    session_id = None
+    if is_pro and summary.get("pro"):
+        try:
+            name = metadata_db.get_job_filename(job_id) or "dataset"
+            record = session_record(
+                dataset_name=name, ext=(name.rsplit(".", 1)[-1].lower() if "." in name else ""),
+                size_bytes=metadata_db.get_job_size(job_id) or 0, has_header=has_header,
+                rules_applied=summary.get("rules_applied") or [], processing_ms=processing_ms, pro_block=summary["pro"])
+            session_id = store.add_session(uid, record)
+        except Exception:
+            logger.exception("Could not save the processing session for job %s", job_id)
+    if session_id:
+        summary["pro"]["session_id"] = session_id
 
     return jsonify({
         "job_id": job_id,

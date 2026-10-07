@@ -404,3 +404,21 @@ def recent_errors(limit: int = 20) -> list[dict]:
     except sqlite3.Error:
         logger.exception("db: recent_errors failed")
         return []
+
+
+def get_job_filename(job_id: str) -> Optional[str]:
+    try:
+        with _cursor() as cur:
+            row = cur.execute("SELECT original_filename FROM jobs WHERE job_id=?", (job_id,)).fetchone()
+        return row["original_filename"] if row else None
+    except sqlite3.Error:
+        return None
+
+
+def get_job_size(job_id: str) -> Optional[int]:
+    try:
+        with _cursor() as cur:
+            row = cur.execute("SELECT file_size_bytes FROM jobs WHERE job_id=?", (job_id,)).fetchone()
+        return row["file_size_bytes"] if row else None
+    except sqlite3.Error:
+        return None

@@ -1,0 +1,28 @@
+rules_version = '2';
+// All reads and writes go through the Omixa server (Firebase Admin SDK, which bypasses these rules)
+// and every server query is scoped to the signed-in user's uid. These rules are the second lock:
+// browsers may read ONLY their own documents and may never write anything, so nobody can grant
+// themselves Pro or touch another user's profiles/history by editing frontend code.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+
+      match /qualityProfiles/{id} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow write: if false;
+      }
+      match /sessions/{id} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow write: if false;
+      }
+    }
+    match /payments/{ref} {
+      allow read, write: if false;   // server only
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

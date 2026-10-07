@@ -319,7 +319,7 @@ runBtn.addEventListener('click', async () => {
       method:'POST',
       credentials:'include',
       headers: apiHeaders({'Content-Type':'application/json'}),
-      body: JSON.stringify({ rules, resolutions: selectedResolutions(), has_header: hasHeader() })
+      body: JSON.stringify({ rules, resolutions: selectedResolutions(), has_header: hasHeader(), profile_id: (window.OmixaPro && OmixaPro.profileId()) || undefined })
     });
     const procJson = await procRes.json();
     if(!procRes.ok) throw upgradeAwareError(procRes, procJson, 'processing failed');
@@ -328,6 +328,7 @@ runBtn.addEventListener('click', async () => {
     setStage('');
     setPhase('done');
     renderResults(procJson.summary);
+    if(window.OmixaPro) OmixaPro.showResults(procJson.summary);
     downloadBtn.classList.remove('hidden');
     resetBtn.classList.remove('hidden');
   }catch(err){

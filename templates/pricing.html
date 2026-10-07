@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Pricing – Omixa{% endblock %}
+{% block content %}
+<div class="dash-header" style="text-align:center;">
+  <h1>Clean for free. <span class="grad-text">Prove it with Pro.</span></h1>
+  <p>Free cleans your file. Pro helps you set a data-quality standard, check every dataset against it, and prove the result.</p>
+</div>
+
+<div class="pricing-grid pricing-3">
+  <article class="card price-card">
+    <h2>Free</h2>
+    <p class="price">$0</p>
+    <p class="hint">Clean my file</p>
+    <ul class="price-list">
+      <li>CSV and Excel upload (up to {{ free_mb }} MB)</li>
+      <li>Full cleaning engine: duplicates, whitespace, formats, dates, emails, currencies</li>
+      <li>Data-quality score and issue detection</li>
+      <li>Before / after preview</li>
+      <li>Download the cleaned file</li>
+      <li>No account needed</li>
+    </ul>
+    <a class="btn btn-secondary btn-block" href="{{ url_for('workspace.index') }}">Clean a file</a>
+  </article>
+
+  <article class="card price-card featured">
+    <h2>Pro Monthly</h2>
+    <p class="price">${{ '%g' % usd_monthly }}<span>/month</span></p>
+    {% if ngn_monthly %}<p class="hint">Billed in naira: ≈ ₦{{ '{:,}'.format(ngn_monthly) }}/month</p>{% endif %}
+    <ul class="price-list">
+      <li><strong>Everything in Free</strong></li>
+      <li>Quality Profiles: set the standard once</li>
+      <li>Check any dataset against a profile (PASS / WARNING / FAIL)</li>
+      <li>Column-level quality scores and deeper analysis</li>
+      <li>"What changed?" report and change log</li>
+      <li>Professional quality report (PDF)</li>
+      <li>Saved processing history, files up to {{ pro_mb }} MB</li>
+    </ul>
+    <button class="btn btn-primary btn-block" data-plan="pro_monthly" type="button">Get Pro Monthly</button>
+  </article>
+
+  <article class="card price-card">
+    <span class="badge badge-success">Save ${{ '%g' % saves }} a year</span>
+    <h2>Pro Annual</h2>
+    <p class="price">${{ '%g' % usd_annual }}<span>/year</span></p>
+    <p class="hint">≈ ${{ '%.2f' % (usd_annual / 12) }}/month · {{ '%g' % months_free }} months free{% if ngn_annual %} · ≈ ₦{{ '{:,}'.format(ngn_annual) }}/year{% endif %}</p>
+    <ul class="price-list">
+      <li><strong>Everything in Pro Monthly</strong></li>
+      <li>One payment, a full year of Pro</li>
+    </ul>
+    <button class="btn btn-primary btn-block" data-plan="pro_annual" type="button">Get Pro Annual</button>
+  </article>
+</div>
+<p class="hint" id="priceMsg" role="status" style="text-align:center; margin-top:14px;"></p>
+{% if not payments_available %}<p class="hint" style="text-align:center;">Online payments are being set up. Check back soon.</p>{% endif %}
+<p class="hint" style="text-align:center;">Cancel any time from your dashboard. Your files are never stored: Pro keeps only quality figures and change summaries.</p>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/pro-common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/nav-auth.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pricing.js') }}"></script>
+{% endblock %}

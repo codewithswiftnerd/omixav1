@@ -139,3 +139,28 @@ class Config:
     # Force HTTPS cookies/HSTS outside FLASK_ENV=production too (e.g.
     # behind a TLS-terminating proxy).
     FORCE_HTTPS = _env_flag("OMIXA_FORCE_HTTPS", _IS_PRODUCTION)
+
+    # --- Plans -----------------------------------------------------------
+    # Free users get the whole cleaning engine; the limits below are the only caps.
+    FREE_MAX_UPLOAD_MB = int(os.environ.get("OMIXA_FREE_MAX_UPLOAD_MB", "10"))
+    PRO_MAX_UPLOAD_MB = int(os.environ.get("OMIXA_PRO_MAX_UPLOAD_MB", "25"))
+
+    # --- Firebase (server side: Admin SDK; secrets never reach the browser) -------
+    # Either FIREBASE_SERVICE_ACCOUNT_JSON (the JSON itself) or GOOGLE_APPLICATION_CREDENTIALS (a path).
+    FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "").strip()
+    FIREBASE_SERVICE_ACCOUNT_JSON = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+    # PUBLIC web config (apiKey, authDomain, projectId, appId ...) as JSON. Safe to expose.
+    FIREBASE_WEB_CONFIG_JSON = os.environ.get("FIREBASE_WEB_CONFIG_JSON", "").strip()
+    # Local development / tests only: keep accounts in memory instead of Firestore.
+    ALLOW_MEMORY_STORE = _env_flag("OMIXA_ALLOW_MEMORY_STORE", False)
+
+    # --- Paystack ---------------------------------------------------------
+    PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "").strip()
+    PAYSTACK_PLAN_MONTHLY = os.environ.get("PAYSTACK_PLAN_MONTHLY", "").strip()  # PLN_xxx, created in the dashboard
+    PAYSTACK_PLAN_ANNUAL = os.environ.get("PAYSTACK_PLAN_ANNUAL", "").strip()
+    # Shown on the pricing page; Paystack charges the NGN amount of the plan code.
+    PRICE_USD_MONTHLY = float(os.environ.get("OMIXA_PRICE_USD_MONTHLY", "5"))
+    PRICE_USD_ANNUAL = float(os.environ.get("OMIXA_PRICE_USD_ANNUAL", "50"))
+    PRICE_NGN_MONTHLY = int(os.environ.get("OMIXA_PRICE_NGN_MONTHLY", "0"))
+    PRICE_NGN_ANNUAL = int(os.environ.get("OMIXA_PRICE_NGN_ANNUAL", "0"))
+    PUBLIC_BASE_URL = os.environ.get("OMIXA_PUBLIC_BASE_URL", "").strip().rstrip("/")

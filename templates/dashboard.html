@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – Omixa{% endblock %}
+{% block content %}
+<div class="dash-header cta-row">
+  <div><h1 style="margin:0;">Dashboard</h1><p id="who" class="hint" style="margin:4px 0 0;"></p></div>
+  <button class="btn btn-ghost btn-sm" id="signOutBtn" type="button">Sign out</button>
+</div>
+<div id="payBanner" class="alert hidden" role="status"></div>
+
+<section class="card" id="planCard">
+  <div class="card-title-row"><h2>Your plan</h2><span class="badge badge-plan-free" id="planBadge">Free</span></div>
+  <p id="planText" class="hint"></p>
+  <div class="stat-grid" id="usage"></div>
+  <div id="planActions"></div>
+</section>
+
+<section class="card" id="profilesCard">
+  <div class="card-title-row"><h2>Quality Profiles</h2><a class="btn btn-primary btn-sm hidden" id="newProfileBtn" href="/profiles/new">New profile</a></div>
+  <p class="hint">Set your standard once. Omixa checks every dataset against it.</p>
+  <div id="profiles"></div>
+</section>
+
+<section class="card" id="historyCard">
+  <div class="card-title-row"><h2>Processing history</h2><a class="btn btn-secondary btn-sm" href="/clean">Clean a file</a></div>
+  <div id="history"></div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/pro-common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/nav-auth.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

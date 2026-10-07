@@ -393,3 +393,35 @@ completeness is never credited for imputed values; imputed cells also surface as
 ## Running the tests
 
 `pip install -r requirements-dev.txt && pytest`
+
+## Free and Pro
+
+**Free = "Clean my file."** The whole cleaning engine, quality score, issue detection, before/after
+preview and cleaned download. No account needed. Only cap: upload size (`OMIXA_FREE_MAX_UPLOAD_MB`, 10).
+
+**Pro = "Help me establish, maintain and prove that my data is trustworthy."** $5/month or $50/year:
+Quality Profiles, profile PASS/WARNING/FAIL checks, column-level scores and dimension analysis,
+what-changed report, change log, PDF quality report, saved history. Uploads up to 25 MB.
+
+### Setup
+1. Firebase: enable Email/Password and Google sign-in; create a service account. Set `FIREBASE_SERVICE_ACCOUNT_JSON`,
+   `FIREBASE_PROJECT_ID` and the public `FIREBASE_WEB_CONFIG_JSON`. Deploy `firestore.rules` and `firestore.indexes.json`.
+2. Paystack: create two plans (monthly, yearly) in NGN, set `PAYSTACK_PLAN_MONTHLY/ANNUAL` and `PAYSTACK_SECRET_KEY`.
+   Add the webhook URL `https://YOUR-DOMAIN/api/billing/webhook` in the Paystack dashboard.
+3. `pip install -r requirements.txt`. See `.env.example` for every variable.
+
+### Firestore
+`users/{uid}` (email, name, plan, subscription_status, subscription_start, subscription_expires, paystack_* ids),
+`users/{uid}/qualityProfiles/{id}`, `users/{uid}/sessions/{id}` (figures only, never rows),
+`payments/{reference}` (server only, makes payment handling idempotent).
+
+### Security model
+Pro is decided on the server from the Firestore subscription record on every request. The browser only holds a signed
+session cookie. Paystack events are accepted only with a valid HMAC-SHA512 signature, and the redirect is re-verified with
+Paystack's API. Firestore rules deny all client writes.
+
+### Currency cleaning
+`cleaning/currencies.py` covers 140+ currencies (170+ countries/regions). Add a row to extend it.
+
+### Tests
+`python -m unittest tests.test_pro_accounts` (offline: in-memory store and a fake Paystack).

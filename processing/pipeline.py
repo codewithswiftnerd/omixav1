@@ -115,6 +115,8 @@ def run_pipeline(
     rules: Optional[List[str]] = None,
     resolutions: Optional[List[dict]] = None,
     has_header: bool = True,
+    pro: bool = False,
+    profile: Optional[dict] = None,
 ) -> dict:
     """
     Returns a summary dict the frontend can display, e.g.:
@@ -143,6 +145,8 @@ def run_pipeline(
     df = read_source(source_path, has_header=has_header)
     rows_in = len(df)
     columns_in = len(df.columns)
+    # Pro only: keep the uploaded data so a Quality Profile can be evaluated before AND after cleaning.
+    original_df = df.copy() if (pro and profile) else None
 
     # Original (pre-resolution, pre-rename) column -> source-sheet
     # position, 0-indexed. Captured now because it's the only point
@@ -237,6 +241,20 @@ def run_pipeline(
 
     audit_entries = audit.public_entries()
 
+    pro_block = None
+    if pro:
+        from proquality.analysis import build_pro_block
+        from proquality.profiles import evaluate_profile
+        profile_before = evaluate_profile(original_df, profile, quality_before.get("score")) if profile else None
+        profile_after = evaluate_profile(cleaned_df, profile, post_report.get("score")) if profile else None
+        pro_block = build_pro_block(
+            before=quality_before, after=post_report,
+            summary_core={"rows_in": rows_in, "rows_out": rows_out, "rules_applied": change_log["rules_applied"]},
+            audit_entries=audit_entries, profile=profile, profile_before=profile_before,
+            profile_after=profile_after, cols_in=columns_in,
+        )
+    original_df = None
+
     return {
         "rows_in": rows_in,
         "rows_out": rows_out,
@@ -254,4 +272,5 @@ def run_pipeline(
             "entries": audit_entries[:MAX_AUDIT_ENTRIES_RETURNED],
             "entries_truncated": len(audit_entries) > MAX_AUDIT_ENTRIES_RETURNED,
         },
+        "pro": pro_block,
     }

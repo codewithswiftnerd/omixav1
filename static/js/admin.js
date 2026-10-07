@@ -22,6 +22,19 @@
     }[c]));
   }
 
+  async function loadUsers() {
+    try {
+      const res = await fetch('/admin/api/users', { credentials: 'same-origin' });
+      if (!res.ok) return;
+      const u = await res.json();
+      if (!u.available) { ['statUsers','statProUsers','statNewUsers7','statNewUsers30'].forEach(id => { $(id).textContent = 'n/a'; }); return; }
+      $('statUsers').textContent = u.total_users;
+      $('statProUsers').textContent = u.pro_users;
+      $('statNewUsers7').textContent = u.new_last_7d;
+      $('statNewUsers30').textContent = u.new_last_30d;
+    } catch (e) { /* leave placeholders */ }
+  }
+
   async function loadStats() {
     const windowVal = $('windowSelect').value;
     const res = await fetch('/admin/api/stats?window=' + encodeURIComponent(windowVal), { credentials: 'same-origin' });
@@ -115,7 +128,7 @@
   }
 
   async function refreshAll() {
-    await Promise.all([loadStats(), loadJobs(), loadErrors(), loadLogins()]);
+    await Promise.all([loadStats(), loadUsers(), loadJobs(), loadErrors(), loadLogins()]);
   }
 
   $('windowSelect').addEventListener('change', loadStats);

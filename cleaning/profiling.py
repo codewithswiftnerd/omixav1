@@ -63,7 +63,7 @@ _TOKEN_SPLIT = re.compile(r"[^a-z0-9]+")
 _CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 _TIME_RE = re.compile(r"\d{1,2}:\d{2}")
 _PHONE_VALUE_RE = re.compile(r"^[+(]\s*[\d\s().\-]{6,}$")
-_CURRENCY_SYMBOL = re.compile(r"[$€£¥₦₹]")
+from cleaning import currencies as _currencies  # noqa: E402
 
 _CURRENCY_TOKENS = {
     "price", "amount", "cost", "salary", "revenue", "fee", "fees", "balance", "total",
@@ -192,7 +192,7 @@ def profile_column(name: str, series: pd.Series, total_rows: int) -> ColumnProfi
     if is_text and non_null >= 3:
         cleaned = text_vals.map(detectors.strip_numeric_noise).map(detectors.try_parse_float)
         numeric_like = bool(cleaned.notna().mean() >= 0.95)
-        if _CURRENCY_SYMBOL.search("".join(text_vals.head(200))) and cleaned.notna().mean() >= 0.8:
+        if text_vals.head(200).map(_currencies.has_currency).any() and cleaned.notna().mean() >= 0.8:
             return done(CURRENCY, 0.8, ["values carry currency symbols and parse as numbers"])
     if tokens & _CURRENCY_TOKENS and numeric_like:
         return done(CURRENCY, 0.75, ["column name is a money term and values are numeric"])

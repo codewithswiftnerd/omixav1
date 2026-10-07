@@ -17,6 +17,7 @@ from typing import Optional
 import pandas as pd
 
 from cleaning.phone_formats import COUNTRIES as _COUNTRIES, COUNTRY_ALIASES as _COUNTRY_ALIASES
+from cleaning import currencies as _currencies
 
 # Country reference is built from cleaning/phone_formats.COUNTRIES.
 # The same curated code/name list already used for phone-number
@@ -81,9 +82,10 @@ GENDER_WORDS = MALE_WORDS | FEMALE_WORDS
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 # Characters that are purely visual/formatting noise on an otherwise
-# numeric value: currency symbols, thousands separators, percent
-# signs, stray whitespace.
-_NUMERIC_NOISE_RE = re.compile(r"[,\s$€£¥%]")
+# numeric value: thousands separators, percent signs, stray whitespace.
+# Currency symbols/abbreviations for 140+ currencies are removed first by
+# cleaning/currencies.py (strip_currency), which is why they aren't listed here.
+_NUMERIC_NOISE_RE = re.compile(r"[,\s%]")
 _PAREN_NEGATIVE_RE = re.compile(r"^\((.*)\)$")
 _CURRENCY_SYMBOL_RE = re.compile(r"[$€£¥]")
 
@@ -356,8 +358,26 @@ def unambiguous_date_parse(values: pd.Series) -> Optional[pd.Series]:
     return resolved.reindex(values.index)
 
 
+# A comma is a thousands separator only when it sits in proper groups of three
+# ("1,200", "12,345,678.50"). A comma followed by one or two digits at the end
+# ("3,45") is a decimal comma. Anything else with a comma is ambiguous.
+_THOUSANDS_RE = re.compile(r"^[^\d]*-?\d{1,3}(,\d{3})+(\.\d+)?[^\d]*$")
+_DECIMAL_COMMA_RE = re.compile(r"^(-?\d+),(\d{1,2})$")
+
+
 def strip_numeric_noise(value: str) -> str:
-    s = _NUMERIC_NOISE_RE.sub("", value.strip())
+    v = _currencies.strip_currency(value)
+    if "," in v:
+        core = _NUMERIC_NOISE_RE.sub("", v.replace(",", "")) if _THOUSANDS_RE.match(v) else None
+        if core is None:
+            m = _DECIMAL_COMMA_RE.match(_NUMERIC_NOISE_RE.sub("", v.replace(",", "|")).replace("|", ","))
+            if m:
+                # decimal comma ("3,45" -> "3.45"), never read as thousands (345)
+                return f"{m.group(1)}.{m.group(2)}"
+            # ambiguous comma placement: leave the comma in so the value does not
+            # parse and the whole column is left untouched and surfaced for review
+            return v
+    s = _NUMERIC_NOISE_RE.sub("", v)
     m = _PAREN_NEGATIVE_RE.match(s)
     if m:
         s = "-" + m.group(1)

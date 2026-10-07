@@ -1,0 +1,9 @@
+{
+  "indexes": [
+    {"collectionGroup": "users", "queryScope": "COLLECTION", "fields": [
+      {"fieldPath": "subscription_status", "order": "ASCENDING"},
+      {"fieldPath": "plan", "order": "ASCENDING"},
+      {"fieldPath": "subscription_expires", "order": "ASCENDING"}]}
+  ],
+  "fieldOverrides": []
+}
