@@ -185,17 +185,23 @@ def set_job_owner(job_id: str, owner_hash: str) -> None:
 
 
 def job_owner_hash(job_id: str) -> Optional[str]:
+    """Owner fingerprint for a job. The local marker file wins (single-instance layout);
+    otherwise the shared database (queue mode / object storage, where no local file exists)."""
     d = job_dir_path(job_id)
     if not d:
         return None
     path = os.path.join(d, "owner")
-    if not os.path.isfile(path):
-        return None
+    if os.path.isfile(path):
+        try:
+            with open(path) as f:
+                return f.read().strip() or None
+        except OSError:
+            return None
     try:
-        with open(path) as f:
-            return f.read().strip() or None
-    except OSError:
-        return None
+        import db  # local import: avoids a hard dependency for callers that don't need it
+        return db.get_job_owner_hash(job_id) or None
+    except Exception:
+        return None  # fail closed: no owner known -> nobody owns it
 
 
 def original_filename(job_id: str) -> Optional[str]:
@@ -274,3 +280,20 @@ def sweep_expired_jobs() -> None:
             db.mark_expired(expired_ids)
         except Exception:
             pass  # metadata bookkeeping must never break the actual cleanup
+
+
+_last_sweep = 0.0
+
+
+def maybe_sweep() -> None:
+    """Request-path cleanup, throttled. The old code listed the whole temp directory on EVERY
+    API call. Now at most once per SWEEP_MIN_INTERVAL_SECONDS per process, and never in queue
+    mode (the worker reaper owns cleanup there)."""
+    global _last_sweep
+    if Config.PROCESSING_MODE == "queue":
+        return
+    now = time.monotonic()
+    if now - _last_sweep < Config.SWEEP_MIN_INTERVAL_SECONDS:
+        return
+    _last_sweep = now
+    sweep_expired_jobs()

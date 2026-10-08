@@ -128,6 +128,22 @@ class MemoryStore:
             p = self.payments.get(ref)
             return copy.deepcopy(p) if p else None
 
+    def grant_payment(self, ref, uid, compute, meta: dict):
+        """ATOMIC: claim the payment reference AND apply the entitlement in one step. Returns the
+        fields written, or None if this reference was already processed. Either both happen or
+        neither does, so a crash can never leave a payment 'claimed' without Pro granted."""
+        with self._lock:
+            p = self.payments.setdefault(ref, {})
+            if p.get("processed"):
+                return None
+            user = self.users.setdefault(uid, {"uid": uid})
+            fields = compute(copy.deepcopy(user))
+            user.update(copy.deepcopy(fields))
+            p.update(copy.deepcopy(meta))
+            p["processed"] = True
+            p["processed_at"] = time.time()
+            return copy.deepcopy(fields)
+
     def claim_payment(self, ref) -> bool:
         """True exactly once per reference: makes webhook + redirect verification idempotent."""
         with self._lock:
@@ -294,6 +310,31 @@ class FirestoreStore:
     def get_payment(self, ref):
         d = self.db.collection("payments").document(ref).get()
         return d.to_dict() if d.exists else None
+
+    def grant_payment(self, ref, uid, compute, meta: dict):
+        """ATOMIC (single Firestore transaction): payment claim + user entitlement write commit
+        together or not at all. Safe against two simultaneous webhook deliveries (the loser
+        retries, sees processed=True and returns None) and against a crash mid-grant (nothing
+        was committed, so Paystack's retry grants it). `compute` must be pure: Firestore may
+        re-run it on contention."""
+        firestore = self._firestore
+        pdoc = self.db.collection("payments").document(ref)
+        udoc = self._user(uid)
+
+        @firestore.transactional
+        def _txn(txn):
+            psnap = pdoc.get(transaction=txn)
+            if psnap.exists and (psnap.to_dict() or {}).get("processed"):
+                return None
+            usnap = udoc.get(transaction=txn)
+            user = (usnap.to_dict() or {}) if usnap.exists else {}
+            user.setdefault("uid", uid)
+            fields = compute(user)
+            txn.set(udoc, fields, merge=True)
+            txn.set(pdoc, {**meta, "processed": True, "processed_at": time.time()}, merge=True)
+            return fields
+
+        return _txn(self.db.transaction())
 
     def claim_payment(self, ref) -> bool:
         firestore = self._firestore

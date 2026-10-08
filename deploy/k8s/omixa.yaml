@@ -1,0 +1,69 @@
+# TEMPLATE for a Kubernetes deployment (not applied or tested here). Adapt names, registry,
+# secrets and resource numbers after you have load-test data (docs/SCALING.md).
+# Secrets come from a Secret object / external secret manager, never from this file.
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: omixa-web }
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: omixa-web } }
+  template:
+    metadata: { labels: { app: omixa-web } }
+    spec:
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: web
+          image: REGISTRY/omixa:TAG
+          ports: [{ containerPort: 8080 }]
+          envFrom: [{ secretRef: { name: omixa-secrets } }, { configMapRef: { name: omixa-config } }]
+          resources: { requests: { cpu: 500m, memory: 512Mi }, limits: { memory: 1Gi } }
+          readinessProbe: { httpGet: { path: /readyz, port: 8080 }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /healthz, port: 8080 }, periodSeconds: 10 }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: omixa-web }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: omixa-web }
+  minReplicas: 3
+  maxReplicas: 40
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } }
+    # Add a request-latency / RPS metric (Prometheus adapter) once you scrape /api/metrics.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: omixa-worker }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: omixa-worker } }
+  template:
+    metadata: { labels: { app: omixa-worker } }
+    spec:
+      terminationGracePeriodSeconds: 330   # >= OMIXA_JOB_TIMEOUT_SECONDS so a running job can finish
+      containers:
+        - name: worker
+          image: REGISTRY/omixa:TAG
+          command: ["python", "worker.py"]
+          envFrom: [{ secretRef: { name: omixa-secrets } }, { configMapRef: { name: omixa-config } }]
+          # One job at a time per pod; memory limit must exceed OMIXA_JOB_MEMORY_LIMIT_MB + base (~300Mi).
+          resources: { requests: { cpu: "1", memory: 2Gi }, limits: { memory: 2Gi } }
+---
+# Scale workers on QUEUE DEPTH (KEDA; needs KEDA installed). Pure CPU scaling reacts too late.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata: { name: omixa-worker }
+spec:
+  scaleTargetRef: { name: omixa-worker }
+  minReplicaCount: 2
+  maxReplicaCount: 60
+  cooldownPeriod: 300
+  triggers:
+    - type: redis
+      metadata:
+        addressFromEnv: REDIS_ADDRESS     # host:port
+        listName: omx:q:pending
+        listLength: "5"                   # target ~5 queued jobs per worker
+        # NOTE: our queue is a sorted set. If your KEDA version lacks a zset scaler, use the
+        # Prometheus scaler on omixa_queue_depth from /api/metrics instead.

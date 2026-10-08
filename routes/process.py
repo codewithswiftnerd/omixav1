@@ -3,8 +3,13 @@ import time
 
 from flask import Blueprint, request, jsonify
 
-from utils.file_handler import find_source_file, job_dir_path, job_owner_hash, sweep_expired_jobs
-from utils.session import owns
+from utils.file_handler import find_source_file, job_dir_path, job_owner_hash, maybe_sweep, is_valid_job_id
+from utils.session import owns, current_session_hash
+from utils.observability import get_request_id
+from utils.security import remember_entitlement
+from config import Config
+import jobs.service as job_service
+import storage as object_storage
 from processing.pipeline import DatasetTooLargeError, run_pipeline
 from cleaning.rules import RULE_DISPATCH
 import db as metadata_db
@@ -13,6 +18,7 @@ from accounts.entitlements import effective
 from accounts.store import get_store
 from proquality.analysis import session_record
 from proquality.profiles import ProfileError, normalize_profile
+from cleaning.engine import FeatureNotAvailable, RuleConfigError, authorize_profile, parse_profile
 
 process_bp = Blueprint("process", __name__)
 logger = logging.getLogger("omixa.process")
@@ -48,9 +54,16 @@ def process_file(job_id):
       - []              -> run NO cleaning rules (user unchecked everything)
       - [...]           -> run only the rules explicitly named
     """
-    sweep_expired_jobs()
+    maybe_sweep()
 
-    if not job_dir_path(job_id) or not find_source_file(job_id):
+    queue_mode = Config.PROCESSING_MODE == "queue"
+    if not is_valid_job_id(job_id):
+        return jsonify({"error": "Unknown or expired job_id, or no uploaded file found"}), 404
+    if queue_mode:
+        # Source lives in object storage; the shared DB row is the authority on existence.
+        if not metadata_db.get_job(job_id):
+            return jsonify({"error": "Unknown or expired job_id, or no uploaded file found"}), 404
+    elif not job_dir_path(job_id) or not find_source_file(job_id):
         return jsonify({"error": "Unknown or expired job_id, or no uploaded file found"}), 404
 
     if not owns(job_owner_hash(job_id)):
@@ -101,10 +114,33 @@ def process_file(job_id):
         if not profile:
             return jsonify({"error": "Quality Profile not found"}), 404
 
+    # Declarative per-column cleaning (cleaning/engine). Validated and authorized HERE, against the
+    # entitlement derived above from the subscription record. The request body is never consulted
+    # for plan information, and the pipeline re-checks with the same frozen flag.
+    cleaning_profile = body.get("cleaning_profile")
+    if cleaning_profile is not None:
+        try:
+            parsed = parse_profile(cleaning_profile)
+            authorize_profile(parsed, is_pro=is_pro)
+        except FeatureNotAvailable as exc:
+            return jsonify(exc.to_response()), 402
+        except RuleConfigError as exc:
+            return jsonify(exc.to_dict()), 400
+
+    if uid:
+        remember_entitlement(uid, is_pro)
+
+    if queue_mode:
+        return _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, cleaning_profile)
+
     started = time.monotonic()
     try:
         summary = run_pipeline(job_id, rules=rules, resolutions=resolutions, has_header=has_header,
-                               pro=is_pro, profile=profile)
+                               pro=is_pro, profile=profile, cleaning_profile=cleaning_profile)
+    except (RuleConfigError, FeatureNotAvailable) as exc:
+        # e.g. the profile names a column that is not in the file; nothing was changed or exported
+        payload = exc.to_response() if isinstance(exc, FeatureNotAvailable) else exc.to_dict()
+        return jsonify({"status": "failed", **payload}), 402 if isinstance(exc, FeatureNotAvailable) else 422
     except DatasetTooLargeError as exc:
         metadata_db.record_failed(job_id, "process", "DatasetTooLargeError", str(exc))
         return jsonify({"status": "failed", "error": str(exc)}), 422
@@ -154,3 +190,41 @@ def process_file(job_id):
         "status": "completed",
         "summary": summary,
     }), 200
+
+
+def _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, cleaning_profile=None):
+    """Queue mode: the API only validates, applies admission control and creates the job. A
+    dedicated worker (worker.py) does the cleaning. Everything the worker needs (including the
+    server-decided is_pro flag and the Quality Profile) is frozen into the job record here, so
+    nothing the client sends later can change what runs."""
+    session_hash = current_session_hash()
+    try:
+        admission = job_service.admit(uid, session_hash, is_pro)
+    except job_service.AdmissionError as exc:
+        resp = jsonify({"error": exc.message, "status": "rejected"})
+        if exc.retry_after:
+            resp.headers["Retry-After"] = str(exc.retry_after)
+        return resp, exc.status
+    except Exception:
+        logger.exception("admission control failed")
+        return jsonify({"error": "Omixa is temporarily unavailable. Please try again shortly."}), 503
+
+    spec = {"kind": "clean", "rules": rules, "resolutions": resolutions, "has_header": has_header,
+            "pro": is_pro, "uid": uid, "profile": profile, "cleaning_profile": cleaning_profile}
+    try:
+        queued = job_service.submit(job_id, spec, is_pro, get_request_id())
+    except Exception:
+        logger.exception("could not enqueue job %s", job_id)
+        return jsonify({"error": "Omixa is temporarily unavailable. Please try again shortly."}), 503
+    if not queued:
+        # Already queued/running (double click) or unknown: report the real state, don't duplicate.
+        job = metadata_db.get_job(job_id)
+        if job and job["status"] in ("queued", "running"):
+            return jsonify({"job_id": job_id, "status": job["status"]}), 202
+        return jsonify({"error": "This job cannot be processed right now."}), 409
+
+    body = {"job_id": job_id, "status": "queued"}
+    if admission["high_traffic"]:
+        body["message"] = job_service.HIGH_TRAFFIC_MESSAGE
+        body["high_traffic"] = True
+    return jsonify(body), 202

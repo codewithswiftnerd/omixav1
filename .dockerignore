@@ -1,0 +1,10 @@
+.git
+venv
+.venv
+__pycache__
+*.pyc
+.env
+RAILWAY_ENV_VARS.txt
+data
+temp
+loadtests/results

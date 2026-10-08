@@ -783,6 +783,22 @@ RULE_DISPATCH = {
 }
 
 
+def _split_held(df, labels, held_out, rule_name):
+    """Parks the columns a user-configured rule owns so `rule_name` cannot touch them."""
+    if not held_out:
+        return None
+    cols = [c for c in df.columns if rule_name in held_out.get(labels.get(c, c), ())]
+    if not cols:
+        return None
+    return df.drop(columns=cols), df[cols]
+
+
+def _rejoin_held(df, parked, original_order):
+    for c in parked.columns:
+        df[c] = parked[c]
+    return df[[c for c in original_order if c in df.columns] + [c for c in df.columns if c not in original_order]]
+
+
 def _rename_labels(labels: dict, before_cols, after_cols) -> dict:
     """Keep a current-name -> name-in-the-uploaded-file map after a step renames headers
     (rules rename positionally and never reorder or drop columns)."""
@@ -800,6 +816,7 @@ def apply_rules(
     approval: str | None = None,
     column_labels: dict | None = None,
     protected_blank: dict | None = None,
+    held_out: dict | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """
     rules=None            -> run DEFAULT_RULES (the normal "Clean my
@@ -812,6 +829,11 @@ def apply_rules(
     recorded: what changed, why, which rule id, examples, counts, confidence, and
     whether it was automatic (default set) or user-selected (explicit list). The counts
     come from comparing the data, not from what a rule says it did.
+
+    held_out (optional): {column name in the uploaded file: {default rule names}}. A column the
+    user configured explicitly (cleaning profile) is not touched by the listed automatic rules, so
+    their chosen output format is never re-written. Whitespace formatting, duplicates and the other
+    rules still see every column.
     """
     explicit = rules is not None
     selected = DEFAULT_RULES if rules is None else rules
@@ -829,7 +851,12 @@ def apply_rules(
         before = df.copy() if audit is not None else None
         before_cols = list(df.columns)
         details["_column_labels"] = labels
+        held = _split_held(df, labels, held_out, rule_name)
+        if held is not None:
+            df, parked = held
         df, count = fn(df, details)
+        if held is not None:
+            df = _rejoin_held(df, parked, before_cols)
         changes[f"{rule_name}_changed"] = count
 
         if audit is not None:

@@ -38,6 +38,45 @@ def _read_csv(path: str, **kwargs) -> pd.DataFrame:
         return pd.read_csv(path, encoding="latin-1", **kwargs)
 
 
+def _sheet_extent(path: str, ext: str, ncols_hint: int, max_rows: int):
+    """(rows, cols) of the FIRST sheet without loading it into pandas, or None if unknown.
+
+    Memory guard: pd.read_excel materialises the whole sheet before any size check can run, so a
+    big workbook used to be fully loaded and only then rejected. This answers "is it too big?"
+    from the sheet's declared dimension (cheap), and, when a writer omitted it, by streaming rows
+    with a hard stop at the limit (constant memory). A lying dimension is bounded by the xlsx
+    decompression guard and, in workers, by the job's address-space cap."""
+    try:
+        if ext == "xlsx":
+            import openpyxl
+            wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+            try:
+                ws = wb.worksheets[0]
+                rows, cols = ws.max_row, ws.max_column
+                if rows and cols:
+                    return int(rows), int(cols)
+                count, widest = 0, 0
+                for row in ws.iter_rows(values_only=True):
+                    count += 1
+                    widest = max(widest, len(row))
+                    if count > max_rows + 1 or count * max(widest, ncols_hint, 1) > Config.MAX_CELLS + max(widest, 1):
+                        break
+                return count, widest
+            finally:
+                wb.close()
+        if ext == "xls":
+            import xlrd
+            book = xlrd.open_workbook(path, on_demand=True)
+            try:
+                sh = book.sheet_by_index(0)
+                return int(sh.nrows), int(sh.ncols)
+            finally:
+                book.release_resources()
+    except Exception:
+        return None  # unknown: fall through to the post-load check
+    return None
+
+
 def read_source(path: str, has_header: bool = True) -> pd.DataFrame:
     """
     Reads the uploaded file, and specifically protects
@@ -77,15 +116,33 @@ def read_source(path: str, has_header: bool = True) -> pd.DataFrame:
         col: str for col in header.columns if detectors.is_identifier_name(str(col))
     } or None
 
-    if ext == "csv":
-        df = _read_csv(path, dtype=dtype_overrides, header=header_arg, nrows=Config.MAX_ROWS + 1)
-    else:
-        df = pd.read_excel(path, dtype=dtype_overrides, header=header_arg)
+    # Rows x columns ceiling (a 500-column file must not be allowed 500k rows).
+    ncols = max(1, len(header.columns))
+    max_rows = min(Config.MAX_ROWS, max(1, Config.MAX_CELLS // ncols))
+    cell_limited = max_rows < Config.MAX_ROWS
 
-    if len(df) > Config.MAX_ROWS:
-        raise DatasetTooLargeError(
+    def _too_large():
+        if cell_limited:
+            return DatasetTooLargeError(
+                f"This file has more than {Config.MAX_CELLS:,} cells ({ncols} columns x more than "
+                f"{max_rows:,} rows), which is more than OMIXA will process."
+            )
+        return DatasetTooLargeError(
             f"This file has more than {Config.MAX_ROWS:,} rows, which is more than OMIXA will process."
         )
+
+    if ext == "csv":
+        df = _read_csv(path, dtype=dtype_overrides, header=header_arg, nrows=max_rows + 1)
+    else:
+        extent = _sheet_extent(path, ext, ncols, max_rows)
+        if extent is not None:
+            data_rows = extent[0] - (1 if has_header else 0)
+            if data_rows > max_rows:
+                raise _too_large()  # rejected BEFORE pandas loads the sheet
+        df = pd.read_excel(path, dtype=dtype_overrides, header=header_arg)
+
+    if len(df) > max_rows:
+        raise _too_large()
 
     if not has_header:
         df.columns = [f"column_{i + 1}" for i in range(len(df.columns))]
@@ -117,6 +174,7 @@ def run_pipeline(
     has_header: bool = True,
     pro: bool = False,
     profile: Optional[dict] = None,
+    cleaning_profile: Optional[dict] = None,
 ) -> dict:
     """
     Returns a summary dict the frontend can display, e.g.:
@@ -137,7 +195,19 @@ def run_pipeline(
     `has_header` (optional, default True) is whether the file's first
     row is a header row, see read_source()'s docstring, it's a caller
     choice, never an Omixa assumption.
+
+    `cleaning_profile` (optional) is a declarative per-column rule configuration, see
+    cleaning/engine/. It is parsed and AUTHORIZED here as well as in the API (defence in depth:
+    `pro` is the server-derived entitlement frozen into the job, never a client value). It runs
+    after resolutions and before the default rule set; columns it configures are held out from the
+    default rules that would otherwise re-write its output.
     """
+    engine_profile = None
+    if cleaning_profile:
+        from cleaning.engine import authorize_profile, parse_profile
+        engine_profile = parse_profile(cleaning_profile)
+        authorize_profile(engine_profile, is_pro=bool(pro))
+
     source_path = find_source_file(job_id)
     if not source_path:
         raise FileNotFoundError("No source file found for this job")
@@ -182,8 +252,16 @@ def run_pipeline(
     source_positions = [original_column_positions[name] for name in df.columns]
     columns_after_resolutions = list(df.columns)
 
+    engine_report = None
+    held_out = None
+    if engine_profile is not None:
+        from cleaning.engine import run_profile
+        df, engine_report = run_profile(df, engine_profile, audit=audit, labels=labels)
+        held_out = {c: set(v) for c, v in (engine_report.get("supersedes") or {}).items()} or None
+
     cleaned_df, change_log = apply_rules(
         df, rules=rules, audit=audit, column_labels=labels, protected_blank=resolution_log.get("blanked"),
+        held_out=held_out,
     )
 
     # Provenance: cells holding an ESTIMATE rather than an observation. Used so the
@@ -255,10 +333,11 @@ def run_pipeline(
         )
     original_df = None
 
-    return {
+    rules_applied = list(change_log["rules_applied"]) + (["column_rules"] if engine_report else [])
+    result = {
         "rows_in": rows_in,
         "rows_out": rows_out,
-        "rules_applied": change_log["rules_applied"],
+        "rules_applied": rules_applied,
         "changes": change_log["changes"],
         "details": change_log.get("details", {}),
         "resolutions_applied": resolution_log["applied"],
@@ -274,3 +353,6 @@ def run_pipeline(
         },
         "pro": pro_block,
     }
+    if engine_report is not None:
+        result["cleaning_engine"] = engine_report
+    return result

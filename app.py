@@ -28,16 +28,16 @@ from routes.sessions import sessions_bp
 from routes.pages import pages_bp
 from routes.workspace import workspace_bp
 from routes.admin import admin_bp
+from routes.jobs import jobs_bp
+from routes.cleaning import cleaning_bp
 from utils.security import check_rate_limit
+from utils import observability, redis_client
 from utils.session import ensure_session
 
 
 def _configure_logging():
     level = logging.DEBUG if not Config.IS_PRODUCTION else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-    )
+    observability.configure_logging(level, Config.LOG_FORMAT)
 
 
 def create_app():
@@ -70,6 +70,8 @@ def create_app():
     app.register_blueprint(billing_bp, url_prefix="/api/billing")
     app.register_blueprint(profiles_bp, url_prefix="/api/profiles")
     app.register_blueprint(sessions_bp, url_prefix="/api/sessions")
+    app.register_blueprint(jobs_bp, url_prefix="/api/jobs")
+    app.register_blueprint(cleaning_bp, url_prefix="/api/cleaning")
 
     # Page blueprints (server-rendered HTML)
     app.register_blueprint(pages_bp)
@@ -77,6 +79,15 @@ def create_app():
 
     # Admin command center (its own session-gated auth, see routes/admin.py)
     app.register_blueprint(admin_bp, url_prefix="/admin")
+
+    # Correlation ID: honoured from the edge/load balancer when well-formed, else generated.
+    # Stored on the job at creation so API and worker logs for one job can be joined.
+    @app.before_request
+    def _request_id():
+        rid = observability.new_request_id(request.headers.get("X-Request-ID"))
+        g.request_id = rid
+        observability.set_request_id(rid)
+        return None
 
     # Assign an anonymous session cookie before anything else runs.
     @app.before_request
@@ -159,6 +170,7 @@ def create_app():
     def _security_headers(response):
         response = _apply_cors(response)
 
+        response.headers["X-Request-ID"] = getattr(g, "request_id", "-")
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -207,6 +219,9 @@ def create_app():
             "%s %s -> %s (%sms)",
             request.method, safe_path, response.status_code, duration_ms,
         )
+        if started and not request.path.startswith("/static/"):
+            observability.observe_request(
+                observability.route_group(request.path), response.status_code, time.monotonic() - started)
         return response
 
     def _wants_json() -> bool:
@@ -262,6 +277,52 @@ def create_app():
         healthy = all(checks.values())
         body = {"status": "ok" if healthy else "degraded", "service": "omixa-backend", "checks": checks}
         return jsonify(body), (200 if healthy else 503)
+
+    @app.get("/healthz")
+    def healthz():
+        """Liveness: the process is up. Deliberately touches nothing else, so a database or
+        Redis blip never makes the orchestrator kill healthy API instances."""
+        return jsonify({"status": "ok"}), 200
+
+    @app.get("/readyz")
+    def readyz():
+        """Readiness: can this instance serve traffic? Only the database is required; Redis is
+        optional (the app degrades without it) and is reported, not enforced."""
+        db_ms = metadata_db.ping()
+        redis_ms = redis_client.ping() if Config.REDIS_URL else None
+        ready = db_ms is not None
+        body = {
+            "status": "ready" if ready else "not_ready",
+            "database_ms": db_ms,
+            "redis": ("n/a" if not Config.REDIS_URL else ("ok" if redis_ms is not None else "degraded")),
+            "redis_ms": redis_ms,
+            "processing_mode": Config.PROCESSING_MODE,
+            "storage": Config.STORAGE_BACKEND,
+        }
+        return jsonify(body), (200 if ready else 503)
+
+    @app.get("/api/metrics")
+    def metrics():
+        """Prometheus text. Disabled unless OMIXA_METRICS_TOKEN is set; requires
+        `Authorization: Bearer <token>`. Per-process request metrics plus fleet-wide gauges."""
+        import hmac
+        _auth = request.headers.get("Authorization") or ""
+        supplied = (_auth[7:] if _auth.startswith("Bearer ") else _auth).strip()
+        if not Config.METRICS_TOKEN or not hmac.compare_digest(supplied, Config.METRICS_TOKEN):
+            return jsonify({"error": "Not found"}), 404
+        gauges = {}
+        try:
+            import jobs.service as job_service
+            gauges["omixa_queue_depth"] = job_service.queue_depth()
+            gauges["omixa_jobs_queued"] = metadata_db.count_by_status("queued")
+            gauges["omixa_jobs_running"] = metadata_db.count_by_status("running")
+            gauges["omixa_jobs_dead_lettered"] = metadata_db.count_dead_letters()
+            gauges["omixa_database_latency_ms"] = metadata_db.ping() or -1
+        except Exception:
+            pass
+        if Config.REDIS_URL:
+            gauges["omixa_redis_latency_ms"] = redis_client.ping() or -1
+        return app.response_class(observability.render_prometheus(gauges), mimetype="text/plain; version=0.0.4")
 
     @app.get("/favicon.ico")
     def favicon():

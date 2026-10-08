@@ -97,6 +97,32 @@ if(hasHeaderCheck){
   hasHeaderCheck.addEventListener('change', () => { if(selectedFile) setFile(selectedFile); });
 }
 
+// Queue mode: the API answers 202 and a dedicated worker does the heavy work, so the page polls
+// the job instead of holding one long request open. Polling backs off (1s -> 5s) so thousands of
+// open tabs stay cheap for the server, and obeys Retry-After if rate limited.
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+async function pollJob(jobId, isDone){
+  const started = Date.now();
+  let delay = 1000;
+  for(;;){
+    const r = await fetch(base() + '/api/jobs/' + jobId, { credentials:'include', headers: apiHeaders() });
+    if(r.status === 429){
+      await sleep((parseInt(r.headers.get('Retry-After') || '3', 10) || 3) * 1000);
+      continue;
+    }
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.error || 'status check failed');
+    if(j.status === 'failed') throw new Error(j.error || 'processing failed');
+    if(isDone(j)) return j;
+    if(j.status === 'queued'){
+      setStage(j.queue_position ? 'Waiting in queue (position ' + j.queue_position + ') …' : 'Queued …', 'active');
+    }
+    if(Date.now() - started > 15 * 60 * 1000) throw new Error('This is taking longer than expected. Please try again.');
+    await sleep(delay);
+    delay = Math.min(Math.round(delay * 1.4), 5000);
+  }
+}
+
 async function setFile(f){
   selectedFile = f;
   lastJobId = null;
@@ -124,8 +150,14 @@ async function setFile(f){
     setStep('review', 'active');
     setStage('Checking your data …', 'active');
     const repRes = await fetch(base() + '/api/report/' + lastJobId + '?has_header=' + hasHeader(), { credentials:'include', headers: apiHeaders() });
-    const repJson = await repRes.json();
+    let repJson = await repRes.json();
     if(!repRes.ok) throw upgradeAwareError(repRes, repJson, 'analysis failed');
+    if(repRes.status === 202){
+      if(repJson.message) setStage(repJson.message, 'active');
+      const wantHeader = hasHeader();
+      const done = await pollJob(lastJobId, j => j.status === 'uploaded' && j.analysis && j.analysis.has_header === wantHeader);
+      repJson = { report: done.analysis.report, recommendations: done.analysis.recommendations };
+    }
 
     renderReport(repJson.report);
     renderRecommendations(repJson.recommendations);
@@ -321,8 +353,13 @@ runBtn.addEventListener('click', async () => {
       headers: apiHeaders({'Content-Type':'application/json'}),
       body: JSON.stringify({ rules, resolutions: selectedResolutions(), has_header: hasHeader(), profile_id: (window.OmixaPro && OmixaPro.profileId()) || undefined })
     });
-    const procJson = await procRes.json();
+    let procJson = await procRes.json();
     if(!procRes.ok) throw upgradeAwareError(procRes, procJson, 'processing failed');
+    if(procRes.status === 202){
+      if(procJson.message) setStage(procJson.message, 'active');
+      const done = await pollJob(lastJobId, j => j.status === 'processed' && j.summary);
+      procJson = { summary: done.summary };
+    }
 
     setStep('download', '');
     setStage('');
@@ -572,7 +609,14 @@ async function saveDownloadedFile(blob, filename){
 
 downloadBtn.addEventListener('click', async () => {
   if(!lastJobId) return;
-  const r = await fetch(base() + '/api/download/' + lastJobId, { credentials:'include', headers: apiHeaders() });
+  let r = await fetch(base() + '/api/download/' + lastJobId + '?format=url', { credentials:'include', headers: apiHeaders() });
+  let signedName = null;
+  if(r.ok && (r.headers.get('Content-Type') || '').includes('application/json')){
+    // Object-storage mode: the file comes straight from a short-lived signed URL (no cookies sent).
+    const j = await r.json();
+    signedName = j.filename;
+    r = await fetch(j.url);
+  }
   if(!r.ok){
     let msg = 'download failed (HTTP ' + r.status + ')';
     try{
@@ -585,7 +629,7 @@ downloadBtn.addEventListener('click', async () => {
   const blob = await r.blob();
   const cd = r.headers.get('Content-Disposition') || '';
   const match = cd.match(/filename="?([^"]+)"?/);
-  const filename = match ? match[1] : 'cleaned_output';
+  const filename = signedName || (match ? match[1] : 'cleaned_output');
   await saveDownloadedFile(blob, filename);
   downloadBtn.classList.add('hidden'); // job is deleted server-side after download
 });

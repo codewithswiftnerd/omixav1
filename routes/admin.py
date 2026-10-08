@@ -16,7 +16,7 @@ import logging
 
 from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
 
-from utils.security import check_login_rate_limit
+from utils.security import check_admin_rate_limit, check_login_rate_limit
 from utils.session import (
     attempt_admin_login, client_ip, csrf_token, hash_value,
     is_admin, logout_admin, verify_csrf_request,
@@ -35,6 +35,9 @@ def admin_required(view):
             if request.path.startswith("/admin/api/"):
                 return jsonify({"error": "Admin authentication required"}), 401
             return redirect(url_for("admin.login"))
+        limited = check_admin_rate_limit()
+        if limited:
+            return limited
         return view(*args, **kwargs)
     return wrapped
 

@@ -1,0 +1,53 @@
+# Column-aware cleaning engine
+
+Declarative, per-column cleaning that runs **inside the existing worker pipeline** (`run_pipeline`),
+on top of the unchanged default rule set.
+
+```
+plan entitlement (server-side) -> access.py (capabilities) -> cleaning_profile -> column rules
+   -> executor (cleaning/engine/executor.py) -> AuditLog + quality/review report -> cleaned file
+```
+
+## Where things live
+| File | Role |
+|---|---|
+| `cleaning/engine/access.py` | The ONLY place that knows Free vs Pro (`FREE_RULES`, `PRO_RULES`, `PRO_FEATURES`, `authorize`) |
+| `cleaning/engine/base.py` | `BaseCleaningRule`, strict `ParamSpec` validation, `Flag`, `map_unique` |
+| `cleaning/engine/{text,numeric,phone,dates,email_rules,categories}.py` | Rules (no plan logic inside) |
+| `cleaning/engine/registry.py` | rule type -> class; asserts every rule is classified in `access.py` |
+| `cleaning/engine/profile.py` | parse/validate a profile (data only, fixed registry lookup) |
+| `cleaning/engine/executor.py` | runs a profile, audit steps, review items, decisions, per-column metrics |
+| `cleaning/engine/recommend.py` | column type + confidence, recommendations (Pro) |
+| `routes/cleaning.py` | `GET /api/cleaning/rules`, `POST /api/cleaning/profile/validate` |
+
+## API
+`POST /api/process/<job_id>` accepts `cleaning_profile` (alongside `rules`, `resolutions`, `profile_id`):
+
+```json
+{"cleaning_profile": {
+  "name": "Nigerian Customer Dataset",
+  "columns": {
+    "Name":  {"rules": [{"type": "trim_whitespace"}, {"type": "normalize_case", "mode": "title"}]},
+    "Phone": {"rules": [{"type": "normalize_phone", "country": "NG", "output_format": "international"}]}
+  },
+  "decisions": [{"column": "Status", "original": "pendng", "action": "accept", "value": "Pending"}]
+}}
+```
+* Free caller -> `402 {"code":"FEATURE_NOT_AVAILABLE","rule":...,"required_plan":"pro","upgrade_required":true}`
+* Invalid profile -> `400 {"code":"INVALID_RULE_CONFIG"|"UNKNOWN_RULE",...}`; unknown column in the file -> `422 UNKNOWN_COLUMN` (queue mode: job fails with `CleaningConfigError`, nothing exported).
+* Result: `summary.cleaning_engine` = per-column detected type/confidence, rule-level changed/flagged counts, before/after format inconsistency, review items (original preserved, reason, suggestion, status), unmatched decisions.
+* Review loop: re-submit with `decisions` (accept/reject per flagged value).
+
+## Rules
+Free: trim_whitespace, normalize_whitespace, basic_numeric_cleanup, remove_currency_symbols,
+basic_missing_value_handling, basic_duplicate_detection (report only), basic_date_detection (report only).
+Pro: normalize_phone, validate_phone, normalize_date, validate_date, normalize_case, validate_email,
+normalize_currency, standardize_categories, custom_replacements; features column_rules, cleaning_profiles,
+recommendations, before_after_analysis, detailed_change_log.
+
+Execution order is by phase (whitespace -> missing -> replacements -> semantic -> case -> categories ->
+validation -> detection), stable within a phase. Columns a profile configures are held out from the default
+rules that would re-write the result (`SUPERSEDES` in executor.py).
+
+Adding a country: add its row to `cleaning/phone_formats.COUNTRIES` (and optionally `COUNTRY_PATTERNS`).
+Adding a rule: write the class, add to `registry._CLASSES`, classify it in `access.py` (import-time assertion enforces it), add tests.

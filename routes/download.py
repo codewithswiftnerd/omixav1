@@ -2,9 +2,12 @@ import os
 import mimetypes
 import logging
 from io import BytesIO
-from flask import Blueprint, send_file, jsonify
+from flask import Blueprint, send_file, jsonify, redirect, request
 
-from utils.file_handler import job_dir_path, job_owner_hash, delete_job, sweep_expired_jobs
+import storage as object_storage
+from config import Config
+
+from utils.file_handler import job_dir_path, job_owner_hash, delete_job, maybe_sweep
 from utils.session import owns
 import db as metadata_db
 
@@ -23,11 +26,14 @@ def download_file(job_id):
     Requires the request's session to be the one that uploaded this
     job, same as /api/process and /api/report, see utils/session.py.
     """
-    sweep_expired_jobs()
+    maybe_sweep()
 
     d = job_dir_path(job_id)
     if not d:
         return jsonify({"error": "Invalid job_id"}), 400
+
+    if object_storage.is_remote():
+        return _remote_download(job_id)
 
     if not owns(job_owner_hash(job_id)):
         # Same "not found" shape for a non-owner as for a real 404.
@@ -82,3 +88,32 @@ def download_file(job_id):
         download_name=filename,
         mimetype=mimetype,
     )
+
+
+def _remote_download(job_id):
+    """Object-storage mode: the file never passes through the API. The caller gets a
+    short-lived presigned URL (private bucket; credentials never leave the server).
+
+      GET /api/download/<id>?format=url  -> 200 {"url": "...", "filename": "...", "expires_in": 300}
+      GET /api/download/<id>             -> 302 to the same URL (plain link / navigation)
+    """
+    nope = jsonify({"error": "No cleaned file ready for this job",
+                    "detail": "job not found, the job_id is wrong or has expired"}), 404
+    job = metadata_db.get_job(job_id)
+    if not job or not owns(job.get("session_hash")):
+        return nope
+    if job["status"] not in ("processed", "downloaded") or not job.get("cleaned_ext"):
+        return jsonify({"error": "No cleaned file ready for this job",
+                        "detail": "this job hasn't been processed yet"}), 404
+    storage = object_storage.get_storage()
+    key = object_storage.cleaned_key(job_id, job["cleaned_ext"])
+    if not storage.exists(key):
+        return nope
+    stem = (job.get("original_filename") or "cleaned").rsplit(".", 1)[0]
+    filename = f"cleaned_{stem}.{job['cleaned_ext']}"
+    url = storage.presigned_get(key, filename)
+    metadata_db.record_downloaded(job_id)
+    storage.delete(object_storage.source_key(job_id, job["original_ext"]))  # original no longer needed
+    if request.args.get("format") == "url":
+        return jsonify({"url": url, "filename": filename, "expires_in": Config.SIGNED_URL_TTL_SECONDS}), 200
+    return redirect(url, code=302)

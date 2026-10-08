@@ -1,0 +1,42 @@
+# Local production-like stack: Postgres + Redis + MinIO (S3) + web + worker.
+# `docker compose up --build`, then open http://localhost:8080
+# Dev credentials below are for local use only. Never reuse them anywhere real.
+services:
+  postgres:
+    image: postgres:16
+    environment: { POSTGRES_USER: omixa, POSTGRES_PASSWORD: omixa-local-only, POSTGRES_DB: omixa }
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U omixa"], interval: 5s, retries: 10 }
+  redis:
+    image: redis:7
+    command: ["redis-server", "--appendonly", "yes"]
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment: { MINIO_ROOT_USER: omixa-local, MINIO_ROOT_PASSWORD: omixa-local-only }
+    ports: ["9001:9001"]
+  minio-init:
+    image: minio/mc
+    depends_on: [minio]
+    entrypoint: >
+      sh -c "sleep 3 && mc alias set l http://minio:9000 omixa-local omixa-local-only &&
+             mc mb -p l/omixa-jobs && mc ilm rule add --expire-days 1 l/omixa-jobs"
+  web: &app
+    build: .
+    depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_started } }
+    env_file: [.env]          # your real secrets stay in a gitignored .env
+    environment: &shared
+      DATABASE_URL: postgresql://omixa:omixa-local-only@postgres:5432/omixa
+      REDIS_URL: redis://redis:6379/0
+      OMIXA_PROCESSING_MODE: queue
+      OMIXA_STORAGE_BACKEND: s3
+      OMIXA_S3_BUCKET: omixa-jobs
+      OMIXA_S3_ENDPOINT_URL: http://minio:9000
+      OMIXA_S3_ACCESS_KEY_ID: omixa-local
+      OMIXA_S3_SECRET_ACCESS_KEY: omixa-local-only
+      OMIXA_S3_SSE: ""        # MinIO needs KMS configured for SSE; real S3/R2 keep AES256
+    ports: ["8080:8080"]
+  worker:
+    <<: *app
+    command: ["python", "worker.py"]
+    ports: []
+    deploy: { replicas: 2 }

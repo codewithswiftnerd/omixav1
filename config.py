@@ -82,8 +82,6 @@ class Config:
 
     ALLOWED_EXTENSIONS = {"csv", "xlsx", "xls"}
 
-    # How long a job's temp files live before cleanup sweeps them.
-    JOB_TTL_SECONDS = 60 * 30  # 30 minutes
 
     # Comma-separated origins allowed to call the API cross-origin.
     # "*" (default) fine for local dev / same-origin deploys; session
@@ -164,3 +162,67 @@ class Config:
     PRICE_NGN_MONTHLY = int(os.environ.get("OMIXA_PRICE_NGN_MONTHLY", "0"))
     PRICE_NGN_ANNUAL = int(os.environ.get("OMIXA_PRICE_NGN_ANNUAL", "0"))
     PUBLIC_BASE_URL = os.environ.get("OMIXA_PUBLIC_BASE_URL", "").strip().rstrip("/")
+
+
+    # ===================================================================
+    # Scalability settings. Every default below reproduces the previous
+    # single-instance behaviour, so nothing changes until you opt in.
+    # ===================================================================
+
+    # --- Processing mode -------------------------------------------------
+    # "inline": the web process cleans the file inside the request (old behaviour).
+    # "queue":  the API only creates a job; dedicated workers (worker.py) clean it.
+    PROCESSING_MODE = os.environ.get("OMIXA_PROCESSING_MODE", "inline").strip().lower()
+
+    # --- Shared infrastructure -------------------------------------------
+    REDIS_URL = os.environ.get("REDIS_URL", "").strip()
+    # Empty = SQLite at DB_PATH (dev / single instance). postgres://... = Postgres.
+    DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+    DB_POOL_MAX = int(os.environ.get("OMIXA_DB_POOL_MAX", "10"))
+
+    # --- Object storage (S3-compatible: AWS S3, Cloudflare R2, Backblaze B2, MinIO) ---
+    STORAGE_BACKEND = os.environ.get("OMIXA_STORAGE_BACKEND", "local").strip().lower()
+    S3_BUCKET = os.environ.get("OMIXA_S3_BUCKET", "").strip()
+    S3_ENDPOINT_URL = os.environ.get("OMIXA_S3_ENDPOINT_URL", "").strip()
+    S3_REGION = os.environ.get("OMIXA_S3_REGION", "auto").strip()
+    S3_ACCESS_KEY_ID = os.environ.get("OMIXA_S3_ACCESS_KEY_ID", "").strip()
+    S3_SECRET_ACCESS_KEY = os.environ.get("OMIXA_S3_SECRET_ACCESS_KEY", "").strip()
+    S3_PREFIX = os.environ.get("OMIXA_S3_PREFIX", "jobs").strip().strip("/")
+    S3_SSE = os.environ.get("OMIXA_S3_SSE", "AES256").strip()  # "" to disable (some providers reject it)
+    SIGNED_URL_TTL_SECONDS = int(os.environ.get("OMIXA_SIGNED_URL_TTL_SECONDS", "300"))
+
+    # --- Memory guard ----------------------------------------------------
+    # Row and column limits alone allow 250M cells. This caps rows x columns.
+    MAX_CELLS = int(os.environ.get("OMIXA_MAX_CELLS", "3000000"))
+
+    # --- Job queue protection --------------------------------------------
+    QUEUE_SOFT_LIMIT = int(os.environ.get("OMIXA_QUEUE_SOFT_LIMIT", "200"))   # above: "high traffic" message
+    QUEUE_HARD_LIMIT = int(os.environ.get("OMIXA_QUEUE_HARD_LIMIT", "5000"))  # above: 503 + Retry-After
+    MAX_ACTIVE_JOBS_ANON = int(os.environ.get("OMIXA_MAX_ACTIVE_JOBS_ANON", "2"))
+    MAX_ACTIVE_JOBS_USER = int(os.environ.get("OMIXA_MAX_ACTIVE_JOBS_USER", "3"))
+    MAX_ACTIVE_JOBS_PRO = int(os.environ.get("OMIXA_MAX_ACTIVE_JOBS_PRO", "8"))
+    GLOBAL_MAX_RUNNING = int(os.environ.get("OMIXA_GLOBAL_MAX_RUNNING", "50"))
+    JOB_TIMEOUT_SECONDS = int(os.environ.get("OMIXA_JOB_TIMEOUT_SECONDS", "900"))
+    JOB_MEMORY_LIMIT_MB = int(os.environ.get("OMIXA_JOB_MEMORY_LIMIT_MB", "1536"))  # 0 disables
+    JOB_MAX_ATTEMPTS = int(os.environ.get("OMIXA_JOB_MAX_ATTEMPTS", "3"))
+    JOB_RETRY_BASE_SECONDS = int(os.environ.get("OMIXA_JOB_RETRY_BASE_SECONDS", "5"))
+    JOB_LEASE_SECONDS = int(os.environ.get("OMIXA_JOB_LEASE_SECONDS", "90"))
+    QUEUED_STALE_SECONDS = int(os.environ.get("OMIXA_QUEUED_STALE_SECONDS", "120"))
+    # Finished/abandoned job data is deleted by the worker reaper after this long.
+    JOB_TTL_SECONDS = int(os.environ.get("OMIXA_JOB_TTL_SECONDS", str(60 * 30)))
+    SWEEP_MIN_INTERVAL_SECONDS = float(os.environ.get("OMIXA_SWEEP_MIN_INTERVAL_SECONDS", "15"))
+
+    # --- Distributed rate limits (requests per minute per principal) -----
+    # principal = signed-in uid, else client IP. 0 disables that bucket.
+    RATE_LIMIT_USER_PER_MINUTE = int(os.environ.get("RATE_LIMIT_USER_PER_MINUTE", "120"))
+    RATE_LIMIT_PRO_PER_MINUTE = int(os.environ.get("RATE_LIMIT_PRO_PER_MINUTE", "300"))
+    RATE_LIMIT_UPLOAD_PER_MINUTE = int(os.environ.get("RATE_LIMIT_UPLOAD_PER_MINUTE", "20"))
+    RATE_LIMIT_PROCESS_PER_MINUTE = int(os.environ.get("RATE_LIMIT_PROCESS_PER_MINUTE", "10"))
+    RATE_LIMIT_STATUS_PER_MINUTE = int(os.environ.get("RATE_LIMIT_STATUS_PER_MINUTE", "180"))
+    RATE_LIMIT_PAYMENT_PER_MINUTE = int(os.environ.get("RATE_LIMIT_PAYMENT_PER_MINUTE", "10"))
+    RATE_LIMIT_ADMIN_PER_MINUTE = int(os.environ.get("RATE_LIMIT_ADMIN_PER_MINUTE", "120"))
+
+    # --- Observability ---------------------------------------------------
+    LOG_FORMAT = os.environ.get("OMIXA_LOG_FORMAT", "json" if _IS_PRODUCTION else "text").strip().lower()
+    METRICS_TOKEN = os.environ.get("OMIXA_METRICS_TOKEN", "").strip()  # empty = /api/metrics disabled
+    ENTITLEMENT_CACHE_SECONDS = int(os.environ.get("OMIXA_ENTITLEMENT_CACHE_SECONDS", "60"))

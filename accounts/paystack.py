@@ -114,24 +114,41 @@ def apply_charge_success(store, data: dict, now: float | None = None) -> str:
     if not user:
         logger.warning("Paystack charge %s: no matching user", reference)
         return "ignored: unknown user"
-    if not store.claim_payment(reference):
-        return "duplicate"
     uid = user["uid"]
-    current_exp = user.get("subscription_expires") or 0
-    still_active = user.get("subscription_status") in ("active", "cancelled") and current_exp > now
-    base = max(now, current_exp) if still_active else now
     customer = data.get("customer") or {}
-    fields = {
-        "plan": plan,
-        "subscription_status": "active",
-        "subscription_expires": base + PLAN_DAYS[plan] * 86400,
-        "last_payment_at": now,
-        "paystack_customer_code": customer.get("customer_code") or user.get("paystack_customer_code"),
-    }
-    if not still_active or not user.get("subscription_start"):
-        fields["subscription_start"] = now
-    store.upsert_user(uid, fields)
-    store.put_payment(reference, {"uid": uid, "plan": plan, "amount": data.get("amount"), "currency": data.get("currency"), "paid_at": now})
+
+    def compute(current: dict) -> dict:
+        # Evaluated against the user record AS READ INSIDE the transaction, so concurrent charges
+        # for the same user cannot both extend from a stale expiry.
+        current_exp = current.get("subscription_expires") or 0
+        still_active = current.get("subscription_status") in ("active", "cancelled") and current_exp > now
+        base = max(now, current_exp) if still_active else now
+        fields = {
+            "plan": plan,
+            "subscription_status": "active",
+            "subscription_expires": base + PLAN_DAYS[plan] * 86400,
+            "last_payment_at": now,
+            "paystack_customer_code": customer.get("customer_code") or current.get("paystack_customer_code"),
+        }
+        if not still_active or not current.get("subscription_start"):
+            fields["subscription_start"] = now
+        return fields
+
+    meta = {"uid": uid, "plan": plan, "amount": data.get("amount"), "currency": data.get("currency"), "paid_at": now}
+    if hasattr(store, "grant_payment"):
+        granted = store.grant_payment(reference, uid, compute, meta)
+        if granted is None:
+            return "duplicate"
+    else:  # legacy stores without atomic grant (kept for test doubles)
+        if not store.claim_payment(reference):
+            return "duplicate"
+        store.upsert_user(uid, compute(user))
+        store.put_payment(reference, meta)
+    try:  # append-only audit trail; never blocks the grant
+        import db as metadata_db
+        metadata_db.audit("paystack", "payment.granted", reference, meta={"plan": plan, "uid": uid})
+    except Exception:
+        logger.exception("audit write failed for payment %s", reference)
     return "activated"
 
 
