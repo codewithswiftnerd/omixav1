@@ -609,13 +609,25 @@ async function saveDownloadedFile(blob, filename){
 
 downloadBtn.addEventListener('click', async () => {
   if(!lastJobId) return;
-  let r = await fetch(base() + '/api/download/' + lastJobId + '?format=url', { credentials:'include', headers: apiHeaders() });
-  let signedName = null;
+  let r;
+  try{
+    r = await fetch(base() + '/api/download/' + lastJobId + '?format=url', { credentials:'include', headers: apiHeaders() });
+  }catch(e){
+    setStage('download failed: could not reach the server', 'error');
+    return;
+  }
   if(r.ok && (r.headers.get('Content-Type') || '').includes('application/json')){
     // Object-storage mode: the file comes straight from a short-lived signed URL (no cookies sent).
+    // This must be a browser NAVIGATION, not fetch(): the page's CSP (connect-src 'self') blocks
+    // cross-origin fetches to the bucket, and a plain navigation to an attachment URL is not
+    // subject to it. The signed URL already carries the download filename.
     const j = await r.json();
-    signedName = j.filename;
-    r = await fetch(j.url);
+    const a = document.createElement('a');
+    a.href = j.url; a.download = j.filename || '';
+    a.rel = 'noopener'; a.target = '_self';
+    document.body.appendChild(a); a.click(); a.remove();
+    downloadBtn.classList.add('hidden'); // the original upload is discarded after download
+    return;
   }
   if(!r.ok){
     let msg = 'download failed (HTTP ' + r.status + ')';
@@ -629,7 +641,7 @@ downloadBtn.addEventListener('click', async () => {
   const blob = await r.blob();
   const cd = r.headers.get('Content-Disposition') || '';
   const match = cd.match(/filename="?([^"]+)"?/);
-  const filename = signedName || (match ? match[1] : 'cleaned_output');
+  const filename = match ? match[1] : 'cleaned_output';
   await saveDownloadedFile(blob, filename);
   downloadBtn.classList.add('hidden'); // job is deleted server-side after download
 });
