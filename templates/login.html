@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Sign in – Omixa{% endblock %}
 {% block content %}
-<div class="auth-card" style="margin:24px auto;">
+<div class="auth-card">
   <h1 id="loginTitle">Sign in</h1>
   <p class="hint">An account is only needed for Omixa Pro (batch processing, Quality Profiles, history, reports). Free cleaning never requires one.</p>
   <button type="button" class="btn btn-secondary btn-block" id="googleBtn">Continue with Google</button>
@@ -11,12 +11,11 @@
     <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required minlength="6"></div>
     <button type="submit" class="btn btn-primary btn-block" id="submitBtn">Sign in</button>
   </form>
-  <p class="hint" id="loginMsg" role="alert" style="margin-top:12px;"></p>
+  <p class="hint" id="loginMsg" role="alert"></p>
   <p class="auth-switch"><a href="#" id="switchLink">New to Omixa? Create an account</a> · <a href="#" id="resetLink">Forgot password?</a></p>
 </div>
 <script type="application/json" id="fb-config">{{ firebase_config | tojson }}</script>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/pro-common.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/login.js') }}"></script>
 {% endblock %}

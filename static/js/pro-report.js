@@ -9,7 +9,7 @@
   function delta(b, a, lowerBetter) {
     if (b == null || a == null || b === a) return '';
     const good = lowerBetter ? a < b : a > b;
-    return ` <small style="color:var(--${good ? 'success' : 'danger'})">(${a > b ? '+' : ''}${a - b})</small>`;
+    return ` <small class="delta ${good ? 'delta-good' : 'delta-bad'}">(${a > b ? '+' : ''}${a - b})</small>`;
   }
 
   Omixa.renderPro = function (el, pro, sessionId) {
@@ -32,9 +32,9 @@
     if (p) {
       html += `<div class="card"><div class="card-title-row"><h3>${esc(p.name)}</h3><span class="badge ${cls(p.compliance_after)}">Compliance ${esc(p.compliance_after)}%</span></div>
         ${p.compliance_before != null ? `<p class="hint">Before cleaning: ${esc(p.compliance_before)}%</p>` : ''}
-        <table><tbody>${p.results.map(r => `<tr><td style="width:2.2rem"><span class="badge ${stCls(r.status)}">${mark[r.status]}</span></td>
+        <table><tbody>${p.results.map(r => `<tr><td class="cell-narrow"><span class="badge ${stCls(r.status)}">${mark[r.status]}</span></td>
           <td><strong>${esc(r.label)}</strong><div class="hint">${esc(r.detail)}</div></td>
-          <td class="hint" style="text-align:right">${esc(r.status)}${r.before_status && r.before_status !== r.status ? '<br>was ' + esc(r.before_status) : ''}</td></tr>`).join('')}</tbody></table></div>`;
+          <td class="hint cell-right">${esc(r.status)}${r.before_status && r.before_status !== r.status ? '<br>was ' + esc(r.before_status) : ''}</td></tr>`).join('')}</tbody></table></div>`;
     }
 
     html += `<div class="card"><h3>What changed</h3><ul class="price-list">${w.lines.map(l => `<li>${l.status === 'ok' ? '✓' : '⚠'} ${esc(l.text)}</li>`).join('')}</ul></div>`;

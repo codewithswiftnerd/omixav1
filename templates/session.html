@@ -1,12 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Quality report – Omixa{% endblock %}
 {% block content %}
-<div class="dash-header cta-row"><div><h1 id="sTitle" style="margin:0;">Quality report</h1><p class="hint" id="sMeta"></p></div><a class="btn btn-ghost btn-sm" href="/dashboard">Back to dashboard</a></div>
+<div class="dash-header cta-row"><div><h1 id="sTitle" class="m-0">Quality report</h1><p class="hint" id="sMeta"></p></div><a class="btn btn-ghost btn-sm" href="/dashboard">Back to dashboard</a></div>
 <div id="sMsg" class="alert hidden" role="alert"></div>
 <div id="sBody" data-sid="{{ sid }}"></div>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/pro-common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pro-report.js') }}"></script>
 <script src="{{ url_for('static', filename='js/session-view.js') }}"></script>
 {% endblock %}

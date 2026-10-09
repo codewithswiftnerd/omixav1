@@ -8,10 +8,10 @@
 
   const TYPES = ['text', 'integer', 'number', 'date', 'email', 'boolean'];
   const list = v => String(v || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
-  function row(container, html) { const d = document.createElement('div'); d.style.cssText = 'display:flex;gap:8px;margin:6px 0;'; d.innerHTML = html + '<button type="button" class="btn btn-ghost btn-sm" aria-label="Remove">×</button>'; d.querySelector('button').addEventListener('click', () => d.remove()); container.appendChild(d); }
-  const addType = (c = '', t = 'text') => row($('typeRows'), `<input class="tc" placeholder="column" value="${esc(c)}" style="flex:2"><select class="tt" style="flex:1">${TYPES.map(x => `<option ${x === t ? 'selected' : ''}>${x}</option>`).join('')}</select>`);
-  const addMiss = (c = '', p = '') => row($('missRows'), `<input class="mc" placeholder="column" value="${esc(c)}" style="flex:2"><input class="mp" type="number" min="0" max="100" step="0.1" placeholder="%" value="${esc(p)}" style="flex:1">`);
-  const addAllow = (c = '', v = '') => row($('allowRows'), `<input class="ac" placeholder="column" value="${esc(c)}" style="flex:1"><input class="av" placeholder="values, separated, by commas" value="${esc(v)}" style="flex:2">`);
+  function row(container, html) { const d = document.createElement('div'); d.className = 'inline-row'; d.innerHTML = html + '<button type="button" class="btn btn-ghost btn-sm" aria-label="Remove">×</button>'; d.querySelector('button').addEventListener('click', () => d.remove()); container.appendChild(d); }
+  const addType = (c = '', t = 'text') => row($('typeRows'), `<input class="tc grow-2 grow-2" placeholder="column" value="${esc(c)}"><select class="tt grow-1">${TYPES.map(x => `<option ${x === t ? 'selected' : ''}>${x}</option>`).join('')}</select>`);
+  const addMiss = (c = '', p = '') => row($('missRows'), `<input class="mc grow-2" placeholder="column" value="${esc(c)}"><input class="mp grow-1" type="number" min="0" max="100" step="0.1" placeholder="%" value="${esc(p)}">`);
+  const addAllow = (c = '', v = '') => row($('allowRows'), `<input class="ac grow-1" placeholder="column" value="${esc(c)}"><input class="av grow-2" placeholder="values, separated, by commas" value="${esc(v)}">`);
   $('addType').onclick = () => addType(); $('addMiss').onclick = () => addMiss(); $('addAllow').onclick = () => addAllow();
 
   if (pid) {

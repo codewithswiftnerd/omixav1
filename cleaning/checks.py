@@ -20,7 +20,7 @@ from typing import Optional
 
 import pandas as pd
 
-from cleaning import detectors, profiling
+from cleaning import casing, detectors, profiling
 from cleaning import model as M
 
 HIGH_MISSING_THRESHOLD = 70
@@ -216,13 +216,13 @@ def check_inconsistent_categories(ctx: CheckContext) -> list[dict]:
         counts = values.value_counts()
         groups: dict[str, list[str]] = {}
         for v in counts.index:
-            groups.setdefault(" ".join(v.split()).lower(), []).append(v)
+            groups.setdefault(casing.variant_key(v), []).append(v)
         variants = [g for g in groups.values() if len(g) > 1]
         if not variants:
             continue
         affected = 0
         for g in variants:
-            canonical = sorted(g, key=lambda v: (-counts[v], v))[0]
+            canonical = sorted(g, key=lambda v: (-counts[v], casing.punctuation_count(v), v))[0]
             affected += int(sum(counts[v] for v in g if v != canonical))
         examples = ", ".join(sorted(variants[0])[:3])
         out.append({
@@ -440,6 +440,36 @@ def check_impossible_age(ctx: CheckContext) -> list[dict]:
                 "suggestion": "Not auto-fixed, these look like data-entry errors; review manually.",
                 "sample_values": sorted(set(bad.tolist()))[:5],
             })
+    return out
+
+
+def check_negative_amounts(ctx: CheckContext) -> list[dict]:
+    """A money column (amount_paid, price, fee...) holding negative numbers. When ONE negative value
+    repeats many times (-100 on 43 rows) it is almost certainly a placeholder for "unknown", not a
+    real refund; either way the value cannot be fixed from the data alone, so it is reported."""
+    out = []
+    for col in ctx.df.columns:
+        if not (set(profiling.name_tokens(str(col))) & detectors.MONEY_NAME_TOKENS):
+            continue
+        if not pd.api.types.is_numeric_dtype(ctx.df[col]):
+            continue
+        ctx.evaluated.add(M.ACCURACY)
+        v = ctx.df[col].dropna()
+        neg = v[v < 0]
+        if not len(neg):
+            continue
+        top_value, top_count = neg.value_counts().index[0], int(neg.value_counts().iloc[0])
+        placeholder = top_count >= 3 and top_count >= 0.6 * len(neg)
+        detail = (f"{top_count} rows hold the same negative value ({top_value:g}); that is typically a placeholder "
+                  f"for 'unknown', not a real amount." if placeholder
+                  else f"{len(neg)} negative value(s) in a column that should not be negative.")
+        out.append({
+            "column": col, "issue": "negative_amount", "affected": int(len(neg)), "population": int(len(v)),
+            "detail": detail,
+            "suggestion": "Not auto-fixed: confirm whether these are refunds or placeholders, then blank or correct "
+                          "them. Averages and totals of this column are wrong until you do.",
+            "sample_values": sorted(set(neg.tolist()))[:5],
+        })
     return out
 
 

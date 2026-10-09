@@ -3,18 +3,18 @@
 {% block content %}
 <div class="dash-header cta-row">
   <div>
-    <h2 style="margin:0;">Admin command center</h2>
-    <p style="margin:4px 0 0;">Operational metadata only &mdash; never dataset contents.</p>
+    <h2 class="m-0">Admin command center</h2>
+    <p class="m-0 hint">Operational metadata only &mdash; never dataset contents.</p>
   </div>
-  <div style="display:flex; gap:8px; align-items:center;">
-    <select id="windowSelect" class="btn btn-secondary btn-sm" style="width:auto;">
+  <div class="inline-row">
+    <select id="windowSelect" class="btn btn-secondary btn-sm">
       <option value="24h">Last 24h</option>
       <option value="7d">Last 7 days</option>
       <option value="30d">Last 30 days</option>
       <option value="all" selected>All time</option>
     </select>
     <button id="purgeBtn" class="btn btn-secondary btn-sm">Purge expired jobs now</button>
-    <form method="post" action="{{ url_for('admin.logout') }}" style="display:inline;">
+    <form method="post" action="{{ url_for('admin.logout') }}" class="inline-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button type="submit" class="btn btn-ghost btn-sm">Log out</button>
     </form>
@@ -59,7 +59,7 @@
 <div class="card">
   <div class="card-title-row">
     <h3>Job analytics</h3>
-    <div style="display:flex; gap:8px;">
+    <div class="inline-row wrap-sm">
       <input type="search" id="jobSearch" placeholder="Search job id or filename">
       <select id="statusFilter">
         <option value="">Any status</option>
@@ -77,7 +77,7 @@
       </select>
     </div>
   </div>
-  <div style="overflow-x:auto;">
+  <div class="table-wrap">
   <table>
     <thead>
       <tr><th>Job</th><th>File</th><th>Format</th><th>Status</th><th>Rows</th><th>Quality</th><th>Created</th></tr>

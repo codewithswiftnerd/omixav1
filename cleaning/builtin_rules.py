@@ -204,6 +204,15 @@ R(RuleSpec(
     detector=C.check_impossible_age,
 ))
 R(RuleSpec(
+    id="OMX-ACC-004", issue="negative_amount", title="Negative or placeholder amounts", dimension=M.ACCURACY,
+    criticality=0.8, confidence=0.9, min_level=M.MEDIUM,
+    remediation=M.DO_NOT_MODIFY, operation=M.NONE, resolver=None, reversibility=M.NOT_APPLICABLE,
+    explanation="A paid/price/fee column contains negative numbers. When one value such as -100 repeats on many "
+                "rows it is a placeholder for 'unknown', and it silently drags totals and averages down.",
+    recommendation="Confirm whether these are refunds or placeholders, then blank or correct them at the source.",
+    detector=C.check_negative_amounts,
+))
+R(RuleSpec(
     id="OMX-ACC-002", issue="impossible_date", title="Impossible date", dimension=M.ACCURACY,
     criticality=0.85, confidence=0.9, min_level=M.MEDIUM,
     remediation=M.REQUIRES_REVIEW, operation=M.DELETION, resolver="impossible_date",
@@ -274,6 +283,12 @@ _fmt("OMX-CON-016", "boolean_variants", "Yes/no flags in mixed form", "boolean_s
      "Y / yes / TRUE / 1 mean the same thing but are different values.",
      "Convert to true/false, only when every value in the column is a recognised yes/no word.",
      crit=0.3, fixconf=0.9)
+_fmt("OMX-CON-018", "inconsistent_casing", "Inconsistent capitalisation", "case_standardization",
+     "Names in ALL CAPS next to Title Case, IDs like cust-0011 next to CUST-0012, or labels such as "
+     "active / INACTIVE / On hold make the same kind of value look different and break grouping and sorting.",
+     "Bring the column to one style: Title Case for names, the majority prefix for IDs, one label style for "
+     "categories. Mixed-case values and short acronyms (HR, IT) are left alone.",
+     crit=0.35, fixconf=0.93, max_level=M.MEDIUM)
 _fmt("OMX-CON-017", "column_name_formatting", "Untidy column names", "column_names",
      "Spaces, capitals and punctuation in headers cause trouble in code and databases.",
      "Rename to lowercase_snake_case. Only labels change, never data.", crit=0.1, fixconf=0.95)
@@ -300,6 +315,9 @@ _fixer("country_standardization", "OMX-FIX-006", M.NORMALIZATION, 0.92, "Recogni
 _fixer("boolean_standardization", "OMX-FIX-007", M.NORMALIZATION, 0.9, "Yes/no words converted to true/false.")
 _fixer("categorical_standardization", "OMX-FIX-008", M.NORMALIZATION, 0.9,
        "Case/spacing variants merged into the most common spelling.")
+_fixer("case_standardization", "OMX-FIX-014", M.NORMALIZATION, 0.93,
+       "Names, ID prefixes and label columns that mixed lower/UPPER/Title case brought to one style. "
+       "Mixed-case values and short acronyms are left as typed.")
 _fixer("email_cleaning", "OMX-FIX-009", M.NORMALIZATION, 0.9, "Emails trimmed and lowercased.")
 _fixer("phone_cleaning", "OMX-FIX-010", M.NORMALIZATION, 0.95,
        "Phone punctuation removed; digits preserved. Scientific-notation numbers restored only when lossless.")

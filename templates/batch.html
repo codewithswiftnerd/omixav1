@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Batch processing – Omixa{% endblock %}
 {% block content %}
-<div class="dash-header"><h1 style="margin:0;">Batch processing</h1>
-  <p class="hint" style="margin:4px 0 0;">Clean several CSV, XLSX or XLS files in one go. Every file is cleaned and reported on its own.</p></div>
+<div class="dash-header"><h1>Batch processing</h1>
+  <p class="hint">Clean several CSV, XLSX or XLS files in one go. Every file is cleaned and reported on its own.</p></div>
 
 {% if state == 'pro' %}
 <section class="card" id="batchApp" data-max-files="{{ limits.max_files }}" data-max-file-mb="{{ limits.max_file_mb }}" data-max-total-mb="{{ limits.max_total_mb }}">
@@ -49,7 +49,5 @@
 {% endif %}
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/pro-common.js') }}"></script>
-<script src="{{ url_for('static', filename='js/nav-auth.js') }}"></script>
 {% if state == 'pro' %}<script src="{{ url_for('static', filename='js/batch.js') }}"></script>{% endif %}
 {% endblock %}

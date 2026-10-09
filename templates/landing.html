@@ -77,7 +77,7 @@
             <button id="runBtn" class="btn-main" disabled>Clean my data</button>
           </div>
 
-          <div class="card hidden" id="proPanel" style="margin:12px 0;">
+          <div class="card hidden" id="proPanel" >
             <label for="profileSelect"><strong>Quality Profile</strong> <span class="badge badge-plan-pro">Pro</span></label>
             <select id="profileSelect"><option value="">None: general analysis</option></select>
             <p class="hint">Check this file against a saved standard. <a href="/dashboard">Manage profiles</a></p>
@@ -122,6 +122,7 @@
                       <label class="rule"><input type="checkbox" value="gender_standardization" checked><span><strong>Standardize gender</strong><em>M / MALE → male</em></span></label>
                       <label class="rule"><input type="checkbox" value="country_standardization" checked><span><strong>Standardize countries</strong><em>NG / nigeria → Nigeria</em></span></label>
                       <label class="rule"><input type="checkbox" value="boolean_standardization" checked><span><strong>Standardize yes/no</strong><em>Y / 1 / True → true</em></span></label>
+                      <label class="rule"><input type="checkbox" value="case_standardization" checked><span><strong>Fix capitalisation</strong><em>DAVID OBI → David Obi · cust-01 → CUST-01</em></span></label>
                       <label class="rule"><input type="checkbox" value="categorical_standardization" checked><span><strong>Merge categories</strong><em>"Male" / "MALE" / "male"</em></span></label>
                       <label class="rule"><input type="checkbox" value="email_cleaning" checked><span><strong>Clean emails</strong><em>Trim and lowercase</em></span></label>
                       <label class="rule"><input type="checkbox" value="phone_cleaning" checked><span><strong>Clean phone numbers</strong><em>Remove spaces, brackets, hyphens</em></span></label>
@@ -240,7 +241,6 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/config.js') }}"></script>
 <script src="{{ url_for('static', filename='js/samples.js') }}"></script>
-<script src="{{ url_for('static', filename='js/pro-common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pro-report.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pro-panel.js') }}"></script>
 <script src="{{ url_for('static', filename='js/clean.js') }}"></script>

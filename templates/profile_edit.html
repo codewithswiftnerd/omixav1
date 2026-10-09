@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Quality Profile – Omixa{% endblock %}
 {% block content %}
-<div class="dash-header"><h1 id="pTitle" style="margin:0;">Quality Profile</h1><p class="hint">Describe the standard a dataset must meet. Leave anything you do not need blank.</p></div>
+<div class="dash-header"><h1 id="pTitle">Quality Profile</h1><p class="hint">Describe the standard a dataset must meet. Leave anything you do not need blank.</p></div>
 <div id="pMsg" class="alert hidden" role="alert"></div>
 <form class="card" id="pForm" data-pid="{{ pid }}" novalidate>
   <div class="field"><label for="f_name">Profile name</label><input id="f_name" maxlength="80" placeholder="Research Dataset Standard"></div>
@@ -12,17 +12,16 @@
   <div class="field"><label for="f_max_missing_pct">Missing-value threshold (% per column)</label><input id="f_max_missing_pct" type="number" min="0" max="100" step="0.1" value="5">
     <div id="missRows"></div><button type="button" class="btn btn-ghost btn-sm" id="addMiss">Override for a column</button></div>
   <div class="field"><label for="f_max_duplicate_pct">Duplicates allowed (% of rows)</label><input id="f_max_duplicate_pct" type="number" min="0" max="100" step="0.1" value="0">
-    <label for="f_duplicate_key_columns" style="margin-top:8px;">Duplicate key columns (optional)</label><input id="f_duplicate_key_columns" placeholder="participant_id"><p class="hint">If set, rows sharing these values count as duplicates.</p></div>
+    <label for="f_duplicate_key_columns" class="mt-sm">Duplicate key columns (optional)</label><input id="f_duplicate_key_columns" placeholder="participant_id"><p class="hint">If set, rows sharing these values count as duplicates.</p></div>
   <div class="field"><label for="f_date_columns">Date columns</label><input id="f_date_columns" placeholder="enrolment_date, visit_date">
-    <div style="display:flex; gap:10px; margin-top:8px;"><div style="flex:1"><label for="f_date_min">Earliest allowed</label><input id="f_date_min" type="date"></div><div style="flex:1"><label for="f_date_max">Latest allowed</label><input id="f_date_max" type="date"></div></div></div>
+    <div class="inline-row wrap-sm"><div class="grow-1"><label for="f_date_min">Earliest allowed</label><input id="f_date_min" type="date"></div><div class="grow-1"><label for="f_date_max">Latest allowed</label><input id="f_date_max" type="date"></div></div></div>
   <div class="field"><label for="f_email_columns">Email columns</label><input id="f_email_columns" placeholder="contact_email"></div>
   <div class="field"><label>Allowed category values</label><div id="allowRows"></div><button type="button" class="btn btn-ghost btn-sm" id="addAllow">Add column</button></div>
   <label class="rule"><input type="checkbox" id="f_no_edge_whitespace" checked><span><strong>No stray spaces</strong><em>Flag cells with leading or trailing spaces.</em></span></label>
-  <div class="field" style="margin-top:12px;"><label for="f_min_quality_score">Minimum quality score</label><input id="f_min_quality_score" type="number" min="0" max="100" value="80"></div>
+  <div class="field mt-md"><label for="f_min_quality_score">Minimum quality score</label><input id="f_min_quality_score" type="number" min="0" max="100" value="80"></div>
   <div class="main-actions"><button class="btn btn-primary" type="submit" id="saveBtn">Save profile</button><a class="btn btn-ghost" href="/dashboard">Cancel</a></div>
 </form>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/pro-common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/profile-edit.js') }}"></script>
 {% endblock %}

@@ -52,18 +52,18 @@
 
     const formats = s.by_format || {};
     $('formatBreakdown').innerHTML = Object.keys(formats).length
-      ? Object.entries(formats).map(([k, v]) => `<span class="badge badge-info" style="margin:0 6px 6px 0;">${esc(k.toUpperCase())}: ${v}</span>`).join('')
-      : '<p style="color:var(--text-secondary);">No uploads yet.</p>';
+      ? Object.entries(formats).map(([k, v]) => `<span class="badge badge-info" >${esc(k.toUpperCase())}: ${v}</span>`).join('')
+      : '<p class="hint">No uploads yet.</p>';
 
     const rules = s.top_rules || [];
     $('ruleBreakdown').innerHTML = rules.length
       ? '<ol>' + rules.map(([name, n]) => `<li>${esc(name)} &mdash; ${n} job(s)</li>`).join('') + '</ol>'
-      : '<p style="color:var(--text-secondary);">No processed jobs yet.</p>';
+      : '<p class="hint">No processed jobs yet.</p>';
 
     const issues = s.top_issues || [];
     $('issueBreakdown').innerHTML = issues.length
       ? '<ol>' + issues.map(([name, n]) => `<li>${esc(name)} &mdash; ${n} job(s)</li>`).join('') + '</ol>'
-      : '<p style="color:var(--text-secondary);">No issues detected yet.</p>';
+      : '<p class="hint">No issues detected yet.</p>';
   }
 
   function statusBadge(status) {
@@ -92,7 +92,7 @@
     tbody.innerHTML = jobs.map((j) => {
       const quality = (j.quality_score_before ?? '\u2013') + ' \u2192 ' + (j.quality_score_after ?? '\u2013');
       return `<tr>
-        <td><code style="font-size:0.78rem;">${esc((j.job_id || '').slice(0, 8))}&hellip;</code></td>
+        <td><code class="mono-sm">${esc((j.job_id || '').slice(0, 8))}&hellip;</code></td>
         <td>${esc(j.original_filename || '\u2013')}</td>
         <td>${esc((j.original_ext || '').toUpperCase())}</td>
         <td>${statusBadge(j.status)}</td>
@@ -110,9 +110,9 @@
     const errors = data.errors || [];
     $('errorsList').innerHTML = errors.length
       ? '<table><thead><tr><th>When</th><th>Route</th><th>Type</th><th>Job</th></tr></thead><tbody>' +
-        errors.map((e) => `<tr><td>${fmtDate(e.ts)}</td><td>${esc(e.route)}</td><td>${esc(e.error_type)}</td><td><code style="font-size:0.78rem;">${esc((e.job_id || '').slice(0, 8))}</code></td></tr>`).join('') +
+        errors.map((e) => `<tr><td>${fmtDate(e.ts)}</td><td>${esc(e.route)}</td><td>${esc(e.error_type)}</td><td><code class="mono-sm">${esc((e.job_id || '').slice(0, 8))}</code></td></tr>`).join('') +
         '</tbody></table>'
-      : '<p style="color:var(--text-secondary);">No errors logged.</p>';
+      : '<p class="hint">No errors logged.</p>';
   }
 
   async function loadLogins() {
@@ -124,7 +124,7 @@
       ? '<table><thead><tr><th>When</th><th>Result</th></tr></thead><tbody>' +
         attempts.map((a) => `<tr><td>${fmtDate(a.ts)}</td><td>${a.success ? '<span class="badge badge-success">success</span>' : '<span class="badge badge-danger">failed</span>'}</td></tr>`).join('') +
         '</tbody></table>'
-      : '<p style="color:var(--text-secondary);">No login attempts logged.</p>';
+      : '<p class="hint">No login attempts logged.</p>';
   }
 
   async function refreshAll() {

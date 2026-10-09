@@ -56,7 +56,7 @@
 
   $('profiles').innerHTML = profiles.length ? `<table><thead><tr><th>Name</th><th>Updated</th><th></th></tr></thead><tbody>${profiles.map(p =>
     `<tr><td><a href="/profiles/${esc(p.id)}">${esc(p.name)}</a><div class="hint">${esc(p.description || '')}</div></td><td>${fmtDay(p.updated_at)}</td>
-     <td style="text-align:right;white-space:nowrap;"><a class="btn btn-ghost btn-sm" href="/profiles/${esc(p.id)}">Edit</a>
+     <td class="cell-actions"><a class="btn btn-ghost btn-sm" href="/profiles/${esc(p.id)}">Edit</a>
      <button class="btn btn-ghost btn-sm" data-dup="${esc(p.id)}" type="button">Duplicate</button>
      <button class="btn btn-ghost btn-sm" data-del="${esc(p.id)}" type="button">Delete</button></td></tr>`).join('')}</tbody></table>`
     : '<p class="empty-state">No profiles yet. Create one to check datasets against your own standard.</p>';

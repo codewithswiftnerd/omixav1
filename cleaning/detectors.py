@@ -49,6 +49,8 @@ _COUNTRY_NAME_TO_CANONICAL: dict[str, str] = {c["name"].lower(): c["name"] for c
 MISSING_TOKENS = {
     "", "na", "n/a", "n.a.", "n\\a", "null", "none", "nan",
     "-", "--", "?", "#n/a", "nil", "unknown",
+    # punctuation-only placeholders: "???", "—" (em dash), "–" (en dash), "---"
+    "??", "???", "????", "---", "\u2014", "\u2013",
 }
 
 # Restricted to unambiguous words on purpose. "1"/"0" are excluded
@@ -172,7 +174,8 @@ def is_country_column(name: str) -> bool:
 # (a real digit in a phone/account number, not padding) or having
 # Excel silently render it in scientific notation on export.
 ID_NAME_KEYWORDS = (
-    "account", "acct", "iban", "swift", "bvn", "nuban", "sort_code",
+    "account_no", "account_num", "account_number", "account_id", "account_code",
+    "acct_no", "acct_num", "acct_number", "acct_id", "iban", "swift", "bvn", "nuban", "sort_code",
     "zip", "zipcode", "postal", "postcode", "ssn", "passport",
     "national_id", "reg_no", "registration_no", "card_number",
     "pin_code", "routing_number", "vin", "imei",
@@ -187,8 +190,10 @@ def is_identifier_name(name: str) -> bool:
     is_identifier_column which also needs the values."""
     if is_phone_column(name):
         return True
-    lname = name.lower()
-    if any(k in lname for k in ID_NAME_KEYWORDS):
+    lname = re.sub(r"[\s\-]+", "_", name.strip().lower())
+    # "account_status" / "account_type" are labels, not identifiers: only a bare "account" or an
+    # account/acct column that says it is a number/id/code counts.
+    if lname in ("account", "acct") or any(k in lname for k in ID_NAME_KEYWORDS):
         return True
     return lname.strip() == "id" or lname.endswith("_id") or lname.endswith(" id")
 
@@ -365,8 +370,55 @@ _THOUSANDS_RE = re.compile(r"^[^\d]*-?\d{1,3}(,\d{3})+(\.\d+)?[^\d]*$")
 _DECIMAL_COMMA_RE = re.compile(r"^(-?\d+),(\d{1,2})$")
 
 
+# --- text that is really a number -------------------------------------------------------------
+# "44 yrs" -> 44, "twenty" -> 20, "1O,OOO" (letter O typed for zero) -> 1,000 style digits.
+_UNIT_SUFFIX_RE = re.compile(r"^(-?\d+(?:\.\d+)?)\s*(?:yrs?|years?|y/o|yo)\.?$", re.I)
+_OCR_ZERO_RE = re.compile(r"^[\dOo][\dOo,.\s]*$")
+_UNITS = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+          "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
+          "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19}
+_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80,
+         "ninety": 90}
+ZERO_WORDS = {"free", "gratis", "complimentary", "no charge"}
+MONEY_NAME_TOKENS = {"amount", "paid", "price", "cost", "fee", "fees", "total", "revenue", "payment",
+                     "salary", "balance", "charge", "spend"}
+
+
+def parse_number_words(text: str) -> Optional[int]:
+    """\"twenty\" -> 20, \"twenty-five\" -> 25, \"ten thousand\" -> 10000. None if it is not purely
+    number words (so ordinary words are never read as numbers)."""
+    words = re.split(r"[\s\-]+", text.strip().lower().replace(" and ", " "))
+    if not words or words == [""]:
+        return None
+    total = current = 0
+    seen = False
+    for w in words:
+        if w in _UNITS:
+            current += _UNITS[w]
+        elif w in _TENS:
+            current += _TENS[w]
+        elif w == "hundred" and current:
+            current *= 100
+        elif w == "thousand" and (current or total):
+            total += (current or 1) * 1000
+            current = 0
+        else:
+            return None
+        seen = True
+    return total + current if seen else None
+
+
 def strip_numeric_noise(value: str) -> str:
+    m = _UNIT_SUFFIX_RE.match(value.strip())
+    if m:
+        return m.group(1)
+    spoken = re.sub(r"\s+(naira|dollars?|usd|ngn|pounds?|gbp|euros?)$", "", value.strip(), flags=re.I)
+    words = parse_number_words(spoken) if re.fullmatch(r"[A-Za-z][A-Za-z\s\-]*", spoken) else None
+    if words is not None:
+        return str(words)
     v = _currencies.strip_currency(value)
+    if _OCR_ZERO_RE.match(v.strip()) and re.search(r"\d", v) and re.search(r"[Oo]", v):
+        v = re.sub(r"[Oo]", "0", v)
     if "," in v:
         core = _NUMERIC_NOISE_RE.sub("", v.replace(",", "")) if _THOUSANDS_RE.match(v) else None
         if core is None:

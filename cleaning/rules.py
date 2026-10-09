@@ -25,7 +25,7 @@ from typing import Optional, List, Tuple
 import re
 import pandas as pd
 
-from cleaning import currencies, detectors, profiling
+from cleaning import casing, currencies, detectors, profiling
 from cleaning import model as M
 from cleaning.audit import AuditLog
 from cleaning.rule_registry import spec_for_fixer
@@ -59,6 +59,9 @@ DEFAULT_RULES = [
     "gender_standardization",
     "country_standardization",
     "boolean_standardization",
+    # case_standardization must run BEFORE categorical_standardization: that rule keeps the most common
+    # spelling, which would otherwise preserve a lowercase/UPPERCASE majority ("sales", "LAGOS").
+    "case_standardization",
     "categorical_standardization",
     "email_cleaning",
     "phone_cleaning",
@@ -326,6 +329,10 @@ def handle_numeric_text_cleaning(df: pd.DataFrame, details: dict) -> tuple[pd.Da
             continue
 
         cleaned_strs = non_null.map(detectors.strip_numeric_noise)
+        # "free" in an amount/price column means 0 (only there; elsewhere it is just a word)
+        if set(profiling.name_tokens(str(col))) & detectors.MONEY_NAME_TOKENS:
+            is_free = non_null.str.strip().str.lower().isin(detectors.ZERO_WORDS)
+            cleaned_strs = cleaned_strs.where(~is_free, "0")
         parsed = cleaned_strs.map(detectors.try_parse_float)
         if parsed.isna().any():
             continue  # not every value converts cleanly -> leave column alone
@@ -453,10 +460,36 @@ def handle_boolean_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.
     return df, changed
 
 
+def handle_case_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.DataFrame, int]:
+    """
+    Capitalisation consistency (see cleaning/casing.py for the principles).
+
+      - Person names typed entirely in lower or UPPER case become Title Case
+        ("DAVID ADEYEMI" -> "David Adeyemi"). Mixed-case names (McDonald, O'Brien) are never touched.
+      - ID prefixes follow the column's majority ("cust-0011" -> "CUST-0011").
+      - A label column that mixes styles ("active", "INACTIVE", "On hold") is brought to one style.
+        Short all-caps tokens (HR, IT, NGN) are kept as acronyms.
+    """
+    changed = 0
+    per_column = {}
+    for col, (kind, plan) in casing.plan_dataframe(df).items():
+        series = df[col]
+        mask = series.map(lambda v: isinstance(v, str) and v in plan)
+        count = int(mask.sum())
+        if not count:
+            continue
+        df.loc[mask, col] = series[mask].map(plan)
+        changed += count
+        per_column[col] = {"changed": count, "kind": kind, "values_fixed": len(plan)}
+    details["case_standardization"] = {"per_column": per_column}
+    return df, changed
+
+
 def handle_categorical_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.DataFrame, int]:
     """
     Merges values that are the SAME category spelled differently only
-    by case or whitespace, "Male" / "MALE" / "male" all become one
+    by case, spacing, hyphens or dots, "Male" / "MALE" / "male" and "Walk in" / "Walk-in" /
+    "Web site" / "Website" all become one
     value. The canonical spelling chosen is whichever variant already
     appears most often in the data (ties broken alphabetically), so
     nothing is invented, it's just consolidation. Only considered for
@@ -481,8 +514,7 @@ def handle_categorical_standardization(df: pd.DataFrame, details: dict) -> tuple
 
         groups: dict[str, list[str]] = {}
         for v in non_null.unique():
-            key = " ".join(v.split()).lower()
-            groups.setdefault(key, []).append(v)
+            groups.setdefault(casing.variant_key(v), []).append(v)
 
         variant_groups = {k: v for k, v in groups.items() if len(v) > 1}
         if not variant_groups:
@@ -491,7 +523,7 @@ def handle_categorical_standardization(df: pd.DataFrame, details: dict) -> tuple
         value_counts = non_null.value_counts()
         remap = {}
         for variants in variant_groups.values():
-            canonical = sorted(variants, key=lambda v: (-value_counts[v], v))[0]
+            canonical = sorted(variants, key=lambda v: (-value_counts[v], casing.punctuation_count(v), v))[0]
             for v in variants:
                 if v != canonical:
                     remap[v] = canonical
@@ -778,6 +810,7 @@ RULE_DISPATCH = {
     "gender_standardization": handle_gender_standardization,
     "country_standardization": handle_country_standardization,
     "boolean_standardization": handle_boolean_standardization,
+    "case_standardization": handle_case_standardization,
     "categorical_standardization": handle_categorical_standardization,
     "email_cleaning": handle_email_cleaning,
     "phone_cleaning": handle_phone_cleaning,

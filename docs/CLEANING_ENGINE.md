@@ -51,3 +51,22 @@ rules that would re-write the result (`SUPERSEDES` in executor.py).
 
 Adding a country: add its row to `cleaning/phone_formats.COUNTRIES` (and optionally `COUNTRY_PATTERNS`).
 Adding a rule: write the class, add to `registry._CLASSES`, classify it in `access.py` (import-time assertion enforces it), add tests.
+
+
+## Capitalisation, variants and text-numbers (default pipeline)
+
+`case_standardization` (OMX-FIX-014) runs before `categorical_standardization` so the most common casing no
+longer wins by default. It only rewrites values typed in ONE case (all lower or ALL CAPS):
+
+- person names -> Title Case (mixed-case names such as McDonald / O'Brien are never touched)
+- ID prefixes -> the column's majority (`cust-0011` -> `CUST-0011`)
+- label columns that mix styles (`active` / `INACTIVE` / `On hold`) -> one style; short all-caps tokens
+  (HR, IT, NGN) are kept as acronyms; notes / comment columns and anything with emoji are skipped
+
+`categorical_standardization` now also merges spellings that differ only by hyphen, space or dot
+(`Port-Harcourt` / `Port Harcourt`, `Web site` / `Website`, `I.T.` / `IT`).
+
+`numeric_text_cleaning` additionally understands `44 yrs`, number words (`twenty`, `ten thousand naira`), a letter O
+typed for zero (`1O,OOO`-style) and `free` = 0 in amount/price columns. A real word in a numeric column still blocks
+conversion. The report adds `inconsistent_casing` and `negative_amount` (a repeated `-100` is flagged as a likely
+placeholder, never silently changed). `account_status` / `account_type` are no longer treated as identifiers.

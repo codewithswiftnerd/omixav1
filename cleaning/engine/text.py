@@ -52,22 +52,8 @@ class NormalizeWhitespaceRule(BaseCleaningRule):
 _SMALL_WORDS: set = set()  # deliberately empty: "Title Case" means every word, predictably
 
 
-def title_case(value: str) -> str:
-    """Predictable title case: capital after whitespace and hyphens; after an apostrophe only
-    for a one-letter prefix (O'Brien, D'Angelo) so "john's" stays "John's"."""
-    def word(w: str) -> str:
-        parts = w.split("-")
-        res = []
-        for part in parts:
-            if "'" in part or "\u2019" in part:
-                sep = "'" if "'" in part else "\u2019"
-                head, _, tail = part.partition(sep)
-                tail_fmt = tail.capitalize() if len(head) == 1 and tail else tail.lower()
-                res.append(head.capitalize() + sep + tail_fmt)
-            else:
-                res.append(part.capitalize())
-        return "-".join(res)
-    return " ".join(word(w) for w in value.split(" "))
+# shared with the default pipeline's case_standardization (cleaning/casing.py)
+from cleaning.casing import title_case  # noqa: E402,F401
 
 
 class NormalizeCaseRule(BaseCleaningRule):

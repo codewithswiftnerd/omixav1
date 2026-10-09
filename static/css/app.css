@@ -1,58 +1,80 @@
 /* ============================================================
    Omixa design system
-   Brand: deep indigo (#201159) + lavender (#AF69DE) on a soft
-   off-white (#E1E9E5) canvas, Urbanist typography. Stripe is the
-   reference for structure/spacing/polish only, none of its
-   colors, type, or components are reused here.
+
+   BRAND COLOURS ARE SAMPLED FROM THE LOGO (static/brand/omixa-logo-square.jpg):
+     violet  #A554F7  the middle tile            indigo      #381593  the background glow
+     glow    #6834D6  the bright top-right        indigo-deep #201551  the lower background
+     ink     #0E0524  the outline of the "O"      canvas      #E6EBE5  the off-white tile and "O"
+   Nothing else is a brand colour. Pink, lime, beige and neutral black are NOT part of Omixa.
+   Status colours (success / warning / danger) are functional, not brand.
+
+   RULE: a colour literal may only be written inside a :root block (here or in site.css).
+   Everywhere else use var(--token). tests/test_brand_consistency.py enforces this.
+   TYPE: Urbanist for all frontend text (see "Typography" in site.css).
    ============================================================ */
 
 :root {
-  /* Brand */
-  --omixa-indigo: #201159;
-  --omixa-indigo-deep: #170c3f;
-  --omixa-lavender: #af69de;
-  --omixa-lavender-light: #e8d6f7;
-  --omixa-canvas: #e1e9e5;
+  /* Brand (from the logo) */
+  --omixa-violet: #a554f7;
+  --omixa-violet-dark: #8541c8;
+  --omixa-violet-light: #ebddfd;
+  --omixa-glow: #6834d6;
+  --omixa-indigo: #381593;
+  --omixa-indigo-deep: #201551;
+  --omixa-ink: #0e0524;
+  --omixa-canvas: #e6ebe5;
+  --omixa-canvas-soft: #f3f6f2;
+  --omixa-tint: #f4eefd;
+  --omixa-gradient: linear-gradient(90deg, var(--omixa-violet), var(--omixa-glow));
+  --omixa-gradient-deep: linear-gradient(180deg, var(--omixa-ink) 0%, var(--omixa-indigo-deep) 55%, var(--omixa-indigo) 100%);
 
-  /* Neutrals */
-  --gray-50: #f7f7f8;
-  --gray-100: #eeeef0;
-  --gray-200: #e1e1e4;
-  --gray-300: #a1a1aa;
-  --gray-600: #52525b;
-  --gray-800: #27272a;
-  --gray-900: #18181b;
+  /* Legacy aliases so existing class names keep working */
+  --omixa-lavender: var(--omixa-violet);
+  --omixa-lavender-light: var(--omixa-violet-light);
+
+  /* Neutrals tinted from the ink */
+  --gray-50: #f7f5fb;
+  --gray-100: #eeebf4;
+  --gray-200: #e0dbea;
+  --gray-300: #6f6785;
+  --gray-600: #4d4563;
+  --gray-800: #251a45;
+  --gray-900: #150a33;
   --white: #ffffff;
+  --white-soft: rgba(255, 255, 255, 0.72);
 
-  /* Semantic */
+  /* Semantic (functional, not brand) */
   --success: #1c8a5a;
   --success-bg: #e6f5ee;
+  --success-ink: #145c3c;
   --warning: #b4790a;
   --warning-bg: #fdf3e0;
   --danger: #c2372c;
   --danger-bg: #fbe9e7;
-  --info: #2a63c9;
-  --info-bg: #e8effb;
+  --danger-bg-strong: #f6d9d5;
+  --danger-ink: #8f291f;
+  --info: var(--omixa-glow);
+  --info-bg: var(--omixa-tint);
+  --info-ink: var(--omixa-indigo);
 
   /* Surfaces */
-  --bg-page: var(--omixa-canvas);
+  --bg-page: var(--omixa-canvas-soft);
   --bg-surface: var(--white);
-  --border: #dcdfe0;
+  --border: #dcd8e6;
   --text-primary: var(--gray-900);
   --text-secondary: var(--gray-600);
   --text-muted: var(--gray-300);
 
-  /* Type */
-  --font-sans: "Urbanist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans: "Urbanist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 
-  /* Shape / motion */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-full: 999px;
-  --shadow-sm: 0 1px 2px rgba(24, 24, 27, 0.06);
-  --shadow-md: 0 4px 16px rgba(32, 17, 89, 0.08);
-  --shadow-lg: 0 12px 32px rgba(32, 17, 89, 0.14);
+  --shadow-sm: 0 1px 2px rgba(14, 5, 36, 0.06);
+  --shadow-md: 0 4px 16px rgba(56, 21, 147, 0.10);
+  --shadow-lg: 0 12px 32px rgba(56, 21, 147, 0.16);
+  --focus-ring: 0 0 0 3px rgba(165, 84, 247, 0.28);
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -98,7 +120,7 @@ strong { color: var(--text-primary); }
 .btn-ghost { background: transparent; color: var(--text-secondary); }
 .btn-ghost:hover { background: var(--gray-100); color: var(--text-primary); }
 .btn-danger { background: var(--danger-bg); color: var(--danger); }
-.btn-danger:hover { background: #f6d9d5; }
+.btn-danger:hover { background: var(--danger-bg-strong); }
 .btn-lg { padding: 13px 24px; font-size: 1rem; }
 .btn-sm { padding: 6px 12px; font-size: 0.82rem; }
 .btn-block { width: 100%; }
@@ -115,7 +137,7 @@ input[type="text"], input[type="email"], input[type="password"], input[type="sea
 }
 input:focus, textarea:focus, select:focus {
   outline: none; border-color: var(--omixa-lavender);
-  box-shadow: 0 0 0 3px rgba(175, 105, 222, 0.18);
+  box-shadow: var(--focus-ring);
 }
 
 /* ---------- Cards ---------- */
@@ -137,9 +159,9 @@ input:focus, textarea:focus, select:focus {
 .badge-plan-pro { background: var(--omixa-indigo); color: var(--omixa-lavender-light); }
 
 .alert { display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px; border-radius: var(--radius-md); font-size: 0.88rem; margin-bottom: 16px; }
-.alert-error { background: var(--danger-bg); color: #8f291f; }
-.alert-success { background: var(--success-bg); color: #145c3c; }
-.alert-info { background: var(--info-bg); color: #1d4585; }
+.alert-error { background: var(--danger-bg); color: var(--danger-ink); }
+.alert-success { background: var(--success-bg); color: var(--success-ink); }
+.alert-info { background: var(--info-bg); color: var(--info-ink); }
 
 /* ---------- Tables ---------- */
 table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
@@ -177,7 +199,7 @@ tbody tr:hover { background: var(--gray-50); }
   padding: 6px 12px 6px 6px; border-radius: var(--radius-full); cursor: pointer; font-size: 0.85rem; font-weight: 600;
 }
 .avatar {
-  width: 26px; height: 26px; border-radius: 50%; background: var(--omixa-indigo); color: #fff;
+  width: 26px; height: 26px; border-radius: 50%; background: var(--omixa-indigo); color: var(--white);
   display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700;
 }
 .user-dropdown {
@@ -235,9 +257,9 @@ tbody tr:hover { background: var(--gray-50); }
 .step { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; font-weight: 600; color: var(--gray-300); }
 .step .dot { width: 22px; height: 22px; border-radius: 50%; background: var(--gray-100); color: var(--gray-300); display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700; }
 .step.active { color: var(--omixa-indigo); }
-.step.active .dot { background: var(--omixa-indigo); color: #fff; }
-.step.done .dot { background: var(--success); color: #fff; }
-.step.err .dot { background: var(--danger); color: #fff; }
+.step.active .dot { background: var(--omixa-indigo); color: var(--white); }
+.step.done .dot { background: var(--success); color: var(--white); }
+.step.err .dot { background: var(--danger); color: var(--white); }
 
 .rules-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 @media (max-width: 640px) { .rules-grid { grid-template-columns: 1fr; } }
@@ -266,12 +288,12 @@ tbody tr:hover { background: var(--gray-50); }
 
 .upgrade-box {
   background: linear-gradient(135deg, var(--omixa-indigo), var(--omixa-indigo-deep));
-  color: #fff; border-radius: var(--radius-lg); padding: 20px 24px; display: flex; align-items: center;
+  color: var(--white); border-radius: var(--radius-lg); padding: 20px 24px; display: flex; align-items: center;
   justify-content: space-between; gap: 16px; flex-wrap: wrap;
 }
 .upgrade-box p { color: var(--omixa-lavender-light); margin: 4px 0 0; }
 .upgrade-box .btn-primary { background: var(--omixa-lavender); }
-.upgrade-box .btn-primary:hover { background: #9a52ca; }
+.upgrade-box .btn-primary:hover { background: var(--omixa-violet-dark); }
 
 .hidden { display: none !important; }
 .text-muted { color: var(--text-muted); }
@@ -300,7 +322,7 @@ tbody tr:hover { background: var(--gray-50); }
 .feature-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; }
 .steps-flow { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
 .step-flow-item { flex: 1; min-width: 180px; background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; text-align: center; }
-.step-flow-item .num { width: 30px; height: 30px; border-radius: 50%; background: var(--omixa-indigo); color: #fff; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-weight: 700; }
+.step-flow-item .num { width: 30px; height: 30px; border-radius: 50%; background: var(--omixa-indigo); color: var(--white); display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; font-weight: 700; }
 .marketing-nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; }
 
 /* ---------- Pricing ---------- */
@@ -325,7 +347,7 @@ tbody tr:hover { background: var(--gray-50); }
 .score-compare-item .l { font-size: 0.72rem; color: var(--text-secondary); margin-top: 2px; }
 .score-badge.small { width: 40px; height: 40px; font-size: 0.95rem; }
 .score-arrow { font-size: 1.2rem; color: var(--gray-300); }
-.cleaning-summary-text { background: var(--gray-50); border-radius: var(--radius-md); padding: 16px; font-family: "Roboto Mono", monospace; font-size: 0.8rem; white-space: pre-wrap; color: var(--text-primary); overflow-x: auto; }
+.cleaning-summary-text { background: var(--gray-50); border-radius: var(--radius-md); padding: 16px; font-family: var(--font-sans); font-variant-numeric: tabular-nums; font-size: 0.8rem; white-space: pre-wrap; color: var(--text-primary); overflow-x: auto; }
 .hint { font-size: 0.8rem; color: var(--text-secondary); }
 .rules-legend { font-weight: 700; font-size: 0.9rem; margin-bottom: 10px; padding: 0; }
 fieldset.rules { border: none; padding: 0; margin: 0 0 20px; }
@@ -349,8 +371,8 @@ fieldset.rules { border: none; padding: 0; margin: 0 0 20px; }
 .qc-fab-delta {
   font-size: 0.62rem; font-weight: 800; line-height: 1; margin-top: 1px;
 }
-.qc-fab-delta.good { color: rgba(255,255,255,0.92); }
-.qc-fab-delta.bad { color: rgba(255,255,255,0.92); }
+.qc-fab-delta.good { color: var(--white); }
+.qc-fab-delta.bad { color: var(--white); }
 .qc-fab.good { background: var(--success); }
 .qc-fab.warn { background: var(--warning); }
 .qc-fab.bad { background: var(--danger); }

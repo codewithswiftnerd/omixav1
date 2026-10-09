@@ -2,7 +2,7 @@
 {% block title %}Dashboard – Omixa{% endblock %}
 {% block content %}
 <div class="dash-header cta-row">
-  <div><h1 style="margin:0;">Dashboard</h1><p id="who" class="hint" style="margin:4px 0 0;"></p></div>
+  <div><h1>Dashboard</h1><p id="who" class="hint"></p></div>
   <button class="btn btn-ghost btn-sm" id="signOutBtn" type="button">Sign out</button>
 </div>
 <div id="payBanner" class="alert hidden" role="status"></div>
@@ -26,7 +26,5 @@
 </section>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/pro-common.js') }}"></script>
-<script src="{{ url_for('static', filename='js/nav-auth.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}

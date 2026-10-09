@@ -206,7 +206,7 @@ def test_score_deterministic_across_calls():
 
 def test_original_vs_cleaned_score_improves():
     df = pd.DataFrame({
-        "Name ": ["  John ", "john", None],
+        "Name ": ["  John ", "mary okon", None],
         "Email": ["JOHN@EMAIL.COM", "not-an-email", "mary@email.com"],
     })
     before = generate_report(df)
