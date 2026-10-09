@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Batch processing – Omixa{% endblock %}
+{% block content %}
+<div class="dash-header"><h1 style="margin:0;">Batch processing</h1>
+  <p class="hint" style="margin:4px 0 0;">Clean several CSV, XLSX or XLS files in one go. Every file is cleaned and reported on its own.</p></div>
+
+{% if state == 'pro' %}
+<section class="card" id="batchApp" data-max-files="{{ limits.max_files }}" data-max-file-mb="{{ limits.max_file_mb }}" data-max-total-mb="{{ limits.max_total_mb }}">
+  <div id="batchSetup">
+    <label class="btn btn-secondary" for="batchFiles">Choose files</label>
+    <input id="batchFiles" type="file" multiple accept=".csv,.xlsx,.xls" class="hidden">
+    <p class="hint">Up to {{ limits.max_files }} files · {{ limits.max_file_mb }} MB each · {{ limits.max_total_mb }} MB in total. Same safe cleaning rules as a single file.</p>
+    <ul id="batchList" class="plain-list"></ul>
+    <label class="rule"><input type="checkbox" id="optHeader" checked><span><strong>First row is a header</strong></span></label>
+    <label class="rule"><input type="checkbox" id="optColumnNames"><span><strong>Standardize column names</strong><em>Off by default: "Customer Name" → customer_name</em></span></label>
+    <p class="hint">Anything ambiguous is reported, not guessed. Files are kept for {{ limits.retention_hours }} hours so you can download them, then deleted.</p>
+    <button class="btn btn-primary" id="startBatch" type="button" disabled>Start batch</button>
+    <p class="hint" id="batchMsg" role="status"></p>
+  </div>
+  <div id="batchProgress" class="hidden">
+    <h2 id="batchHeadline"></h2>
+    <p class="hint" id="batchSub"></p>
+    <ul id="batchFiles2" class="plain-list"></ul>
+    <p class="hint" id="batchSkipped"></p>
+    <div class="cta-row">
+      <a class="btn btn-primary hidden" id="dlAll" href="#">Download all (ZIP)</a>
+      <button class="btn btn-secondary hidden" id="retryBtn" type="button">Retry failed files</button>
+      <button class="btn btn-ghost" id="cancelBtn" type="button">Cancel waiting files</button>
+      <button class="btn btn-ghost hidden" id="newBatch" type="button">Start another batch</button>
+    </div>
+  </div>
+</section>
+{% elif state == 'unavailable' %}
+<section class="card"><h2>Temporarily unavailable</h2><p>Batch processing is not enabled on this server right now. You can still clean files one at a time.</p><a class="btn btn-secondary" href="/clean">Clean a file</a></section>
+{% else %}
+<section class="card" id="batchUpgrade">
+  <h2>Batch processing is available with Omixa Pro.</h2>
+  <ul class="price-list">
+    <li>Clean up to {{ batch_files }} files in one operation (CSV, XLSX, XLS)</li>
+    <li>Each file is cleaned, scored and reported separately; one failed file never stops the others</li>
+    <li>Download files one by one, or all completed files as a ZIP</li>
+    <li>Plus Quality Profiles, deeper analysis, reports and processing history</li>
+  </ul>
+  <div class="cta-row">
+    <a class="btn btn-primary" href="/pricing">See Pro pricing</a>
+    {% if state == 'signed_out' %}<a class="btn btn-secondary" href="/login?next=/batch">Sign in</a>{% endif %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/pro-common.js') }}"></script>
+<script src="{{ url_for('static', filename='js/nav-auth.js') }}"></script>
+{% if state == 'pro' %}<script src="{{ url_for('static', filename='js/batch.js') }}"></script>{% endif %}
+{% endblock %}

@@ -77,7 +77,8 @@ class Config:
     # contents themselves. See db.py.
     DB_PATH = os.environ.get("OMIXA_DB_PATH", os.path.join(BASE_DIR, "data", "omixa.db"))
 
-    # 25 MB, flat for every user, no accounts/plans to vary it by.
+    # Hard ceiling for any single request body (the per-plan limits FREE/PRO_MAX_UPLOAD_MB are enforced
+    # below it). The batch endpoint has its own, larger body limit: see app.OmixaRequest.
     MAX_CONTENT_LENGTH = int(os.environ.get("OMIXA_MAX_UPLOAD_MB", "25")) * 1024 * 1024
 
     ALLOWED_EXTENSIONS = {"csv", "xlsx", "xls"}
@@ -210,6 +211,21 @@ class Config:
     QUEUED_STALE_SECONDS = int(os.environ.get("OMIXA_QUEUED_STALE_SECONDS", "120"))
     # Finished/abandoned job data is deleted by the worker reaper after this long.
     JOB_TTL_SECONDS = int(os.environ.get("OMIXA_JOB_TTL_SECONDS", str(60 * 30)))
+
+    # ---- Pro batch processing (all server-enforced; every value is overridable by env) ----
+    BATCH_MAX_FILES = int(os.environ.get("OMIXA_BATCH_MAX_FILES", "20"))
+    BATCH_MAX_TOTAL_MB = int(os.environ.get("OMIXA_BATCH_MAX_TOTAL_MB", "100"))
+    # 0 = fall back to the Pro per-file upload limit (PRO_MAX_UPLOAD_MB)
+    BATCH_MAX_FILE_MB = int(os.environ.get("OMIXA_BATCH_MAX_FILE_MB", "0"))
+    # 0 = fall back to MAX_CELLS
+    BATCH_MAX_CELLS_PER_FILE = int(os.environ.get("OMIXA_BATCH_MAX_CELLS_PER_FILE", "0"))
+    BATCH_MAX_TOTAL_CELLS = int(os.environ.get("OMIXA_BATCH_MAX_TOTAL_CELLS", "10000000"))
+    # files of ONE batch that may be queued/running at the same time (the rest wait, un-queued)
+    BATCH_MAX_CONCURRENT_FILES = int(os.environ.get("OMIXA_BATCH_MAX_CONCURRENT_FILES", "3"))
+    # batches per user that may be unfinished at the same time
+    BATCH_MAX_ACTIVE_PER_USER = int(os.environ.get("OMIXA_BATCH_MAX_ACTIVE_PER_USER", "2"))
+    BATCH_TIMEOUT_SECONDS = int(os.environ.get("OMIXA_BATCH_TIMEOUT_SECONDS", str(60 * 60)))
+    BATCH_RETENTION_SECONDS = int(os.environ.get("OMIXA_BATCH_RETENTION_SECONDS", str(60 * 60 * 24)))
     SWEEP_MIN_INTERVAL_SECONDS = float(os.environ.get("OMIXA_SWEEP_MIN_INTERVAL_SECONDS", "15"))
 
     # --- Distributed rate limits (requests per minute per principal) -----

@@ -280,8 +280,9 @@ about scope:
 (`cleaning.rules.DEFAULT_RULES`), each safe enough to apply without
 asking first:
 
-1. **column_names**, tidy headers into consistent `snake_case`
-2. **formatting**, trim/collapse whitespace
+(opt-in, not a default) **column_names**, tidy headers into `snake_case`, only when the user selects "Standardize column names"
+
+1. **formatting**, trim/collapse whitespace
 3. **missing_token_normalization**, treat `"N/A"`, `"null"`, `"-"`, blanks, etc. as real missing values
 4. **numeric_text_cleaning**, strip `$`, `,`, `%` from numbers stored as text and convert dtype (whole-column-safe only)
 5. **boolean_standardization**, `Yes/No`, `True/False`, `Y/N` → real booleans (never touches `1`/`0`)
@@ -397,11 +398,11 @@ completeness is never credited for imputed values; imputed cells also surface as
 ## Free and Pro
 
 **Free = "Clean my file."** The whole cleaning engine, quality score, issue detection, before/after
-preview and cleaned download. No account needed. Only cap: upload size (`OMIXA_FREE_MAX_UPLOAD_MB`, 10).
+preview and cleaned download. No account needed for Free cleaning. Only cap: upload size (`OMIXA_FREE_MAX_UPLOAD_MB`, 10).
 
 **Pro = "Help me establish, maintain and prove that my data is trustworthy."** $5/month or $50/year:
 Quality Profiles, profile PASS/WARNING/FAIL checks, column-level scores and dimension analysis,
-what-changed report, change log, PDF quality report, saved history. Uploads up to 25 MB.
+what-changed report, change log, PDF quality report, saved history, **batch processing** (see `docs/ARCHITECTURE.md`). Uploads up to 25 MB.
 
 ### Setup
 1. Firebase: enable Email/Password and Google sign-in; create a service account. Set `FIREBASE_SERVICE_ACCOUNT_JSON`,

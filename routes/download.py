@@ -32,6 +32,12 @@ def download_file(job_id):
     if not d:
         return jsonify({"error": "Invalid job_id"}), 400
 
+    _row = metadata_db.get_job(job_id)
+    if _row and _row.get("batch_id"):
+        # Batch outputs are kept for the batch retention period and downloaded from the batch,
+        # so a single download here must not delete them.
+        return jsonify({"error": "This file belongs to a batch. Download it from the batch page."}), 409
+
     if object_storage.is_remote():
         return _remote_download(job_id)
 

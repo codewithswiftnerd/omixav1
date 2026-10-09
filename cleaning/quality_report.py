@@ -97,7 +97,7 @@ def check_fixable_formats(ctx: CheckContext) -> list[dict]:
             "population": len(base.columns), "unit": "column",
             "detail": f"{len(renamed)} column name(s) are not in tidy snake_case, e.g. "
                       f"'{renamed[0][0]}' → '{renamed[0][1]}'.",
-            "suggestion": "The 'column_names' rule renames headers; data values are never touched.",
+            "suggestion": "Optional: select 'Standardize column names' to rename headers (off by default); data values are never touched.",
         })
     return out
 

@@ -189,5 +189,19 @@ def _export_excel_preserving_other_sheets(
         if width:
             ws.column_dimensions[col_letter].width = width
 
+        # Hidden columns stay hidden (matched by source position, so renames/drops cannot misplace it).
+        src_dim = src_ws.column_dimensions.get(get_column_letter(source_pos + 1)) if source_pos >= 0 else None
+        if src_dim is not None and getattr(src_dim, "hidden", False) and src_dim.min == src_dim.max == source_pos + 1:
+            ws.column_dimensions[col_letter].hidden = True
+
+    # A frozen header row stays frozen. (Only the plain "top row frozen" case: any other freeze point
+    # refers to cells/columns that cleaning may have moved or removed, so it is not carried over.)
+    try:
+        frozen = src_ws.freeze_panes
+        if frozen == "A2" and has_header:
+            ws.freeze_panes = "A2"
+    except Exception:
+        pass
+
     wb.save(out_path)
     return True

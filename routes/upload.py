@@ -40,7 +40,7 @@ def _too_big(limit, is_pro):
     mb = limit // (1024 * 1024)
     msg = f"This file is over the {mb} MB limit for your plan."
     if not is_pro:
-        msg += " Omixa Pro raises it to 25 MB."
+        msg += f" Omixa Pro raises it to {Config.PRO_MAX_UPLOAD_MB} MB."
     return jsonify({"error": msg, "upgrade_required": not is_pro}), 402 if not is_pro else 413
 
 

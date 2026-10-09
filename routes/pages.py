@@ -7,9 +7,40 @@ from config import Config
 pages_bp = Blueprint("pages", __name__)
 
 
+def product_facts() -> dict:
+    """ONE place the marketing pages read their numbers from, so FAQ/pricing/batch copy can never
+    drift from what the backend enforces."""
+    return {
+        "free_mb": Config.FREE_MAX_UPLOAD_MB, "pro_mb": Config.PRO_MAX_UPLOAD_MB,
+        "ttl_minutes": max(1, Config.JOB_TTL_SECONDS // 60),
+        "batch_hours": round(Config.BATCH_RETENTION_SECONDS / 3600, 1),
+        "batch_files": Config.BATCH_MAX_FILES, "batch_total_mb": Config.BATCH_MAX_TOTAL_MB,
+        "max_rows": f"{Config.MAX_ROWS:,}", "max_cells": f"{Config.MAX_CELLS:,}",
+        "batch_enabled": Config.PROCESSING_MODE == "queue",
+    }
+
+
 @pages_bp.get("/")
 def landing():
-    return render_template("landing.html", free_mb=Config.FREE_MAX_UPLOAD_MB, pro_mb=Config.PRO_MAX_UPLOAD_MB)
+    return render_template("landing.html", **product_facts())
+
+
+@pages_bp.get("/batch")
+def batch():
+    """Server-rendered: Free/anonymous visitors get the upgrade state and NO upload UI at all."""
+    from accounts import auth
+    from routes.batches import limits
+    from routes.cleaning import server_side_is_pro
+    facts = product_facts()
+    if not auth.current_uid():
+        state = "signed_out"
+    elif not server_side_is_pro():
+        state = "free"
+    elif not facts["batch_enabled"]:
+        state = "unavailable"
+    else:
+        state = "pro"
+    return render_template("batch.html", state=state, limits=limits(), **facts)
 
 
 @pages_bp.get("/pricing")
@@ -20,8 +51,7 @@ def pricing():
         "pricing.html", usd_monthly=m, usd_annual=a, saves=round(m * 12 - a, 2),
         months_free=round((m * 12 - a) / m, 1) if m else 0,
         ngn_monthly=Config.PRICE_NGN_MONTHLY, ngn_annual=Config.PRICE_NGN_ANNUAL,
-        free_mb=Config.FREE_MAX_UPLOAD_MB, pro_mb=Config.PRO_MAX_UPLOAD_MB,
-        payments_available=paystack.configured(),
+        payments_available=paystack.configured(), **product_facts(),
     )
 
 
@@ -36,7 +66,7 @@ def login():
 
 @pages_bp.get("/dashboard")
 def dashboard():
-    return render_template("dashboard.html")
+    return render_template("dashboard.html", **product_facts())
 
 
 @pages_bp.get("/profiles/new")

@@ -145,6 +145,8 @@ def _bucket_for(path: str, method: str, principal_key: str, signed_in: bool) -> 
         return "upload", Config.RATE_LIMIT_UPLOAD_PER_MINUTE
     if path.startswith("/api/process") and method == "POST":
         return "process", Config.RATE_LIMIT_PROCESS_PER_MINUTE
+    if path.startswith("/api/batches"):
+        return ("upload", Config.RATE_LIMIT_UPLOAD_PER_MINUTE) if method == "POST" else ("status", Config.RATE_LIMIT_STATUS_PER_MINUTE)
     if path.startswith("/api/jobs"):
         return "status", Config.RATE_LIMIT_STATUS_PER_MINUTE
     if path.startswith("/api/billing"):

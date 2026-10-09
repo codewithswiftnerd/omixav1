@@ -41,7 +41,7 @@
   if (!u.is_pro) {
     $('profiles').innerHTML = '<p class="hint">This feature is available with Omixa Pro. Save a standard like "Research Dataset Standard" and check every file against it. <a href="/pricing">See pricing</a></p>';
     $('history').innerHTML = '<p class="hint">Processing history, quality reports and change logs are available with Omixa Pro. <a href="/pricing">See pricing</a></p>';
-    $('usage').innerHTML = '<div class="stat-card"><div class="stat-value">10 MB</div><div class="stat-label">Free upload limit</div></div>';
+    $('usage').innerHTML = '<div class="stat-card"><div class="stat-value">' + esc((document.getElementById('planCard') || {dataset: {}}).dataset.freeMb || '') + ' MB</div><div class="stat-label">Free upload limit</div></div>';
     return;
   }
 

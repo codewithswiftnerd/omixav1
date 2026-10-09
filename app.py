@@ -1,10 +1,11 @@
 """
 Omixa backend entry point.
 
-No accounts. Each job is a temp folder scoped to the session that
-created it (utils/session.py, utils/file_handler.py), deleted after
-download or after 30 min idle. Job API: routes/upload.py, process.py,
-download.py, report.py. Admin dashboard: routes/admin.py.
+Free cleaning needs no account: each job is scoped to the browser session that created it
+(utils/session.py) and removed automatically after JOB_TTL_SECONDS. Omixa Pro (signed-in,
+server-verified subscription) adds batch processing (routes/batches.py, jobs/batches.py), Quality
+Profiles and saved history. Job API: routes/upload.py, process.py, download.py, report.py.
+Admin dashboard: routes/admin.py. See docs/ARCHITECTURE.md.
 """
 
 import logging
@@ -12,7 +13,7 @@ import os
 import secrets
 import time
 
-from flask import Flask, g, jsonify, render_template, request, send_from_directory
+from flask import Flask, Request, g, jsonify, render_template, request, send_from_directory
 
 from config import Config
 import db as metadata_db
@@ -30,6 +31,7 @@ from routes.workspace import workspace_bp
 from routes.admin import admin_bp
 from routes.jobs import jobs_bp
 from routes.cleaning import cleaning_bp
+from routes.batches import batches_bp
 from utils.security import check_rate_limit
 from utils import observability, redis_client
 from utils.session import ensure_session
@@ -40,11 +42,37 @@ def _configure_logging():
     observability.configure_logging(level, Config.LOG_FORMAT)
 
 
+class OmixaRequest(Request):
+    """Same as Flask's Request, except that the batch upload endpoint may carry several files:
+    its body limit is the configured batch total (+ multipart overhead), not the single-file
+    limit. Per-file and per-batch limits are enforced again, server-side, in routes/batches.py."""
+
+    @property
+    def max_content_length(self):
+        if self.path == "/api/batches/" or self.path == "/api/batches":
+            return (Config.BATCH_MAX_TOTAL_MB + 2) * 1024 * 1024
+        return super().max_content_length
+
+
 def create_app():
     _configure_logging()
     logger = logging.getLogger("omixa.app")
 
+    if Config.IS_PRODUCTION and Config.PROCESSING_MODE == "queue" \
+            and os.environ.get("OMIXA_ALLOW_SINGLE_NODE", "").strip() != "1":
+        missing = []
+        if Config.STORAGE_BACKEND != "s3":
+            missing.append("OMIXA_STORAGE_BACKEND=s3 (+ OMIXA_S3_BUCKET and credentials)")
+        if not Config.DATABASE_URL:
+            missing.append("DATABASE_URL (PostgreSQL)")
+        if missing:
+            raise RuntimeError(
+                "Production queue mode runs the API and several workers on different machines, so files and job "
+                "state must live in shared services, not on one machine's disk. Missing: " + "; ".join(missing)
+                + ". For a deliberate single-machine deployment set OMIXA_ALLOW_SINGLE_NODE=1.")
+
     app = Flask(__name__, static_folder="static", static_url_path="/static")
+    app.request_class = OmixaRequest
     app.config.from_object(Config)
 
     if Config.TRUSTED_PROXY_HOPS > 0:
@@ -72,6 +100,7 @@ def create_app():
     app.register_blueprint(sessions_bp, url_prefix="/api/sessions")
     app.register_blueprint(jobs_bp, url_prefix="/api/jobs")
     app.register_blueprint(cleaning_bp, url_prefix="/api/cleaning")
+    app.register_blueprint(batches_bp, url_prefix="/api/batches")
 
     # Page blueprints (server-rendered HTML)
     app.register_blueprint(pages_bp)
@@ -306,8 +335,7 @@ def create_app():
         """Prometheus text. Disabled unless OMIXA_METRICS_TOKEN is set; requires
         `Authorization: Bearer <token>`. Per-process request metrics plus fleet-wide gauges."""
         import hmac
-        _auth = request.headers.get("Authorization") or ""
-        supplied = (_auth[7:] if _auth.startswith("Bearer ") else _auth).strip()
+        supplied = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
         if not Config.METRICS_TOKEN or not hmac.compare_digest(supplied, Config.METRICS_TOKEN):
             return jsonify({"error": "Not found"}), 404
         gauges = {}

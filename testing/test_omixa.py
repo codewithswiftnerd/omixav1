@@ -111,7 +111,8 @@ def test_identifier_columns_never_become_numeric():
         "Patient_ID": ["000123", "001245", "0803317157", "0042"],
         "Phone Number": ["0803317157", "0706488171", "0812345678", "0709876543"],
     })
-    cleaned, _ = apply_rules(df, rules=DEFAULT_RULES)
+    # column_names is opt-in now (not in DEFAULT_RULES), so select it explicitly to exercise the renamed columns
+    cleaned, _ = apply_rules(df, rules=["column_names"] + DEFAULT_RULES)
     for col in ["patient_id", "phone_number"]:
         assert not pd.api.types.is_numeric_dtype(cleaned[col]), f"{col} was coerced to numeric"
     assert list(cleaned["patient_id"]) == ["000123", "001245", "0803317157", "0042"]

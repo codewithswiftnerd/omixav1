@@ -38,7 +38,7 @@ def _read_csv(path: str, **kwargs) -> pd.DataFrame:
         return pd.read_csv(path, encoding="latin-1", **kwargs)
 
 
-def _sheet_extent(path: str, ext: str, ncols_hint: int, max_rows: int):
+def _sheet_extent(path: str, ext: str, ncols_hint: int, max_rows: int, cell_cap: int = 0):
     """(rows, cols) of the FIRST sheet without loading it into pandas, or None if unknown.
 
     Memory guard: pd.read_excel materialises the whole sheet before any size check can run, so a
@@ -59,7 +59,7 @@ def _sheet_extent(path: str, ext: str, ncols_hint: int, max_rows: int):
                 for row in ws.iter_rows(values_only=True):
                     count += 1
                     widest = max(widest, len(row))
-                    if count > max_rows + 1 or count * max(widest, ncols_hint, 1) > Config.MAX_CELLS + max(widest, 1):
+                    if count > max_rows + 1 or count * max(widest, ncols_hint, 1) > (cell_cap or Config.MAX_CELLS) + max(widest, 1):
                         break
                 return count, widest
             finally:
@@ -77,7 +77,7 @@ def _sheet_extent(path: str, ext: str, ncols_hint: int, max_rows: int):
     return None
 
 
-def read_source(path: str, has_header: bool = True) -> pd.DataFrame:
+def read_source(path: str, has_header: bool = True, max_cells: int = 0) -> pd.DataFrame:
     """
     Reads the uploaded file, and specifically protects
     identifier-looking columns (phone/account/IBAN/BVN/zip/etc., see detectors.is_identifier_name) from pandas' own dtype
@@ -117,14 +117,15 @@ def read_source(path: str, has_header: bool = True) -> pd.DataFrame:
     } or None
 
     # Rows x columns ceiling (a 500-column file must not be allowed 500k rows).
+    cell_cap = min(Config.MAX_CELLS, max_cells) if max_cells else Config.MAX_CELLS
     ncols = max(1, len(header.columns))
-    max_rows = min(Config.MAX_ROWS, max(1, Config.MAX_CELLS // ncols))
+    max_rows = min(Config.MAX_ROWS, max(1, cell_cap // ncols))
     cell_limited = max_rows < Config.MAX_ROWS
 
     def _too_large():
         if cell_limited:
             return DatasetTooLargeError(
-                f"This file has more than {Config.MAX_CELLS:,} cells ({ncols} columns x more than "
+                f"This file has more than {cell_cap:,} cells ({ncols} columns x more than "
                 f"{max_rows:,} rows), which is more than OMIXA will process."
             )
         return DatasetTooLargeError(
@@ -134,7 +135,7 @@ def read_source(path: str, has_header: bool = True) -> pd.DataFrame:
     if ext == "csv":
         df = _read_csv(path, dtype=dtype_overrides, header=header_arg, nrows=max_rows + 1)
     else:
-        extent = _sheet_extent(path, ext, ncols, max_rows)
+        extent = _sheet_extent(path, ext, ncols, max_rows, cell_cap)
         if extent is not None:
             data_rows = extent[0] - (1 if has_header else 0)
             if data_rows > max_rows:
@@ -175,6 +176,7 @@ def run_pipeline(
     pro: bool = False,
     profile: Optional[dict] = None,
     cleaning_profile: Optional[dict] = None,
+    max_cells: int = 0,
 ) -> dict:
     """
     Returns a summary dict the frontend can display, e.g.:
@@ -212,7 +214,7 @@ def run_pipeline(
     if not source_path:
         raise FileNotFoundError("No source file found for this job")
 
-    df = read_source(source_path, has_header=has_header)
+    df = read_source(source_path, has_header=has_header, max_cells=max_cells)
     rows_in = len(df)
     columns_in = len(df.columns)
     # Pro only: keep the uploaded data so a Quality Profile can be evaluated before AND after cleaning.

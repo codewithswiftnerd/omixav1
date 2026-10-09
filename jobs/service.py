@@ -211,7 +211,8 @@ def _clean_body(job_id: str, spec: dict):
     from processing.pipeline import run_pipeline
     return run_pipeline(job_id, rules=spec.get("rules"), resolutions=spec.get("resolutions"),
                         has_header=spec.get("has_header", True), pro=bool(spec.get("pro")),
-                        profile=spec.get("profile"), cleaning_profile=spec.get("cleaning_profile"))
+                        profile=spec.get("profile"), cleaning_profile=spec.get("cleaning_profile"),
+                        max_cells=int(spec.get("max_cells") or 0))
 
 
 def _analyze_body(job_id: str, spec: dict):
@@ -259,6 +260,19 @@ def _save_pro_session(job: dict, spec: dict, summary: dict, processing_ms: int) 
 
 
 def execute_job(job: dict, worker_id: str) -> str:
+    """Runs one CLAIMED job to a terminal-or-retry state. Returns the outcome string.
+    Batch files additionally let their batch release the next waiting file / finalize."""
+    outcome = _execute_job(job, worker_id)
+    if job.get("batch_id"):
+        try:
+            from jobs import batches
+            batches.advance(job["batch_id"])
+        except Exception:
+            logger.exception("batch advance failed for %s", job.get("batch_id"))
+    return outcome
+
+
+def _execute_job(job: dict, worker_id: str) -> str:
     """Runs one CLAIMED job to a terminal-or-retry state. Returns the outcome string."""
     job_id, ext = job["job_id"], job["original_ext"]
     spec = json.loads(job.get("spec_json") or "{}")
@@ -366,4 +380,10 @@ def reap_once() -> dict:
         done.append(row["job_id"])
     metadata_db.mark_purged(done)
     stats["purged"] = len(done)
+    try:  # batches: release waiting files, enforce the batch timeout, finalize finished batches
+        from jobs import batches
+        for bid in metadata_db.active_batch_ids():
+            batches.advance(bid)
+    except Exception:
+        logger.exception("batch reaper step failed")
     return stats

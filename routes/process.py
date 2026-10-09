@@ -72,6 +72,10 @@ def process_file(job_id):
         # real, only that it isn't usable by them.
         return jsonify({"error": "Unknown or expired job_id, or no uploaded file found"}), 404
 
+    _row = metadata_db.get_job(job_id)
+    if _row and _row.get("batch_id"):
+        return jsonify({"error": "This file belongs to a batch and is processed with it. Manage it from the batch page."}), 409
+
     body = request.get_json(silent=True) or {}
     rules = body.get("rules")
     resolutions = body.get("resolutions")

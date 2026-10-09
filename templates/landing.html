@@ -19,7 +19,7 @@
         <div class="drop dropzone" id="drop" role="button" tabindex="0" aria-label="Upload a CSV or Excel file">
           <span class="btn-upload">Upload file</span>
           <p class="drop-or">or drop a file</p>
-          <p class="drop-sub">CSV, XLSX or XLS · up to {{ free_mb }} MB free · {{ pro_mb }} MB with Pro</p>
+          <p class="drop-sub">CSV, XLSX or XLS · up to {{ free_mb }} MB free · {{ pro_mb }} MB with Pro · batches with Pro</p>
         </div>
         <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" class="hidden" aria-label="Choose a CSV or Excel file to clean">
 
@@ -115,7 +115,7 @@
               <fieldset class="rules">
                     <legend class="group-label">All cleaning rules</legend>
                     <div class="rules-grid">
-                      <label class="rule"><input type="checkbox" value="column_names" checked><span><strong>Clean column names</strong><em>Tidy headers into snake_case</em></span></label>
+                      <label class="rule"><input type="checkbox" value="column_names"><span><strong>Standardize column names</strong><em>Off by default: "Customer Name" → customer_name</em></span></label>
                       <label class="rule"><input type="checkbox" value="formatting" checked><span><strong>Fix formatting</strong><em>Trim stray spaces</em></span></label>
                       <label class="rule"><input type="checkbox" value="missing_token_normalization" checked><span><strong>Recognize blanks</strong><em>"N/A", "null", "-" count as missing</em></span></label>
                       <label class="rule"><input type="checkbox" value="numeric_text_cleaning" checked><span><strong>Clean numbers</strong><em>Strip $, commas and % from text</em></span></label>
@@ -209,8 +209,8 @@
 
     <section class="m-section trust">
       <div class="trust-grid">
-        <div class="trust-item"><strong>No account needed</strong><p>Upload and clean right away. Nothing to sign up for.</p></div>
-        <div class="trust-item"><strong>Private by design</strong><p>Your file is deleted right after you download the cleaned version.</p></div>
+        <div class="trust-item"><strong>No account for Free cleaning</strong><p>Upload and clean right away. An account is only needed for Omixa Pro.</p></div>
+        <div class="trust-item"><strong>Temporary by design</strong><p>Uploaded files are deleted automatically, at most {{ ttl_minutes }} minutes after upload.</p></div>
         <div class="trust-item"><strong>You stay in control</strong><p>Risky changes are never made silently. Anything unclear is left for you to decide.</p></div>
       </div>
     </section>
@@ -218,11 +218,14 @@
     <section class="m-section faq" id="faq">
       <div class="faq-card">
         <h2 class="m-title">Frequently asked questions</h2>
-        <details class="faq-item"><summary>What files can I upload?</summary><p>CSV, XLSX and XLS files, up to {{ free_mb }} MB on Free and {{ pro_mb }} MB with Omixa Pro.</p></details>
-        <details class="faq-item"><summary>Do I need an account?</summary><p>No. Upload a file and clean it straight away.</p></details>
-        <details class="faq-item"><summary>What does Omixa fix?</summary><p>Duplicate rows, inconsistent dates, phone numbers, emails, countries, gender and yes/no values, numbers stored as text, stray spaces and messy column names.</p></details>
-        <details class="faq-item"><summary>Will it change my data without asking?</summary><p>Only safe, well-defined fixes are applied by default. Filling gaps with estimates is off unless you turn it on, and anything ambiguous is flagged for your review instead of guessed.</p></details>
-        <details class="faq-item"><summary>What happens to my file?</summary><p>It's deleted right after you download the cleaned version.</p></details>
+        <details class="faq-item"><summary>What files can I upload?</summary><p>CSV, XLSX and XLS files, up to {{ free_mb }} MB on Free and {{ pro_mb }} MB with Omixa Pro. Macro-enabled workbooks (.xlsm) and other formats are rejected. Files with more than {{ max_rows }} rows or {{ max_cells }} cells are not processed.</p></details>
+        <details class="faq-item"><summary>Do I need an account?</summary><p><strong>Free cleaning: no.</strong> Upload, clean, preview and download without signing up. <strong>Omixa Pro: yes.</strong> Pro features need an account because they are tied to your subscription: batch processing, Quality Profiles, saved processing history and professional (PDF) reports. These checks are made on our servers.</p></details>
+        <details class="faq-item"><summary>Can I clean several files at once?</summary><p>Yes, with Omixa Pro. Batch processing cleans up to {{ batch_files }} files per batch. Each file is cleaned, scored and reported separately, and one failed file does not stop the others. Free accounts clean one file at a time.</p></details>
+        <details class="faq-item"><summary>What does Omixa fix?</summary><p>Duplicate rows, inconsistent dates, phone numbers, emails, countries, gender and yes/no values, numbers stored as text and stray spaces. Column names are left as they are unless you choose "Standardize column names".</p></details>
+        <details class="faq-item"><summary>Will it change my data without asking?</summary><p>Only safe, well-defined fixes are applied by default. Filling gaps with estimates is off unless you turn it on, ID-like columns (account numbers, zip codes, phone numbers with leading zeros) are protected, and anything ambiguous is flagged for your review instead of guessed.</p></details>
+        <details class="faq-item"><summary>Can I review or undo the changes?</summary><p>Your original file is never modified: Omixa produces a separate cleaned copy. A before/after preview and a change log show every rule that ran and how many cells it changed, and you can re-run from your original with different rules.</p></details>
+        <details class="faq-item"><summary>What happens to my file?</summary><p>Your file is stored temporarily so it can be processed, and removed automatically at most {{ ttl_minutes }} minutes after upload. Pro batch results are kept for {{ batch_hours }} hours so you can download them, then deleted. Omixa keeps basic records (file name, size, row counts, quality scores, which rules ran) but not your cell contents. Pro history keeps quality figures and change summaries, never your rows or example values.</p></details>
+        <details class="faq-item"><summary>Does Omixa keep my Excel formatting?</summary><p>Partly. Omixa rebuilds the cleaned sheet and keeps values, other sheets, workbook properties, column widths, fonts, hidden columns and a frozen header row. It does not carry over formulas (you get the values), merged cells, hyperlinks, comments, conditional formatting, data validation, tables, row heights, fills or number formats. .xls files are returned as .xlsx.</p></details>
       </div>
     </section>
 

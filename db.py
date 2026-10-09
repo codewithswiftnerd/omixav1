@@ -45,6 +45,21 @@ def _use_pg() -> bool:
     return bool(Config.DATABASE_URL)
 
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS batches (
+    batch_id TEXT PRIMARY KEY,
+    owner_uid TEXT NOT NULL,
+    session_hash TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    completed_at REAL,
+    status TEXT NOT NULL DEFAULT 'active',
+    file_count INTEGER NOT NULL DEFAULT 0,
+    total_bytes INTEGER NOT NULL DEFAULT 0,
+    options_json TEXT,
+    skipped_json TEXT,
+    request_id TEXT,
+    finalized INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS jobs (
     job_id TEXT PRIMARY KEY,
     session_hash TEXT NOT NULL,
@@ -250,6 +265,9 @@ _ADDED_COLUMNS = {
         ("purged_at", "REAL"),
         ("error_public", "TEXT"),
         ("report_json", "TEXT"),
+        # --- batch processing ---
+        ("batch_id", "TEXT"),
+        ("batch_seq", "INTEGER"),
     ],
 }
 
@@ -259,6 +277,8 @@ _LATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_jobs_lease ON jobs(status, lease_expires_at)",
     "CREATE INDEX IF NOT EXISTS idx_jobs_queue ON jobs(status, available_at)",
     "CREATE INDEX IF NOT EXISTS idx_jobs_purge ON jobs(purged_at, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_jobs_batch ON jobs(batch_id, batch_seq)",
+    "CREATE INDEX IF NOT EXISTS idx_batches_owner ON batches(owner_uid, finalized)",
 ]
 
 
@@ -786,12 +806,15 @@ def count_active_for(owner_uid: Optional[str], session_hash: str) -> int:
 def purge_candidates(ttl_seconds: int, limit: int = 200) -> list[dict]:
     """Jobs past their TTL whose stored files have not been deleted yet. Active jobs are left
     to the lease reaper."""
-    cutoff = time.time() - ttl_seconds
+    now = time.time()
+    cutoff = now - ttl_seconds
+    batch_cutoff = now - max(ttl_seconds, Config.BATCH_RETENTION_SECONDS)
     with _cursor() as cur:
         cur.execute(
             "SELECT job_id, original_ext, cleaned_ext, status FROM jobs "
-            "WHERE purged_at IS NULL AND created_at < ? AND status NOT IN ('queued','running') "
-            "ORDER BY created_at LIMIT ?", (cutoff, limit))
+            "WHERE purged_at IS NULL AND status NOT IN ('queued','running') "
+            "AND ((batch_id IS NULL AND created_at < ?) OR (batch_id IS NOT NULL AND created_at < ?)) "
+            "ORDER BY created_at LIMIT ?", (cutoff, batch_cutoff, limit))
         return [dict(r) for r in cur.fetchall()]
 
 
@@ -865,3 +888,91 @@ def count_dead_letters() -> int:
     with _cursor() as cur:
         cur.execute("SELECT COUNT(*) AS n FROM jobs WHERE dead_letter=1 AND purged_at IS NULL")
         return int(cur.fetchone()["n"])
+
+
+# ---------------------------------------------------------------- batches (Pro batch processing)
+
+def create_batch(batch_id: str, owner_uid: str, session_hash: str, options: dict, skipped: list,
+                 request_id: Optional[str] = None) -> bool:
+    now = time.time()
+    try:
+        with _cursor() as cur:
+            cur.execute(
+                "INSERT INTO batches (batch_id, owner_uid, session_hash, created_at, updated_at, status, "
+                "options_json, skipped_json, request_id) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)",
+                (batch_id, owner_uid, session_hash, now, now, json.dumps(options), json.dumps(skipped), request_id))
+        return True
+    except _DB_ERRORS:
+        logger.exception("db: create_batch failed for %s", batch_id)
+        return False
+
+
+def attach_job_to_batch(job_id: str, batch_id: str, seq: int) -> None:
+    with _cursor() as cur:
+        cur.execute("UPDATE jobs SET batch_id=?, batch_seq=? WHERE job_id=?", (batch_id, seq, job_id))
+
+
+def set_batch_totals(batch_id: str, file_count: int, total_bytes: int) -> None:
+    with _cursor() as cur:
+        cur.execute("UPDATE batches SET file_count=?, total_bytes=?, updated_at=? WHERE batch_id=?",
+                    (file_count, total_bytes, time.time(), batch_id))
+
+
+def get_batch(batch_id: str) -> Optional[dict]:
+    with _cursor() as cur:
+        cur.execute("SELECT * FROM batches WHERE batch_id=?", (batch_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def batch_jobs(batch_id: str) -> list[dict]:
+    with _cursor() as cur:
+        cur.execute("SELECT * FROM jobs WHERE batch_id=? ORDER BY batch_seq, created_at", (batch_id,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def count_active_batches(owner_uid: str) -> int:
+    with _cursor() as cur:
+        cur.execute("SELECT COUNT(*) AS n FROM batches WHERE owner_uid=? AND finalized=0", (owner_uid,))
+        return int(cur.fetchone()["n"])
+
+
+def active_batch_ids(limit: int = 200) -> list[str]:
+    with _cursor() as cur:
+        cur.execute("SELECT batch_id FROM batches WHERE finalized=0 ORDER BY created_at LIMIT ?", (limit,))
+        return [r["batch_id"] for r in cur.fetchall()]
+
+
+def list_batches_for(owner_uid: str, limit: int = 20) -> list[dict]:
+    with _cursor() as cur:
+        cur.execute("SELECT * FROM batches WHERE owner_uid=? ORDER BY created_at DESC LIMIT ?", (owner_uid, limit))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def cancel_batch_pending(batch_id: str) -> int:
+    """uploaded|queued -> cancelled. Files already running finish normally (their own timeout applies)."""
+    with _cursor() as cur:
+        cur.execute("UPDATE jobs SET status='cancelled', updated_at=?, lease_owner=NULL, lease_expires_at=NULL "
+                    "WHERE batch_id=? AND status IN ('uploaded','queued')", (time.time(), batch_id))
+        return cur.rowcount
+
+
+def reset_batch_failed(batch_id: str) -> int:
+    """failed -> uploaded for a retry, and re-open the batch."""
+    with _cursor() as cur:
+        cur.execute("UPDATE jobs SET status='uploaded', updated_at=?, error_type=NULL, error_public=NULL, dead_letter=0 "
+                    "WHERE batch_id=? AND status='failed' AND purged_at IS NULL", (time.time(), batch_id))
+        n = cur.rowcount
+        if n:
+            cur.execute("UPDATE batches SET finalized=0, completed_at=NULL, status='active', updated_at=? "
+                        "WHERE batch_id=?", (time.time(), batch_id))
+        return n
+
+
+def finalize_batch(batch_id: str, status: str) -> bool:
+    """Compare-and-set: only the caller that flips finalized 0 -> 1 gets True (so audit is written once)."""
+    now = time.time()
+    with _cursor() as cur:
+        cur.execute("UPDATE batches SET status=?, finalized=1, completed_at=?, updated_at=? "
+                    "WHERE batch_id=? AND finalized=0", (status, now, now, batch_id))
+        return cur.rowcount > 0

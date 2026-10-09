@@ -12,12 +12,12 @@
     <p class="price">$0</p>
     <p class="hint">Clean my file</p>
     <ul class="price-list">
-      <li>CSV and Excel upload (up to {{ free_mb }} MB)</li>
+      <li>CSV, XLSX and XLS upload, one file at a time (up to {{ free_mb }} MB)</li>
       <li>Full cleaning engine: duplicates, whitespace, formats, dates, emails, currencies</li>
       <li>Data-quality score and issue detection</li>
       <li>Before / after preview</li>
       <li>Download the cleaned file</li>
-      <li>No account needed</li>
+      <li>No account needed for Free cleaning</li>
     </ul>
     <a class="btn btn-secondary btn-block" href="{{ url_for('workspace.index') }}">Clean a file</a>
   </article>
@@ -33,7 +33,9 @@
       <li>Column-level quality scores and deeper analysis</li>
       <li>"What changed?" report and change log</li>
       <li>Professional quality report (PDF)</li>
-      <li>Saved processing history, files up to {{ pro_mb }} MB</li>
+      <li><strong>Batch processing:</strong> up to {{ batch_files }} files at once, each cleaned and reported separately, download one by one or as a ZIP</li>
+      <li>Saved processing history (scores and change summaries, not your data)</li>
+      <li>Larger files, up to {{ pro_mb }} MB each</li>
     </ul>
     <button class="btn btn-primary btn-block" data-plan="pro_monthly" type="button">Get Pro Monthly</button>
   </article>
@@ -52,7 +54,7 @@
 </div>
 <p class="hint" id="priceMsg" role="status" style="text-align:center; margin-top:14px;"></p>
 {% if not payments_available %}<p class="hint" style="text-align:center;">Online payments are being set up. Check back soon.</p>{% endif %}
-<p class="hint" style="text-align:center;">Cancel any time from your dashboard. Your files are never stored: Pro keeps only quality figures and change summaries.</p>
+<p class="hint" style="text-align:center;">Cancel any time from your dashboard. Uploaded files are deleted automatically (within {{ ttl_minutes }} minutes; Pro batch results after {{ batch_hours }} hours). Pro history keeps quality figures and change summaries, never your rows.</p>
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/pro-common.js') }}"></script>

@@ -49,8 +49,10 @@ from cleaning.rule_registry import spec_for_fixer
 # duplicates runs last so standardized values are compared, not raw
 # ones, otherwise "Male"/"MALE" or " x " vs "x" would hide real
 # duplicate rows.
+# "column_names" is deliberately NOT a default: renaming headers changes how the user's document
+# reads ("Customer Name" -> "customer_name"). It runs only when the user explicitly selects
+# "Standardize column names" (rules=[..., "column_names"]).
 DEFAULT_RULES = [
-    "column_names",
     "formatting",
     "missing_token_normalization",
     "numeric_text_cleaning",

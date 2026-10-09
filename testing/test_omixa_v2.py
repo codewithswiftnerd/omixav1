@@ -217,7 +217,7 @@ def test_cleaning_summary_counts_match_change_log():
         "Annual Income": ["$1,000", "$2,000"],
         "Satisfaction Score": ["50%", "60%"],
     })
-    cleaned, log = apply_rules(df, rules=DEFAULT_RULES)
+    cleaned, log = apply_rules(df, rules=["column_names"] + DEFAULT_RULES)  # column_names is opt-in
     before = generate_report(df)
     after = generate_report(cleaned)
     summary = build_cleaning_summary(

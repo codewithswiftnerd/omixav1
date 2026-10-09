@@ -7,7 +7,7 @@
 </div>
 <div id="payBanner" class="alert hidden" role="status"></div>
 
-<section class="card" id="planCard">
+<section class="card" id="planCard" data-free-mb="{{ free_mb }}">
   <div class="card-title-row"><h2>Your plan</h2><span class="badge badge-plan-free" id="planBadge">Free</span></div>
   <p id="planText" class="hint"></p>
   <div class="stat-grid" id="usage"></div>
@@ -21,7 +21,7 @@
 </section>
 
 <section class="card" id="historyCard">
-  <div class="card-title-row"><h2>Processing history</h2><a class="btn btn-secondary btn-sm" href="/clean">Clean a file</a></div>
+  <div class="card-title-row"><h2>Processing history</h2><span><a class="btn btn-secondary btn-sm" href="/batch">Batch processing</a> <a class="btn btn-secondary btn-sm" href="/clean">Clean a file</a></span></div>
   <div id="history"></div>
 </section>
 {% endblock %}

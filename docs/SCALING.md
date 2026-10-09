@@ -72,3 +72,7 @@ are unchanged.
 Biggest: worker CPU-hours (grow with jobs x seconds/job), then egress, managed Postgres/Redis
 tiers, Firebase operations at volume. Free-tier users are throttled by per-user job caps and queue
 priority (Pro first).
+
+## Benchmarks
+
+`python benchmarks/bench_cleaning.py` (add `--quick` for 1k/10k rows) times the default rule set on 1k-100k rows, a wide (120-column) and a text-heavy dataset. On the development sandbox the engine ran at roughly 70k cells/second with linear scaling (100k rows x 7 columns in about 9 s). Treat figures as relative, not as guarantees.

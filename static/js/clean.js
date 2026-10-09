@@ -33,7 +33,7 @@ function hasHeader(){
 // recommendation card and its underlying checkbox always agree on
 // what a rule is called.
 const RULE_TITLES = {
-  column_names: 'Clean column names',
+  column_names: 'Standardize column names',
   formatting: 'Fix formatting',
   missing_token_normalization: 'Recognize blank/N-A style values',
   numeric_text_cleaning: 'Clean numeric text',
