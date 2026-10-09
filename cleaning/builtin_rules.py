@@ -283,6 +283,10 @@ _fmt("OMX-CON-016", "boolean_variants", "Yes/no flags in mixed form", "boolean_s
      "Y / yes / TRUE / 1 mean the same thing but are different values.",
      "Convert to true/false, only when every value in the column is a recognised yes/no word.",
      crit=0.3, fixconf=0.9)
+_fmt("OMX-CON-019", "currency_label_variants", "Currency written inconsistently", "currency_label_standardization",
+     "The same currency appears as naira, \u20a6 and NGN (or \u00a3 and GBP), so totals by currency split into groups.",
+     "Bring the labels to ISO codes. Combined values such as NGN/USD are left for you to review.",
+     crit=0.35, fixconf=0.9, max_level=M.MEDIUM)
 _fmt("OMX-CON-018", "inconsistent_casing", "Inconsistent capitalisation", "case_standardization",
      "Names in ALL CAPS next to Title Case, IDs like cust-0011 next to CUST-0012, or labels such as "
      "active / INACTIVE / On hold make the same kind of value look different and break grouping and sorting.",
@@ -315,6 +319,9 @@ _fixer("country_standardization", "OMX-FIX-006", M.NORMALIZATION, 0.92, "Recogni
 _fixer("boolean_standardization", "OMX-FIX-007", M.NORMALIZATION, 0.9, "Yes/no words converted to true/false.")
 _fixer("categorical_standardization", "OMX-FIX-008", M.NORMALIZATION, 0.9,
        "Case/spacing variants merged into the most common spelling.")
+_fixer("currency_label_standardization", "OMX-FIX-015", M.NORMALIZATION, 0.9,
+       "Currency columns that spell the same currency several ways (naira, \u20a6, NGN; \u00a3, GBP) brought to ISO codes. "
+       "Combined or unknown values are left as typed.")
 _fixer("case_standardization", "OMX-FIX-014", M.NORMALIZATION, 0.93,
        "Names, ID prefixes and label columns that mixed lower/UPPER/Title case brought to one style. "
        "Mixed-case values and short acronyms are left as typed.")

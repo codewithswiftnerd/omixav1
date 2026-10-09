@@ -72,6 +72,28 @@ def variant_key(value: str) -> str:
     return key if len(key) >= 2 else " ".join(value.split()).lower()
 
 
+def variant_rank(value: str) -> int:
+    """Which spelling of the same word should represent the group. Lower is better:
+    proper case (Pro) > short acronym (OK, HR) > all lower (pro) > shouting (PROFESSIONAL).
+    Used before "most common" so a lowercase or ALL-CAPS majority can't win."""
+    st = style_of(value)
+    if st == "mixed":
+        return 0
+    if st == "upper" and is_acronym(value):
+        return 1
+    if st == "lower":
+        return 2
+    return 3
+
+
+def canonical_variant(variants, counts) -> str:
+    """Pick the representative of a group of case/spacing/punctuation variants."""
+    # dotted abbreviations lose to the plain one regardless of count (I.T. -> IT); other punctuation
+    # (the hyphen in Walk-in) is only a tie-break.
+    return sorted(variants, key=lambda v: (variant_rank(v), punctuation_count(v) if variant_rank(v) == 1 else 0,
+                                           -counts[v], punctuation_count(v), v))[0]
+
+
 def punctuation_count(value: str) -> int:
     """Tie-break helper: between equally common variants prefer the one with less punctuation."""
     return len(re.findall(r"[^\w\s]", value))
@@ -154,13 +176,22 @@ def plan_category_labels(values: pd.Series) -> dict:
     uniq = [v for v in values.unique() if isinstance(v, str) and _is_label(v)]
     if len(uniq) < 2:
         return {}
+    by_key: dict[str, list[str]] = {}
+    for v in uniq:
+        by_key.setdefault(variant_key(v), []).append(v)
+
+    def has_other_spelling(v):
+        return len(by_key[variant_key(v)]) > 1
+
     styles = {v: style_of(v) for v in uniq}
-    shouting = [v for v in uniq if styles[v] == "upper" and not is_acronym(v)]
+    # "PRO" next to "Pro" is shouting, not an acronym; "HR" with no other spelling is an acronym.
+    shouting = [v for v in uniq if styles[v] == "upper" and (not is_acronym(v) or has_other_spelling(v))]
     lower = [v for v in uniq if styles[v] == "lower"]
     mixed = [v for v in uniq if styles[v] == "mixed"]
-    # mixed styles = at least one fixable value AND something already differently cased
     present = {s for s, group in (("upper", shouting), ("lower", lower), ("mixed", mixed)) if group}
-    if len(present) < 2:
+    # an acronym that also appears in another case ("IT" and "it") makes the column mixed too
+    acronym_variants = [v for v in uniq if styles[v] == "upper" and is_acronym(v) and has_other_spelling(v)]
+    if len(present) < 2 and not acronym_variants:
         return {}
 
     multi = [v for v in mixed if len(v.split()) > 1]
@@ -170,7 +201,15 @@ def plan_category_labels(values: pd.Series) -> dict:
 
     plan = {}
     for v in shouting + lower:
-        new = fmt(v)
+        group = by_key[variant_key(v)]
+        acronym = next((g for g in group if styles[g] == "upper" and is_acronym(g)), None)
+        has_proper = any(styles[g] == "mixed" for g in group)
+        if acronym and not has_proper and v != acronym:
+            new = acronym                  # "it" -> "IT" when only IT / it exist
+        elif is_acronym(v) and not has_proper and styles[v] == "upper":
+            continue
+        else:
+            new = fmt(v)
         if new != v:
             plan[v] = new
     return plan

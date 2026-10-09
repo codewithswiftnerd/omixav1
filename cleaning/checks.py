@@ -222,7 +222,7 @@ def check_inconsistent_categories(ctx: CheckContext) -> list[dict]:
             continue
         affected = 0
         for g in variants:
-            canonical = sorted(g, key=lambda v: (-counts[v], casing.punctuation_count(v), v))[0]
+            canonical = casing.canonical_variant(g, counts)
             affected += int(sum(counts[v] for v in g if v != canonical))
         examples = ", ".join(sorted(variants[0])[:3])
         out.append({

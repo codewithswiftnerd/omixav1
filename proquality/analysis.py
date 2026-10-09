@@ -14,7 +14,7 @@ from typing import Optional
 
 SEV_LABEL = {"critical": "critical", "warning": "warning", "info": "information"}
 STRUCTURAL_ISSUES = {"column_name_formatting", "constant_column", "high_missingness"}
-CATEGORY_ISSUES = {"inconsistent_categories", "inconsistent_casing", "gender_variants", "country_variants", "boolean_variants"}
+CATEGORY_ISSUES = {"inconsistent_categories", "inconsistent_casing", "currency_label_variants", "gender_variants", "country_variants", "boolean_variants"}
 DATE_INVALID_ISSUES = {"impossible_date"}
 
 _CHANGE_TEXT = {
@@ -25,6 +25,7 @@ _CHANGE_TEXT = {
     "gender_standardization": ("Standardised {n} gender values", "cells"),
     "country_standardization": ("Standardised {n} country values", "cells"),
     "boolean_standardization": ("Standardised {n} yes/no values", "cells"),
+    "currency_label_standardization": ("Standardised {n} currency labels", "cells"),
     "case_standardization": ("Fixed capitalisation on {n} values", "cells"),
     "categorical_standardization": ("Standardised {n} inconsistent category values", "cells"),
     "email_cleaning": ("Fixed {n} email formatting problems", "cells"),

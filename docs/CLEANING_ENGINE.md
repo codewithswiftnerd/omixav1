@@ -70,3 +70,15 @@ longer wins by default. It only rewrites values typed in ONE case (all lower or 
 typed for zero (`1O,OOO`-style) and `free` = 0 in amount/price columns. A real word in a numeric column still blocks
 conversion. The report adds `inconsistent_casing` and `negative_amount` (a repeated `-100` is flagged as a likely
 placeholder, never silently changed). `account_status` / `account_type` are no longer treated as identifiers.
+
+### Second round (found by running a messy file end to end)
+- `PRO` next to `Pro` is shouting, not an acronym; between spellings of one word the representative is chosen by
+  form first (Proper > short acronym > lower > SHOUTING) and only then by count, so `ok` can no longer beat `OK`.
+  Dotted abbreviations resolve to the plain one (`I.T.` -> `IT`).
+- Flag columns (`is_verified`, `active`...) with a stray value (`maybe`) still get their recognised yes/no spellings
+  unified to `Yes` / `No`; the stray value is left as typed and reported. Generic columns are never touched.
+- `currency_label_standardization` (OMX-FIX-015): columns named currency/ccy map naira, ₦, NGN -> NGN, £ -> GBP,
+  `$` / dollars -> USD (assumption), € -> EUR. Combined values (`NGN/USD`) are left alone.
+- Worded placeholders (`not known`, `TBD`, `not available`...) count as missing; `Naija` resolves to Nigeria.
+- Mixed `dd/mm/yyyy` and `mm-dd-yyyy` dates are still NOT converted: they are genuinely ambiguous, so the engine
+  reports the column instead of guessing.

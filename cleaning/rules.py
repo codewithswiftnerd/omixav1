@@ -61,6 +61,7 @@ DEFAULT_RULES = [
     "boolean_standardization",
     # case_standardization must run BEFORE categorical_standardization: that rule keeps the most common
     # spelling, which would otherwise preserve a lowercase/UPPERCASE majority ("sales", "LAGOS").
+    "currency_label_standardization",
     "case_standardization",
     "categorical_standardization",
     "email_cleaning",
@@ -423,7 +424,20 @@ def handle_boolean_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.
         true_words = detectors.EXTENDED_TRUE_WORDS if name_is_flag else detectors.TRUE_WORDS
         false_words = detectors.EXTENDED_FALSE_WORDS if name_is_flag else detectors.FALSE_WORDS
 
-        if not unique_vals or not unique_vals.issubset(allowed_words):
+        if not unique_vals:
+            continue
+        if not unique_vals.issubset(allowed_words):
+            # A flag column (is_verified, active...) with one or two stray values ("maybe") still has
+            # ten different spellings of yes/no. Unify the recognised ones to Yes / No text and leave the
+            # stray values exactly as typed (they are reported, not guessed). Never for generically named columns.
+            recognised = lowered.isin(allowed_words)
+            if not name_is_flag or recognised.mean() < 0.9 or recognised.all():
+                continue
+            yes_no = lowered[recognised].map(lambda v: "Yes" if v in true_words else "No")
+            df.loc[yes_no.index, col] = yes_no
+            changed += int(len(yes_no))
+            per_column[col] = {"changed": int(len(yes_no)), "partial": True,
+                               "left_as_is": sorted(unique_vals - allowed_words)[:5]}
             continue
 
         mapped = lowered.map(lambda v: True if v in true_words else False)
@@ -457,6 +471,39 @@ def handle_boolean_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.
         per_column[col] = {"changed": count, "true_words_seen": ["1"], "false_words_seen": ["0"]}
 
     details["boolean_standardization"] = {"per_column": per_column}
+    return df, changed
+
+
+_CURRENCY_LABELS = {
+    "ngn": "NGN", "naira": "NGN", "\u20a6": "NGN", "nigerian naira": "NGN",
+    "gbp": "GBP", "\u00a3": "GBP", "pound": "GBP", "pounds": "GBP", "sterling": "GBP", "pound sterling": "GBP",
+    "usd": "USD", "$": "USD", "dollar": "USD", "dollars": "USD", "us dollar": "USD", "us dollars": "USD",
+    "eur": "EUR", "\u20ac": "EUR", "euro": "EUR", "euros": "EUR",
+}
+_CURRENCY_COLUMN_TOKENS = {"currency", "ccy", "curr"}
+
+
+def handle_currency_label_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.DataFrame, int]:
+    """
+    A column that NAMES the currency ("currency", "currency_label", "ccy") but spells it five ways
+    (naira / \u20a6 / NGN, \u00a3 / GBP) is brought to ISO codes. Only unambiguous names and symbols are mapped
+    ("$" is read as USD); combined values such as "NGN/USD" and anything unknown are left as typed.
+    """
+    changed = 0
+    per_column = {}
+    for col in df.select_dtypes(include=["object", "string"]).columns:
+        if not (set(profiling.name_tokens(str(col))) & _CURRENCY_COLUMN_TOKENS):
+            continue
+        series = df[col]
+        mask = series.map(lambda v: isinstance(v, str) and v.strip().lower() in _CURRENCY_LABELS
+                          and _CURRENCY_LABELS[v.strip().lower()] != v)
+        count = int(mask.sum())
+        if not count:
+            continue
+        df.loc[mask, col] = series[mask].map(lambda v: _CURRENCY_LABELS[v.strip().lower()])
+        changed += count
+        per_column[col] = {"changed": count}
+    details["currency_label_standardization"] = {"per_column": per_column}
     return df, changed
 
 
@@ -523,7 +570,7 @@ def handle_categorical_standardization(df: pd.DataFrame, details: dict) -> tuple
         value_counts = non_null.value_counts()
         remap = {}
         for variants in variant_groups.values():
-            canonical = sorted(variants, key=lambda v: (-value_counts[v], casing.punctuation_count(v), v))[0]
+            canonical = casing.canonical_variant(variants, value_counts)
             for v in variants:
                 if v != canonical:
                     remap[v] = canonical
@@ -810,6 +857,7 @@ RULE_DISPATCH = {
     "gender_standardization": handle_gender_standardization,
     "country_standardization": handle_country_standardization,
     "boolean_standardization": handle_boolean_standardization,
+    "currency_label_standardization": handle_currency_label_standardization,
     "case_standardization": handle_case_standardization,
     "categorical_standardization": handle_categorical_standardization,
     "email_cleaning": handle_email_cleaning,

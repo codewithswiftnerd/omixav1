@@ -165,3 +165,48 @@ def test_repeated_negative_amount_is_reported_as_a_placeholder():
     assert f["affected_count"] == 6 and "placeholder" in f["detail"]
     out, _ = clean(df)
     assert (out["amount_paid"] == -100.0).sum() == 6              # reported, never silently changed
+
+
+# ------------------------------------------------------------------ second round (found by running a messy file end to end)
+def test_shouting_variant_of_a_word_is_not_an_acronym():
+    df = pd.DataFrame({"plan": ["Pro"] * 3 + ["PRO"] * 5 + ["pro"] * 2 + ["Basic"] * 4})
+    out, _ = clean(df)
+    assert set(out["plan"]) == {"Pro", "Basic"}
+
+
+def test_ok_and_OK_resolve_to_the_proper_form_not_the_lowercase_majority():
+    assert casing.canonical_variant(["OK", "ok"], pd.Series({"OK": 5, "ok": 20})) == "OK"
+    assert casing.canonical_variant(["Pro", "PRO", "pro"], pd.Series({"Pro": 1, "PRO": 5, "pro": 9})) == "Pro"
+    assert casing.canonical_variant(["I.T.", "IT"], pd.Series({"I.T.": 9, "IT": 2})) == "IT"
+    assert casing.canonical_variant(["Walk-in", "Walk in"], pd.Series({"Walk-in": 9, "Walk in": 2})) == "Walk-in"
+
+
+def test_acronym_stays_when_only_it_and_its_lowercase_exist():
+    assert casing.plan_category_labels(pd.Series(["IT", "it", "Finance", "Finance"])) == {"it": "IT"}
+
+
+def test_flag_column_with_a_stray_value_still_gets_yes_no_unified():
+    df = pd.DataFrame({"is_verified": ["yes", "Y", "TRUE", "1", "no", "N", "false", "0"] * 4 + ["maybe"]})
+    out, _ = clean(df)
+    assert set(out["is_verified"]) == {"Yes", "No", "maybe"} or set(out["is_verified"]) == {"Yes", "No", "Maybe"}
+
+
+def test_generic_column_with_yes_no_and_junk_is_not_touched():
+    df = pd.DataFrame({"remarks_flag_x": ["yes", "no", "maybe", "n/a-ish"] * 3, "answer": ["yes", "no", "perhaps"] * 4})
+    out, _ = clean(df, rules=["boolean_standardization"])
+    assert out["answer"].tolist() == df["answer"].tolist()
+
+
+def test_currency_labels_are_brought_to_iso_codes():
+    df = pd.DataFrame({"currency_label": ["NGN", "naira", "₦", "USD", "$", "GBP", "£", "NGN/USD", "mystery"]})
+    out, _ = clean(df, rules=["currency_label_standardization"])
+    assert out["currency_label"].tolist() == ["NGN", "NGN", "NGN", "USD", "USD", "GBP", "GBP", "NGN/USD", "mystery"]
+    other = pd.DataFrame({"plan": ["naira", "$", "£"]})
+    assert clean(other, rules=["currency_label_standardization"])[0]["plan"].tolist() == ["naira", "$", "£"]
+
+
+def test_worded_placeholders_count_as_missing_and_naija_is_nigeria():
+    df = pd.DataFrame({"signup_date": ["2024-01-02", "not known", "TBD", "Not Available"]})
+    out, _ = clean(df, rules=["missing_token_normalization"])
+    assert out["signup_date"].isna().tolist() == [False, True, True, True]
+    assert detectors.standardize_country_value("Naija") == "Nigeria"

@@ -51,6 +51,9 @@ MISSING_TOKENS = {
     "-", "--", "?", "#n/a", "nil", "unknown",
     # punctuation-only placeholders: "???", "—" (em dash), "–" (en dash), "---"
     "??", "???", "????", "---", "\u2014", "\u2013",
+    # worded placeholders
+    "not known", "not available", "not applicable", "not specified", "not provided", "unspecified",
+    "no data", "missing", "tbd", "n.k.", "none given",
 }
 
 # Restricted to unambiguous words on purpose. "1"/"0" are excluded

@@ -217,6 +217,7 @@ COUNTRY_ALIASES: dict[str, str] = {
     "CONGO-BRAZZAVILLE": "CG", "REPUBLIC OF CONGO": "CG",
     "COTE D'IVOIRE": "CI", "COTE D IVOIRE": "CI",
     "BURMA": "MM",
+    "NAIJA": "NG",
     "HOLLAND": "NL",
     "SOUTH KOREA": "KR", "KOREA, SOUTH": "KR", "REPUBLIC OF KOREA": "KR",
     "NORTH KOREA": "KP", "KOREA, NORTH": "KP", "DPRK": "KP",

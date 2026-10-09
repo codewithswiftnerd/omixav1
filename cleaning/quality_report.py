@@ -50,6 +50,7 @@ _FORMAT_PROBES = [
     ("gender_standardization", "gender_variants", "gender value(s) in non-canonical spelling"),
     ("country_standardization", "country_variants", "country value(s) in non-canonical spelling"),
     ("boolean_standardization", "boolean_variants", "yes/no value(s) in mixed form"),
+    ("currency_label_standardization", "currency_label_variants", "currency label(s) written inconsistently (naira / \u20a6 / NGN)"),
     ("case_standardization", "inconsistent_casing", "value(s) with inconsistent capitalisation (names, IDs or labels)"),
 ]
 
