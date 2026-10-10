@@ -261,6 +261,48 @@ def check_mixed_types(ctx: CheckContext) -> list[dict]:
     return out
 
 
+# Codes the older, narrower detectors (invalid_email_format, impossible_date, ambiguous_date_format) already
+# report, left out here so one bad value is never penalised twice.
+_COVERED_ELSEWHERE = {"invalid_email_syntax", "impossible_date", "ambiguous_day_month",
+                      # phone formats: covered by suspicious_phone_format
+                      "unexpected_characters", "invalid_length", "invalid_length_ng", "invalid_ng_number",
+                      "invalid_for_country", "needs_country"}
+
+
+def _validation_findings(ctx: CheckContext, category: str, issue: str, what: str) -> list[dict]:
+    from cleaning import validation
+    out = []
+    for col in ctx.df.columns:
+        res = validation.classify_column(str(col), ctx.df[col], None)
+        hits, samples = 0, []
+        for v, k in res["counts"].items():
+            cat, code, _ = res["by_value"][v]
+            if cat == category and code not in _COVERED_ELSEWHERE:
+                hits += k
+                if v is not None and len(samples) < 5:
+                    samples.append(str(v))
+        pop = sum(k for v, k in res["counts"].items() if v is not None)
+        if hits and pop:
+            info = res["type_info"]
+            out.append({
+                "column": col, "issue": issue, "affected": int(hits), "population": int(pop),
+                "detail": f"{hits} value(s) {what} (column read as {info['type']}, {info['status'].replace('_', ' ')}).",
+                "suggestion": "Not auto-fixed. Inspect the affected rows in the validation report, then correct, "
+                              "replace, keep or remove each value yourself.",
+                "sample_values": samples,
+            })
+    return out
+
+
+def check_invalid_values(ctx: CheckContext) -> list[dict]:
+    return _validation_findings(ctx, "invalid", "invalid_values", "break this column's data type or rules")
+
+
+def check_unresolved_values(ctx: CheckContext) -> list[dict]:
+    return _validation_findings(ctx, "unresolved", "unresolved_values",
+                                "cannot be interpreted safely (e.g. 'free' in an amount, or a placeholder in notes)")
+
+
 # ------------------------------------------------------------------ validity
 def check_outliers(ctx: CheckContext) -> list[dict]:
     out = []

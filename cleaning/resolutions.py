@@ -63,8 +63,16 @@ RESOLUTION_OPTIONS: dict[str, list[dict]] = {
          "description": "Remove the column since every value is the same."},
     ],
     "mixed_data_types": [
-        {"id": "coerce_numeric", "label": "Convert to numbers",
-         "description": "Convert the column to numeric, blanking out any value that isn't a number."},
+        {"id": "words_to_numbers", "label": "Read spoken numbers (forty → 40)",
+         "description": "Converts only values written purely as number words, e.g. \"forty\" or \"ten thousand naira\". "
+                        "Every other value is left exactly as it is. This is an interpretation you are choosing, "
+                        "not something Omixa assumes."},
+        {"id": "free_as_zero", "label": "Treat \"free\" as 0",
+         "description": "Replaces the words free / gratis / complimentary / no charge with 0 in this column. "
+                        "Only choose this if that is what the word means in your data. Other values are untouched."},
+        {"id": "coerce_numeric", "label": "Convert to numbers and blank the rest",
+         "description": "Convert the column to numeric, blanking out any value that isn't a number. "
+                        "Destructive: the blanked originals stay in the change log but not in the cleaned file."},
     ],
     "invalid_email_format": [
         {"id": "blank_invalid", "label": "Blank invalid values",
@@ -199,10 +207,34 @@ def _resolve_constant_column(df: pd.DataFrame, column: str, choice: str) -> tupl
     return df, 0
 
 
-def _resolve_mixed_types(df: pd.DataFrame, column: str, choice: str) -> tuple[pd.DataFrame, int]:
+def _convert_text_numbers(df: pd.DataFrame, column: str, choice: str) -> tuple[pd.DataFrame, int]:
+    """Targeted, explicit conversions: only the matching values change; everything else stays as typed."""
     from cleaning import detectors
 
     original = df[column].astype("string")
+    pick = detectors.is_zero_word if choice == "free_as_zero" else (lambda v: detectors.spoken_number(v) is not None)
+    mask = original.map(lambda v: isinstance(v, str) and bool(pick(v))).fillna(False).astype(bool)
+    count = int(mask.sum())
+    if count:
+        new = original[mask].map(lambda v: "0" if choice == "free_as_zero" else str(detectors.spoken_number(v)))
+        col = df[column].astype(object)
+        col.loc[mask] = new
+        df[column] = col
+    return df, count
+
+
+def _resolve_mixed_types(df: pd.DataFrame, column: str, choice: str) -> tuple[pd.DataFrame, int]:
+    from cleaning import detectors
+
+    if choice in ("words_to_numbers", "free_as_zero"):
+        return _convert_text_numbers(df, column, choice)
+
+    original = df[column].astype("string")
+    non_null = original.dropna()
+    if len(non_null) and detectors.is_identifier_column(str(column), non_null):
+        # "007" -> 7.0 would destroy a valid identifier, whatever the user clicked.
+        raise ResolutionRefused("this column looks like identifiers (codes/leading zeros), converting to numbers "
+                                "would destroy them; nothing was changed")
     cleaned = original.map(lambda v: detectors.strip_numeric_noise(v) if isinstance(v, str) else v)
     parsed = cleaned.map(lambda v: detectors.try_parse_float(v) if isinstance(v, str) else None)
 
@@ -382,10 +414,11 @@ def apply_resolutions(
 
         entry = {"column": column, "issue": issue, "choice": choice, "changed": count}
         if audit is not None:
-            from cleaning.builtin_rules import RESOLUTION_OPERATIONS
+            from cleaning.builtin_rules import RESOLUTION_CHOICE_OPERATIONS, RESOLUTION_OPERATIONS
             from cleaning.rule_registry import get_spec
             spec = get_spec(issue)
-            op, reason = RESOLUTION_OPERATIONS.get(issue, (M.CORRECTION, "User-selected resolution."))
+            op, reason = RESOLUTION_CHOICE_OPERATIONS.get(
+                (issue, choice), RESOLUTION_OPERATIONS.get(issue, (M.CORRECTION, "User-selected resolution.")))
             new = audit.record_step(
                 f"resolution:{issue}:{choice}", before, df,
                 rule_id=spec.id if spec else None, operation=op,

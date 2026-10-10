@@ -158,10 +158,9 @@ def test_phone_with_extension_left_untouched():
 def test_unknown_token_normalized_to_missing_then_consistently_refilled():
     df = pd.DataFrame({"notes": ["Unknown", "unknown", "a real note"]})
     cleaned, log = apply_rules(df, rules=["missing_token_normalization", "missing_values"])
-    # round-trips back to the same literal placeholder -- consistent representation,
-    # not a mix of "Unknown"/"N/A"/"null"
+    # "unknown" in a notes column may be a real answer: preserved exactly as written, never blanked
     assert cleaned["notes"].iloc[0] == "Unknown"
-    assert cleaned["notes"].iloc[1] == "Unknown"
+    assert cleaned["notes"].iloc[1] == "unknown"
     assert cleaned["notes"].iloc[2] == "a real note"  # legitimate text never touched
 
 

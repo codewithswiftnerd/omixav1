@@ -10,6 +10,7 @@ import json
 import jobs.service as job_service
 from processing.pipeline import DatasetTooLargeError, read_source
 from cleaning.quality_report import generate_report
+from cleaning import validation
 from cleaning.recommendations import generate_recommendations
 from cleaning.engine import FeatureNotAvailable
 from cleaning.engine.recommend import recommend_dataset
@@ -71,6 +72,7 @@ def get_report(job_id):
     return jsonify({
         "job_id": job_id,
         "report": report,
+        "validation": validation.validate_dataframe(df),
         "recommendations": generate_recommendations(report),
         "engine_recommendations": _gate_engine_recs(recommend_dataset(df)),
     }), 200
@@ -101,6 +103,7 @@ def _queued_report(job_id, has_header):
             cached = json.loads(job["report_json"])
             if cached.get("has_header") == has_header:
                 return jsonify({"job_id": job_id, "report": cached["report"],
+                                "validation": cached.get("validation"),
                                 "recommendations": cached["recommendations"],
                                 "engine_recommendations": _gate_engine_recs(cached.get("engine_recommendations"))}), 200
         except ValueError:

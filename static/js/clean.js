@@ -158,11 +158,13 @@ async function setFile(f){
       if(repJson.message) setStage(repJson.message, 'active');
       const wantHeader = hasHeader();
       const done = await pollJob(lastJobId, j => j.status === 'uploaded' && j.analysis && j.analysis.has_header === wantHeader);
-      repJson = { report: done.analysis.report, recommendations: done.analysis.recommendations };
+      repJson = { report: done.analysis.report, recommendations: done.analysis.recommendations, validation: done.analysis.validation };
     }
 
     renderReport(repJson.report);
     renderRecommendations(repJson.recommendations);
+    validationConfig = { column_types: {} };
+    renderValidation(repJson.validation);
     setStage('');
     setPhase('review');
     runBtn.disabled = false;
@@ -319,15 +321,87 @@ function renderRecommendations(recommendations){
     });
 }
 
-// Reads every resolve-select the user touched (left on the "skip"
-// default is the same as not sending it at all, so those are
-// filtered out, the backend's default behavior is already "leave
-// as is" for anything it doesn't receive).
+// "Leave as is" is an explicit instruction, NOT the absence of one. Every dropdown starts on "Leave as is",
+// so a column is only locked when the user actually touched that dropdown (and left or put it on "Leave as
+// is"). Those columns go to the server as `leave_as_is`; the server then refuses to let any automatic rule
+// change a single value in them. (Previously these were silently dropped and the defaults still ran.)
+document.addEventListener('change', e => {
+  if(e.target && e.target.classList && e.target.classList.contains('resolve-select')) e.target.dataset.touched = '1';
+});
+
+// Reads every resolve-select where the user picked an actual action.
 function selectedResolutions(){
   return Array.from(document.querySelectorAll('.resolve-select'))
     .filter(sel => sel.value !== 'skip')
     .map(sel => ({ column: sel.dataset.column, issue: sel.dataset.issue, choice: sel.value }));
 }
+
+function selectedLeaveAsIs(){
+  const cols = new Set();
+  document.querySelectorAll('.resolve-select').forEach(sel => {
+    if(sel.dataset.touched === '1' && sel.value === 'skip' && sel.dataset.column) cols.add(sel.dataset.column);
+  });
+  return Array.from(cols);
+}
+
+// ---- Column validation report (read-only; backed by /api/validate) ----
+let validationConfig = { column_types: {} };
+const VAL_TYPES = ['numeric','integer','currency','date','email','phone','categorical','identifier','text'];
+const VAL_CATS = ['valid','invalid','suspicious','missing','unresolved'];
+
+function renderValidation(v){
+  const group = $('validationGroup'), table = $('validationTable');
+  if(!group || !table) return;
+  $('validationRows').innerHTML = '';
+  if(!v || !v.columns || !v.columns.length){ group.classList.add('hidden'); return; }
+  group.classList.remove('hidden');
+  const rows = v.columns.map(c => {
+    const detected = c.type_status === 'confirmed' ? 'confirmed' : (c.type_status === 'needs_confirmation' ? 'unsure' : 'detected');
+    const sel = `<select class="val-type" data-col="${escHtml(c.column)}">` +
+      `<option value="">${escHtml(c.effective_type)} (${detected}${c.type_status === 'confirmed' ? '' : ', ' + Math.round(c.type_confidence*100) + '%'})</option>` +
+      VAL_TYPES.map(t => `<option value="${t}"${c.confirmed_type === t ? ' selected' : ''}>${t}</option>`).join('') + `</select>`;
+    const cell = cat => c.counts[cat]
+      ? `<button type="button" class="val-count" data-col="${escHtml(c.column)}" data-cat="${cat}">${c.counts[cat]}</button>` : '0';
+    const flag = c.fully_valid ? '' : ' ⚠';
+    const acts = (c.suggested_actions || []).map(a => escHtml(a.text)).join('<br>');
+    return `<tr><td><strong>${escHtml(c.column)}</strong>${flag}</td><td>${sel}</td><td>${c.total}</td>` +
+      VAL_CATS.map(k => `<td>${cell(k)}</td>`).join('') + `<td style="font-size:.75rem;">${acts}</td></tr>`;
+  }).join('');
+  table.innerHTML = `<table><thead><tr><th>Column</th><th>Type</th><th>Rows</th><th>Valid</th>` +
+    `<th>Invalid</th><th>Suspicious</th><th>Missing</th><th>Unresolved</th><th>Suggested</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function revalidate(){
+  const res = await fetch(base() + '/api/validate/' + lastJobId, { method:'POST', credentials:'include',
+    headers: apiHeaders({'Content-Type':'application/json'}),
+    body: JSON.stringify({ column_types: validationConfig.column_types, has_header: hasHeader() }) });
+  const json = await res.json();
+  if(res.ok) renderValidation(json.validation);
+}
+
+async function showValidationRows(column, category){
+  const box = $('validationRows');
+  const res = await fetch(base() + '/api/validate/' + lastJobId + '/rows', { method:'POST', credentials:'include',
+    headers: apiHeaders({'Content-Type':'application/json'}),
+    body: JSON.stringify({ column, category, column_types: validationConfig.column_types, has_header: hasHeader(), limit: 100 }) });
+  const json = await res.json();
+  if(!res.ok){ box.innerHTML = `<p class="hint">${escHtml(json.error || 'Could not load rows')}</p>`; return; }
+  const body = json.rows.map(r => `<tr><td>${r.sheet_row}</td><td>${r.value === null ? '<em>(empty)</em>' : escHtml(String(r.value))}</td><td>${escHtml(r.reason)}</td></tr>`).join('');
+  box.innerHTML = `<p class="hint"><strong>${escHtml(column)}</strong> · ${escHtml(category)} · ${json.total} row(s)` +
+    `${json.total > json.rows.length ? ' (first ' + json.rows.length + ' shown)' : ''}. Original values, unchanged.</p>` +
+    `<table><thead><tr><th>Row</th><th>Original value</th><th>Why</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('.val-count');
+  if(b) showValidationRows(b.dataset.col, b.dataset.cat);
+});
+document.addEventListener('change', e => {
+  if(!e.target.classList || !e.target.classList.contains('val-type')) return;
+  if(e.target.value) validationConfig.column_types[e.target.dataset.col] = e.target.value;
+  else delete validationConfig.column_types[e.target.dataset.col];
+  revalidate();
+});
 
 function setStage(text, cls){
   stage.textContent = text;
@@ -353,7 +427,7 @@ runBtn.addEventListener('click', async () => {
       method:'POST',
       credentials:'include',
       headers: apiHeaders({'Content-Type':'application/json'}),
-      body: JSON.stringify({ rules, resolutions: selectedResolutions(), has_header: hasHeader(), profile_id: (window.OmixaPro && OmixaPro.profileId()) || undefined })
+      body: JSON.stringify({ rules, resolutions: selectedResolutions(), leave_as_is: selectedLeaveAsIs(), has_header: hasHeader(), profile_id: (window.OmixaPro && OmixaPro.profileId()) || undefined })
     });
     let procJson = await procRes.json();
     if(!procRes.ok) throw upgradeAwareError(procRes, procJson, 'processing failed');

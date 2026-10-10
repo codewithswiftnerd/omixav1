@@ -212,7 +212,7 @@ def _clean_body(job_id: str, spec: dict):
     return run_pipeline(job_id, rules=spec.get("rules"), resolutions=spec.get("resolutions"),
                         has_header=spec.get("has_header", True), pro=bool(spec.get("pro")),
                         profile=spec.get("profile"), cleaning_profile=spec.get("cleaning_profile"),
-                        max_cells=int(spec.get("max_cells") or 0))
+                        max_cells=int(spec.get("max_cells") or 0), leave_as_is=spec.get("leave_as_is"))
 
 
 def _analyze_body(job_id: str, spec: dict):
@@ -229,8 +229,9 @@ def _analyze_body(job_id: str, spec: dict):
     report = generate_report(df, project=True)
     # computed for everyone (it is sampled and cheap) so the cached analysis is plan-independent;
     # the API decides who may SEE it (Pro), see routes/report.py
+    from cleaning.validation import validate_dataframe
     return {"has_header": has_header, "report": report, "recommendations": generate_recommendations(report),
-            "engine_recommendations": recommend_dataset(df)}
+            "engine_recommendations": recommend_dataset(df), "validation": validate_dataframe(df)}
 
 
 def _content_type(ext: str) -> str:

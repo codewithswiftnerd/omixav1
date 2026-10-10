@@ -460,3 +460,7 @@ fieldset.rules { border: none; padding: 0; margin: 0 0 20px; }
   .qc-fab { right: 16px; bottom: 16px; }
   .qc-panel { right: 16px; left: 16px; width: auto; bottom: 84px; }
 }
+
+/* Column validation report */
+.val-count { background: none; border: 0; padding: 0 2px; font: inherit; color: var(--text-primary); text-decoration: underline; cursor: pointer; }
+.val-type { max-width: 190px; font-size: 0.8rem; }

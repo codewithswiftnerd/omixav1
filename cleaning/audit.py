@@ -31,6 +31,9 @@ EXAMPLE_MAX_CHARS = 80
 # Upper bound on retained original values per run. Beyond this the audit counts stay
 # exact but the ledger stops growing and the run is reported as only partly reversible.
 LEDGER_MAX_CELLS = 200_000
+# Public per-cell change records returned to the client (the totals are always exact).
+CELL_LOG_MAX = 5_000
+REMOVED_ROWS_LOG_MAX = 1_000
 
 
 def _scalar(v: Any) -> Any:
@@ -109,6 +112,15 @@ class AuditLog:
     ledger_cells: int = 0
     ledger_truncated: bool = False
     _counter: int = 0
+    # Public, per-cell and per-row change records (original AND new value). Capped so a huge run cannot
+    # exhaust memory; the totals below stay exact even when the lists are truncated.
+    cell_log: list = field(default_factory=list)
+    removed_rows_log: list = field(default_factory=list)
+    cell_changes_total: int = 0
+    removed_rows_total: int = 0
+    # Exact, per original column: how many cells BECAME missing / STOPPED being missing, and which rule did it.
+    # A rise in a column's missing count after cleaning is explained here, never silent.
+    missing_flow: dict = field(default_factory=dict)
 
     def _next_id(self) -> str:
         self._counter += 1
@@ -191,6 +203,11 @@ class AuditLog:
             ex = []
             for i in list(removed_idx)[:EXAMPLES_PER_ENTRY]:
                 ex.append({"row": _idx(i), "before": {str(c): _short(rows.at[i, c]) for c in list(rows.columns)[:4]}, "after": "row removed"})
+            self.removed_rows_total += int(len(removed_idx))
+            for i in list(removed_idx)[:max(0, REMOVED_ROWS_LOG_MAX - len(self.removed_rows_log))]:
+                self.removed_rows_log.append({
+                    "row": _idx(i), "rule": step_name, "rule_id": rule_id, "reason": reason, "approval": approval,
+                    "values": {str(label(c)): _scalar(rows.at[i, c]) for c in rows.columns}})
             new_entries.append(self._entry(
                 step_name, rule_id, operation=M.DELETION, column=None, reason=reason, issue=issue,
                 confidence=confidence, approval=approval,
@@ -214,12 +231,29 @@ class AuditLog:
                 else:
                     self.ledger_truncated = True
                 ex = [{"row": _idx(i), "before": _short(b.at[i]), "after": _short(a.at[i])} for i in idxs[:EXAMPLES_PER_ENTRY]]
-                new_entries.append(self._entry(
+                entry = self._entry(
                     step_name, rule_id, operation=operation, column=label(c), reason=reason, issue=issue,
                     confidence=confidence, approval=approval,
                     reversibility=reversibility if c in step["cells"] else M.PARTIALLY_REVERSIBLE,
                     cells_changed=n, rows_affected=n, examples=ex,
-                ))
+                )
+                new_entries.append(entry)
+                to_missing = int((a[mask].isna() & b[mask].notna()).sum())
+                from_missing = int((a[mask].notna() & b[mask].isna()).sum())
+                if to_missing or from_missing:
+                    flow = self.missing_flow.setdefault(label(c), {"converted_to_missing": 0, "filled_from_missing": 0, "by_rule": {}})
+                    flow["converted_to_missing"] += to_missing
+                    flow["filled_from_missing"] += from_missing
+                    r = flow["by_rule"].setdefault(step_name, {"to_missing": 0, "from_missing": 0, "reason": reason})
+                    r["to_missing"] += to_missing
+                    r["from_missing"] += from_missing
+                self.cell_changes_total += n
+                room = max(0, CELL_LOG_MAX - len(self.cell_log))
+                for i in idxs[:room]:
+                    self.cell_log.append({
+                        "row": _idx(i), "column": label(c), "original": _scalar(b.at[i]), "new": _scalar(a.at[i]),
+                        "rule": step_name, "rule_id": rule_id, "operation": operation, "reason": reason,
+                        "approval": approval, "change_id": entry["id"]})
 
         if new_entries:
             self.steps.append(step)
@@ -249,6 +283,15 @@ class AuditLog:
     # ---------------------------------------------------------------- reporting
     def public_entries(self) -> list[dict]:
         return list(self.entries)
+
+    def change_log(self) -> dict:
+        """Every recorded change as {row, column, original, new, rule, reason, approval}. Capped lists,
+        exact totals: `truncated` says whether the lists hold fewer rows than actually changed."""
+        return {
+            "cell_changes": list(self.cell_log), "cell_changes_total": self.cell_changes_total,
+            "removed_rows": list(self.removed_rows_log), "removed_rows_total": self.removed_rows_total,
+            "truncated": self.cell_changes_total > len(self.cell_log) or self.removed_rows_total > len(self.removed_rows_log),
+        }
 
     def summary(self) -> dict:
         by_op: dict[str, int] = {}

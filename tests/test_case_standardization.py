@@ -115,10 +115,14 @@ def test_variants_that_differ_by_hyphen_space_or_dot_are_merged():
 
 
 # ------------------------------------------------------------------ numbers stored as text
-def test_age_with_units_and_number_words_becomes_numeric():
+def test_age_with_units_becomes_numeric_but_number_words_are_never_guessed():
+    # unit suffixes are formatting; "twenty" is language and is only converted by an explicit user choice
+    df = pd.DataFrame({"age": ["44 yrs", "26", "39 years", "51"]})
+    out, _ = clean(df)
+    assert out["age"].tolist() == [44, 26, 39, 51]
     df = pd.DataFrame({"age": ["44 yrs", "26", "twenty", "39 years", "51"]})
     out, _ = clean(df)
-    assert out["age"].tolist() == [44, 26, 20, 39, 51]
+    assert out["age"].tolist() == ["44 yrs", "26", "twenty", "39 years", "51"]  # untouched, not invented
 
 
 def test_letter_o_typed_for_zero_in_a_number():
@@ -128,19 +132,22 @@ def test_letter_o_typed_for_zero_in_a_number():
     assert detectors.parse_number_words("hello") is None
 
 
-def test_free_means_zero_only_in_money_columns():
+def test_free_is_never_assumed_to_be_zero_by_default():
     df = pd.DataFrame({"amount_paid": ["free", "$1,200.50", "₦5,000", "free"]})
     out, _ = clean(df)
-    assert out["amount_paid"].tolist() == [0.0, 1200.5, 5000.0, 0.0]
+    assert out["amount_paid"].tolist() == ["free", "$1,200.50", "₦5,000", "free"]
     other = pd.DataFrame({"plan": ["free", "pro", "free", "pro"]})
     out2, _ = clean(other)
     assert out2["plan"].tolist() == ["free", "pro", "free", "pro"]
 
 
-def test_placeholder_dashes_and_question_marks_count_as_missing():
+def test_ambiguous_placeholders_are_kept_in_notes_but_blanked_in_numeric_columns():
     df = pd.DataFrame({"note": ["???", "—", "real", "text"]})
     out, _ = clean(df, rules=["missing_token_normalization"])
-    assert out["note"].isna().tolist() == [True, True, False, False]
+    assert out["note"].tolist() == ["???", "—", "real", "text"]          # may carry meaning: preserved
+    df = pd.DataFrame({"qty": ["5", "—", "7", "??", "9"]})
+    out, _ = clean(df, rules=["missing_token_normalization"])
+    assert out["qty"].isna().tolist() == [False, True, False, True, False]
 
 
 def test_a_real_word_in_a_numeric_column_still_blocks_conversion():

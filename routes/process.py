@@ -80,6 +80,11 @@ def process_file(job_id):
     rules = body.get("rules")
     resolutions = body.get("resolutions")
     has_header = body.get("has_header", True)
+    leave_as_is = body.get("leave_as_is")
+    if leave_as_is is not None and not (
+        isinstance(leave_as_is, list) and len(leave_as_is) <= 1000 and all(isinstance(c, str) for c in leave_as_is)
+    ):
+        return jsonify({"error": "'leave_as_is' must be a list of column name strings"}), 400
 
     if not isinstance(has_header, bool):
         return jsonify({"error": "'has_header' must be true or false"}), 400
@@ -135,12 +140,13 @@ def process_file(job_id):
         remember_entitlement(uid, is_pro)
 
     if queue_mode:
-        return _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, cleaning_profile)
+        return _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, cleaning_profile, leave_as_is)
 
     started = time.monotonic()
     try:
         summary = run_pipeline(job_id, rules=rules, resolutions=resolutions, has_header=has_header,
-                               pro=is_pro, profile=profile, cleaning_profile=cleaning_profile)
+                               pro=is_pro, profile=profile, cleaning_profile=cleaning_profile,
+                               leave_as_is=leave_as_is)
     except (RuleConfigError, FeatureNotAvailable) as exc:
         # e.g. the profile names a column that is not in the file; nothing was changed or exported
         payload = exc.to_response() if isinstance(exc, FeatureNotAvailable) else exc.to_dict()
@@ -196,7 +202,7 @@ def process_file(job_id):
     }), 200
 
 
-def _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, cleaning_profile=None):
+def _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, cleaning_profile=None, leave_as_is=None):
     """Queue mode: the API only validates, applies admission control and creates the job. A
     dedicated worker (worker.py) does the cleaning. Everything the worker needs (including the
     server-decided is_pro flag and the Quality Profile) is frozen into the job record here, so
@@ -214,7 +220,8 @@ def _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, clean
         return jsonify({"error": "Omixa is temporarily unavailable. Please try again shortly."}), 503
 
     spec = {"kind": "clean", "rules": rules, "resolutions": resolutions, "has_header": has_header,
-            "pro": is_pro, "uid": uid, "profile": profile, "cleaning_profile": cleaning_profile}
+            "pro": is_pro, "uid": uid, "profile": profile, "cleaning_profile": cleaning_profile,
+            "leave_as_is": leave_as_is}
     try:
         queued = job_service.submit(job_id, spec, is_pro, get_request_id())
     except Exception:

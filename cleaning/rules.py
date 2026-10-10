@@ -273,30 +273,58 @@ def handle_column_names(df: pd.DataFrame, details: dict) -> tuple[pd.DataFrame, 
     return df, len(renamed)
 
 
+# Column types in which a leftover word like "unknown" or "--" cannot be a legitimate value, so a weak
+# placeholder there is safe to treat as an empty cell. Anywhere else (free text, notes, categories,
+# names, identifiers) a weak placeholder may carry meaning and is preserved.
+_BLANKABLE_TYPES = {profiling.NUMERIC_MEASUREMENT, profiling.CURRENCY, profiling.DATE, profiling.DATETIME,
+                    profiling.EMAIL, profiling.PHONE}
+
+
 def handle_missing_token_normalization(df: pd.DataFrame, details: dict) -> tuple[pd.DataFrame, int]:
     """
-    Recognizes common stand-ins for "no value", blank strings,
-    "N/A", "null", "None", "-", "?", etc., and converts them to a
-    real missing value (NaN), so the 'Fill gaps' rule and the
-    quality report both see them as missing instead of as a
-    legitimate text category. Deliberately excludes ambiguous words
-    like "unknown" or "missing", since those can be genuine survey/
-    category answers rather than placeholders, those are left as-is.
+    Converts recognised stand-ins for "no value" into a real missing value (NaN), so the 'Fill gaps'
+    rule and the quality report see them as missing instead of as a text category.
+
+      * STRONG markers (blank, "N/A", "null", "None", "#N/A", ...) are converted in every text column.
+      * WEAK markers ("unknown", "NIL", "??", "-", an em dash, "TBD", ...) may be a real note or answer,
+        so they are converted ONLY in columns that are clearly numeric, currency, date, e-mail or phone
+        data. In text, notes, category, name and identifier columns they are left exactly as written
+        (and surfaced for review by the validation report), never silently deleted.
+
+    Every conversion is counted separately from cells that were already empty
+    (details["missing_token_normalization"]), and the per-cell original value is kept by the audit ledger.
     """
     changed = 0
     per_column = {}
+    kept_weak: dict = {}
     text_columns = df.select_dtypes(include=["object", "string"]).columns
 
     for col in text_columns:
         series = df[col]
-        is_token = series.apply(lambda v: isinstance(v, str) and detectors.is_missing_token(v))
+        strong = series.apply(lambda v: isinstance(v, str) and detectors.is_strong_missing_token(v))
+        weak = series.apply(lambda v: isinstance(v, str) and detectors.is_weak_missing_token(v))
+        if weak.any():
+            try:
+                ptype = profiling.profile_column(str(col), series, len(series))
+                blankable = ptype.semantic_type in _BLANKABLE_TYPES and ptype.confidence >= 0.6
+            except Exception:
+                blankable = False
+            if not blankable:
+                kept_weak[col] = {"count": int(weak.sum()),
+                                  "values": sorted({str(v).strip() for v in series[weak].unique()})[:10]}
+                weak = weak & False
+        is_token = strong | weak
         count = int(is_token.sum())
         if count:
             df.loc[is_token, col] = pd.NA
             changed += count
-            per_column[col] = count
+            per_column[col] = {"converted": count, "strong": int(strong.sum()), "weak": int(weak.sum())}
 
-    details["missing_token_normalization"] = {"per_column": per_column}
+    details["missing_token_normalization"] = {
+        "per_column": {c: v["converted"] for c, v in per_column.items()},
+        "breakdown": per_column,
+        "weak_markers_preserved": kept_weak,
+    }
     return df, changed
 
 
@@ -315,6 +343,7 @@ def handle_numeric_text_cleaning(df: pd.DataFrame, details: dict) -> tuple[pd.Da
     """
     changed = 0
     per_column = {}
+    unconverted: dict = {}
     text_columns = df.select_dtypes(include=["object", "string"]).columns
 
     for col in text_columns:
@@ -329,14 +358,24 @@ def handle_numeric_text_cleaning(df: pd.DataFrame, details: dict) -> tuple[pd.Da
         if detectors.is_identifier_column(str(col), non_null):
             continue
 
+        # FORMATTING only: symbols, thousands separators, %, parentheses. Words are never read as numbers
+        # here ("free" is not 0, "forty" is not 40): that is an interpretation the user must choose, via
+        # the explicit resolutions in cleaning/resolutions.py (words_to_numbers / free_as_zero).
         cleaned_strs = non_null.map(detectors.strip_numeric_noise)
-        # "free" in an amount/price column means 0 (only there; elsewhere it is just a word)
-        if set(profiling.name_tokens(str(col))) & detectors.MONEY_NAME_TOKENS:
-            is_free = non_null.str.strip().str.lower().isin(detectors.ZERO_WORDS)
-            cleaned_strs = cleaned_strs.where(~is_free, "0")
+        # Placeholder markers ("N/A", "unknown") are missing values, not text: they do not block a column
+        # from being a number column, and they stay as they are (they are blanked, or not, by the
+        # missing-token rule, never turned into a number).
+        marker = non_null.map(detectors.is_missing_token)
         parsed = cleaned_strs.map(detectors.try_parse_float)
-        if parsed.isna().any():
-            continue  # not every value converts cleanly -> leave column alone
+        if parsed[~marker].isna().any():
+            if len(non_null[~marker]):
+                # not every real value converts cleanly -> leave the column exactly as uploaded and
+                # record WHY, so the summary can show it instead of silently doing nothing
+                bad = non_null[~marker][parsed[~marker].isna()]
+                unconverted[col] = {"count": int(len(bad)), "examples": [str(v) for v in bad.unique()[:5]]}
+                continue
+        if marker.any():
+            continue  # markers still in the column: leave the dtype alone until they are resolved
 
         # If nothing needed noise stripped, the *values* are already
         # bare numbers, but the *column* may still be stuck in a
@@ -389,7 +428,7 @@ def handle_numeric_text_cleaning(df: pd.DataFrame, details: dict) -> tuple[pd.Da
             # still reported so the summary reflects the dtype fix.
             per_column[col] = {"changed": 0, "type": "dtype_conversion"}
 
-    details["numeric_text_cleaning"] = {"per_column": per_column}
+    details["numeric_text_cleaning"] = {"per_column": per_column, "left_unconverted": unconverted}
     return df, changed
 
 
@@ -866,6 +905,10 @@ RULE_DISPATCH = {
 }
 
 
+# Rules a "Leave as is" lock does not park a column from (see apply_rules).
+LOCK_EXEMPT_RULES = {"duplicates", "column_names"}
+
+
 def _split_held(df, labels, held_out, rule_name):
     """Parks the columns a user-configured rule owns so `rule_name` cannot touch them."""
     if not held_out:
@@ -900,6 +943,7 @@ def apply_rules(
     column_labels: dict | None = None,
     protected_blank: dict | None = None,
     held_out: dict | None = None,
+    locked_columns: set | list | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """
     rules=None            -> run DEFAULT_RULES (the normal "Clean my
@@ -920,6 +964,14 @@ def apply_rules(
     """
     explicit = rules is not None
     selected = DEFAULT_RULES if rules is None else rules
+    # "Leave as is": columns the user locked keep every value exactly as uploaded. A locked column is
+    # parked away from EVERY value-changing rule (cleaning, formatting, imputation, case...), whichever
+    # rule is selected and whether or not it is a default. The only rules that still see it are
+    # duplicates (a row comparison, it never edits a cell) and column_names (renames a header, not a value).
+    if locked_columns:
+        held_out = {k: set(v) for k, v in (held_out or {}).items()}
+        for name in locked_columns:
+            held_out.setdefault(name, set()).update(set(RULE_DISPATCH) - LOCK_EXEMPT_RULES)
     approval = approval or (M.APPROVAL_USER_SELECTED if explicit else M.APPROVAL_AUTOMATIC)
     changes = {}
     details: dict = {}  # fresh per call, never shared across jobs/requests
@@ -961,4 +1013,5 @@ def apply_rules(
     log = {"rules_applied": selected, "changes": changes, "details": details}
     log["imputed"] = dict((details.get("missing_values") or {}).get("imputed") or {})
     log["column_labels"] = labels
+    log["locked_columns"] = sorted(locked_columns) if locked_columns else []
     return df, log

@@ -46,15 +46,26 @@ _COUNTRY_NAME_TO_CANONICAL: dict[str, str] = {c["name"].lower(): c["name"] for c
 # columns where "unknown" was previously left as its own distinct
 # category value; it's now folded into the single missing
 # representation like every other placeholder.
-MISSING_TOKENS = {
-    "", "na", "n/a", "n.a.", "n\\a", "null", "none", "nan",
-    "-", "--", "?", "#n/a", "nil", "unknown",
+# Markers split by how safe it is to treat them as "no value":
+#   STRONG: unambiguous placeholders ("N/A", "null", "#N/A", blank). Safe to blank in any column.
+#   WEAK:   words/symbols that MAY be a placeholder but may equally be a real answer or a note
+#           ("unknown", "NIL", "??", an em dash, "missing", "TBD"). They count as MISSING when
+#           reporting, but are only blanked automatically inside columns that are clearly numeric,
+#           date, e-mail or phone data (where a word cannot be a legitimate value anyway). In a text,
+#           categorical or notes column they are preserved and flagged, never silently deleted.
+STRONG_MISSING_TOKENS = {
+    "", "na", "n/a", "n.a.", "n\\a", "null", "none", "nan", "#n/a",
+    "not available", "not applicable", "no data", "n.k.", "none given",
+}
+WEAK_MISSING_TOKENS = {
+    "-", "--", "?", "nil", "unknown",
     # punctuation-only placeholders: "???", "—" (em dash), "–" (en dash), "---"
     "??", "???", "????", "---", "\u2014", "\u2013",
-    # worded placeholders
-    "not known", "not available", "not applicable", "not specified", "not provided", "unspecified",
-    "no data", "missing", "tbd", "n.k.", "none given",
+    # worded placeholders that can also be genuine answers
+    "not known", "not specified", "not provided", "unspecified", "missing", "tbd",
 }
+# Everything that is RECOGNISED as a missing marker (used for reporting/classification).
+MISSING_TOKENS = STRONG_MISSING_TOKENS | WEAK_MISSING_TOKENS
 
 # Restricted to unambiguous words on purpose. "1"/"0" are excluded
 # from the base set: plenty of real columns use 1/0 as numeric codes
@@ -100,6 +111,14 @@ _PHONE_SAFE_CHARS_RE = re.compile(r"^[+()\-.\s\d]+$")
 
 def is_missing_token(value: str) -> bool:
     return value.strip().lower() in MISSING_TOKENS
+
+
+def is_strong_missing_token(value: str) -> bool:
+    return value.strip().lower() in STRONG_MISSING_TOKENS
+
+
+def is_weak_missing_token(value: str) -> bool:
+    return value.strip().lower() in WEAK_MISSING_TOKENS
 
 
 def is_email_column(name: str, series: pd.Series) -> bool:
@@ -411,14 +430,34 @@ def parse_number_words(text: str) -> Optional[int]:
     return total + current if seen else None
 
 
-def strip_numeric_noise(value: str) -> str:
+def spoken_number(value: str) -> Optional[int]:
+    """"forty" -> 40, "ten thousand naira" -> 10000, None for anything that is not purely number words
+    (optionally followed by a currency word). Only ever used for an explicit user choice."""
+    spoken = re.sub(r"\s+(naira|dollars?|usd|ngn|pounds?|gbp|euros?)$", "", str(value).strip(), flags=re.I)
+    if not re.fullmatch(r"[A-Za-z][A-Za-z\s\-]*", spoken):
+        return None
+    return parse_number_words(spoken)
+
+
+def is_zero_word(value: str) -> bool:
+    return str(value).strip().lower() in ZERO_WORDS
+
+
+def strip_numeric_noise(value: str, *, number_words: bool = False) -> str:
+    """Strips FORMATTING noise (currency symbols, thousands separators, %, accounting parentheses).
+
+    It never interprets language: spoken numbers ("forty", "ten thousand naira") are only converted when
+    the caller passes number_words=True, which the cleaning pipeline does ONLY after the user explicitly
+    chose that conversion for the column. A unit suffix such as "44 yrs" is formatting, not language,
+    and is still stripped."""
     m = _UNIT_SUFFIX_RE.match(value.strip())
     if m:
         return m.group(1)
-    spoken = re.sub(r"\s+(naira|dollars?|usd|ngn|pounds?|gbp|euros?)$", "", value.strip(), flags=re.I)
-    words = parse_number_words(spoken) if re.fullmatch(r"[A-Za-z][A-Za-z\s\-]*", spoken) else None
-    if words is not None:
-        return str(words)
+    if number_words:
+        spoken = re.sub(r"\s+(naira|dollars?|usd|ngn|pounds?|gbp|euros?)$", "", value.strip(), flags=re.I)
+        words = parse_number_words(spoken) if re.fullmatch(r"[A-Za-z][A-Za-z\s\-]*", spoken) else None
+        if words is not None:
+            return str(words)
     v = _currencies.strip_currency(value)
     if _OCR_ZERO_RE.match(v.strip()) and re.search(r"\d", v) and re.search(r"[Oo]", v):
         v = re.sub(r"[Oo]", "0", v)

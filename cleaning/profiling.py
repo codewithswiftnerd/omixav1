@@ -164,7 +164,7 @@ def profile_column(name: str, series: pd.Series, total_rows: int) -> ColumnProfi
     # --- datetime (dtype or name/values) ---
     if pd.api.types.is_datetime64_any_dtype(series):
         return done(DATE, 1.0, ["datetime dtype"])
-    if is_text and detectors.is_probable_date_column(str(name), series):
+    if is_text and detectors.is_probable_date_column(str(name), non_null_series):
         by_name = detectors.has_date_name(str(name))
         has_time = _has_time_component(text_vals)
         ev = ["column name says date"] if by_name else ["values are date-shaped"]

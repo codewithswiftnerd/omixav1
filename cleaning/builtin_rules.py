@@ -164,6 +164,24 @@ R(RuleSpec(
     detector=C.check_unrecognized_country,
 ))
 R(RuleSpec(
+    id="OMX-VAL-009", issue="invalid_values", title="Values that break the column's type or rules", dimension=M.VALIDITY,
+    criticality=0.75, confidence=0.85,
+    remediation=M.REQUIRES_REVIEW, operation=M.NONE,
+    explanation="Words or malformed values in a column that is otherwise numeric, categorical or patterned, or values "
+                "outside a configured range. They break calculations and are never deleted automatically.",
+    recommendation="Review the affected rows and correct, replace, keep or remove each value.",
+    detector=C.check_invalid_values,
+))
+R(RuleSpec(
+    id="OMX-VAL-010", issue="unresolved_values", title="Values that cannot be interpreted safely", dimension=M.VALIDITY,
+    criticality=0.6, confidence=0.7,
+    remediation=M.REQUIRES_REVIEW, operation=M.NONE,
+    explanation="Omixa cannot tell what these values mean (e.g. 'free' in an amount column, a placeholder word in a "
+                "notes column), so they are preserved and counted as open issues instead of being guessed.",
+    recommendation="Decide what the value means, or confirm the column's type so it can be judged.",
+    detector=C.check_unresolved_values,
+))
+R(RuleSpec(
     id="OMX-VAL-006", issue="ambiguous_date_format", title="Ambiguous date format", dimension=M.VALIDITY,
     criticality=0.7, confidence=0.9,
     remediation=M.REQUIRES_REVIEW, operation=M.INFERENCE, resolver="ambiguous_date_format",
@@ -350,3 +368,11 @@ _RESOLUTION_OPS = {
     "suspicious_phone_format": (M.INFERENCE, "User asserted a country; numbers fitting it were converted to +country form."),
 }
 RESOLUTION_OPERATIONS = _RESOLUTION_OPS
+# (issue, choice) -> (operation, reason) where one issue offers choices that do different things, so the
+# audit trail describes what the user actually chose rather than the issue's default.
+RESOLUTION_CHOICE_OPERATIONS = {
+    ("mixed_data_types", "words_to_numbers"):
+        (M.INFERENCE, "User chose to read number words as numbers (e.g. \"forty\" -> 40); other values untouched."),
+    ("mixed_data_types", "free_as_zero"):
+        (M.INFERENCE, "User chose to treat the word \"free\" (and equivalents) as 0; other values untouched."),
+}

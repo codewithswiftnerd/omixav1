@@ -426,3 +426,24 @@ Paystack's API. Firestore rules deny all client writes.
 
 ### Tests
 `python -m unittest tests.test_pro_accounts` (offline: in-memory store and a fake Paystack).
+
+## Validation and safe cleaning (what Omixa will and will not assume)
+
+- **"Leave as is"** is an instruction, not a default. Columns the user explicitly sets to it are sent as
+  `leave_as_is` and locked: no automatic rule, column rule or imputation may change a value in them.
+- **Default cleaning only changes formatting** (symbols, thousands separators, %, whitespace). It never reads
+  words as numbers ("free" is not 0, "forty" is not 40). Those readings exist only as explicit choices
+  (`words_to_numbers`, `free_as_zero`) and are logged as user-approved.
+- **Ambiguous placeholders** ("unknown", "NIL", "??", an em dash) are blanked only in clearly numeric/date/
+  email/phone columns. In notes, text, category and ID columns they are preserved and flagged.
+- **Validation** (`cleaning/validation.py`, `POST /api/validate/<job_id>[/rows]`) is read-only and puts every
+  cell in exactly one of: valid, invalid, suspicious, missing, unresolved. A type the user confirms is
+  authoritative; a detected type below 75% confidence is "needs confirmation" and non-conforming values are
+  reported as unresolved, never invalid.
+- **Change transparency**: each cleaning result carries `change_log` (row, column, original, new, rule, reason,
+  approval; capped lists, exact totals), `missing_tracking` (originally missing / converted to missing /
+  filled / missing after) and `validation_before` / `validation_after`.
+- Limitations: the per-cell change list is capped at 5,000 rows (totals stay exact); `/api/validate` runs
+  inline only for files up to 500k cells in queue mode (larger files get the validation block in the analysis
+  report); the quality score still rewards explicit imputation in the Completeness dimension, offset by the
+  flagged Accuracy finding.

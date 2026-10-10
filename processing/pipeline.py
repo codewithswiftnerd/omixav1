@@ -168,6 +168,85 @@ def _first_sheet_name(path: str) -> Optional[str]:
         return None
 
 
+def _compact_validation(v: dict) -> dict:
+    """Counts only (no example values): small enough to ship with every cleaning result."""
+    return {"row_count": v["row_count"], "totals": v["totals"], "needs_attention": v["needs_attention"],
+            "columns": [{"column": c["column"], "effective_type": c["effective_type"], "type_status": c["type_status"],
+                         "counts": c["counts"], "fully_valid": c["fully_valid"]} for c in v["columns"]]}
+
+
+def _missing_tracking(missing_before: dict, audit, *, labels_final: dict, cleaned_df, rows_in: int) -> dict:
+    """Why a column's missing count moved. For every column of the uploaded file:
+         originally_missing   cells already empty in the upload
+         converted_to_missing cells that had a value and were emptied by a rule/resolution (with the rule)
+         filled                cells that were empty and got a value (imputation: an ESTIMATE, not the original)
+         missing_after        empty cells in the cleaned file
+       A lower missing_after is NOT evidence of better data when `filled` is non-zero, and a higher one is
+       explained by converted_to_missing, never unexplained."""
+    after_by_orig = {}
+    for cleaned_name in cleaned_df.columns:
+        orig = labels_final.get(cleaned_name, cleaned_name)
+        after_by_orig[str(orig)] = int(cleaned_df[cleaned_name].isna().sum())
+    out = {}
+    for col, before in missing_before.items():
+        flow = audit.missing_flow.get(col, {})
+        out[col] = {
+            "originally_missing": before,
+            "converted_to_missing": flow.get("converted_to_missing", 0),
+            "filled": flow.get("filled_from_missing", 0),
+            "missing_after": after_by_orig.get(col),
+            "by_rule": flow.get("by_rule", {}),
+            "rows_removed_note": audit.removed_rows_total or None,
+        }
+    return out
+
+
+def _resolve_locks(df, leave_as_is, resolutions, engine_profile):
+    """Validates the user's "Leave as is" list against the real columns and reports conflicts.
+
+    Returns (locked column names, report). Locking never depends on the frontend having sent a
+    perfectly matching name: exact match first, then a case/space/underscore-insensitive match that must
+    be unique. Anything else is reported as unmatched instead of being ignored."""
+    report = {"requested": list(leave_as_is or []), "locked": [], "unmatched": [], "conflicts": []}
+    if not leave_as_is:
+        return set(), report
+    from cleaning.engine.executor import _norm
+    exact = {str(c): c for c in df.columns}
+    by_norm = {}
+    for c in df.columns:
+        by_norm.setdefault(_norm(c), []).append(c)
+    locked = set()
+    for name in leave_as_is:
+        if not isinstance(name, str):
+            report["unmatched"].append(str(name))
+        elif name in exact:
+            locked.add(exact[name])
+        elif len(by_norm.get(_norm(name), [])) == 1:
+            locked.add(by_norm[_norm(name)][0])
+        else:
+            report["unmatched"].append(name)
+    report["locked"] = sorted(map(str, locked))
+    for r in resolutions or []:
+        if isinstance(r, dict) and r.get("column") in locked and r.get("choice") not in (None, "skip"):
+            report["conflicts"].append({
+                "column": r["column"], "kind": "resolution_on_locked_column",
+                "detail": f"'{r['column']}' is set to Leave as is, but you also chose '{r.get('choice')}' for it "
+                          f"({r.get('issue')}). The explicit choice was applied; automatic rules were not."})
+    if engine_profile is not None:
+        from cleaning.engine.executor import resolve_columns
+        for pcol in list(engine_profile.columns):
+            try:
+                real = resolve_columns(df, [pcol])[pcol]
+            except Exception:
+                continue
+            if real in locked:
+                del engine_profile.columns[pcol]
+                report["conflicts"].append({
+                    "column": str(real), "kind": "column_rules_skipped",
+                    "detail": f"Column rules for '{real}' were not run because the column is set to Leave as is."})
+    return locked, report
+
+
 def run_pipeline(
     job_id: str,
     rules: Optional[List[str]] = None,
@@ -177,6 +256,7 @@ def run_pipeline(
     profile: Optional[dict] = None,
     cleaning_profile: Optional[dict] = None,
     max_cells: int = 0,
+    leave_as_is: Optional[List[str]] = None,
 ) -> dict:
     """
     Returns a summary dict the frontend can display, e.g.:
@@ -197,6 +277,13 @@ def run_pipeline(
     `has_header` (optional, default True) is whether the file's first
     row is a header row, see read_source()'s docstring, it's a caller
     choice, never an Omixa assumption.
+
+    `leave_as_is` (optional) is a list of column names (as they appear in the uploaded file) the user
+    chose to "Leave as is". Those columns are locked: no automatic rule, no column rule and no
+    imputation may change a single value in them. Names that do not match a column are NOT ignored
+    silently, they come back in result["column_options"]["unmatched"]. An explicit resolution the user
+    picked for a locked column still runs (it is their own direct instruction) and is reported as a
+    conflict so the contradiction is visible.
 
     `cleaning_profile` (optional) is a declarative per-column rule configuration, see
     cleaning/engine/. It is parsed and AUTHORIZED here as well as in the API (defence in depth:
@@ -233,9 +320,14 @@ def run_pipeline(
     # guaranteed to reflect the file exactly as uploaded, the same
     # report /api/report/<job_id> would return for this file.
     quality_before = generate_report(df)
+    from cleaning.validation import validate_dataframe
+    validation_before = _compact_validation(validate_dataframe(df, include_examples=False))
+    missing_before = {str(c): int(df[c].isna().sum()) for c in df.columns}
 
     audit = AuditLog()
     labels = {c: c for c in df.columns}  # current column name -> name in the uploaded file
+
+    locked, column_options = _resolve_locks(df, leave_as_is, resolutions, engine_profile)
 
     # Resolutions are applied FIRST, against the exact column names
     # generate_report() (and therefore the frontend, and therefore
@@ -263,7 +355,7 @@ def run_pipeline(
 
     cleaned_df, change_log = apply_rules(
         df, rules=rules, audit=audit, column_labels=labels, protected_blank=resolution_log.get("blanked"),
-        held_out=held_out,
+        held_out=held_out, locked_columns=locked,
     )
 
     # Provenance: cells holding an ESTIMATE rather than an observation. Used so the
@@ -280,6 +372,7 @@ def run_pipeline(
     # export wants a plain 0..n-1 index.
     cleaned_df = cleaned_df.reset_index(drop=True)
     rows_out = len(cleaned_df)
+    cleaned_labels = dict(change_log.get("column_labels") or {})   # cleaned name -> name in the uploaded file
 
     ext = source_path.rsplit(".", 1)[1].lower()
     # .xls (legacy binary Excel) can be READ via xlrd, but pandas has
@@ -306,6 +399,7 @@ def run_pipeline(
     # so the frontend can show a before/after score, not just a list of
     # "N cells changed" counts.
     post_report = generate_report(cleaned_df, provenance={"imputed": imputed})
+    validation_after = _compact_validation(validate_dataframe(cleaned_df, include_examples=False))
 
     cleaning_summary = build_cleaning_summary(
         rows_in=rows_in,
@@ -357,4 +451,10 @@ def run_pipeline(
     }
     if engine_report is not None:
         result["cleaning_engine"] = engine_report
+    result["column_options"] = column_options
+    result["validation_before"] = validation_before
+    result["validation_after"] = validation_after
+    result["change_log"] = audit.change_log()
+    result["missing_tracking"] = _missing_tracking(missing_before, audit, labels_final=cleaned_labels,
+                                                   cleaned_df=cleaned_df, rows_in=rows_in)
     return result

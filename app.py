@@ -22,6 +22,7 @@ from routes.upload import upload_bp
 from routes.process import process_bp
 from routes.download import download_bp
 from routes.report import report_bp
+from routes.validation import validation_bp
 from routes.auth_routes import auth_bp
 from routes.billing import billing_bp
 from routes.profiles import profiles_bp
@@ -94,6 +95,7 @@ def create_app():
     app.register_blueprint(process_bp, url_prefix="/api/process")
     app.register_blueprint(download_bp, url_prefix="/api/download")
     app.register_blueprint(report_bp, url_prefix="/api/report")
+    app.register_blueprint(validation_bp, url_prefix="/api/validate")
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(billing_bp, url_prefix="/api/billing")
     app.register_blueprint(profiles_bp, url_prefix="/api/profiles")
