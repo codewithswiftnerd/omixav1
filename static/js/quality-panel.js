@@ -259,11 +259,16 @@
     }
 
     function close() {
-      panelEl.classList.add('hidden');
       fabEl.setAttribute('aria-expanded', 'false');
+      // Smooth close: play the exit animation, then hide. With reduced motion (or no animation) hide at once.
+      const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduce || panelEl.classList.contains('hidden')) { panelEl.classList.add('hidden'); return; }
+      panelEl.classList.add('is-closing');
+      setTimeout(() => { panelEl.classList.remove('is-closing'); panelEl.classList.add('hidden'); }, 160);
     }
 
     function open() {
+      panelEl.classList.remove('is-closing');
       panelEl.classList.remove('hidden');
       fabEl.setAttribute('aria-expanded', 'true');
     }

@@ -22,7 +22,7 @@ function showWorkspace(on){
   document.body.classList.toggle('has-file', on);
   if(workCard) workCard.classList.toggle('hidden', !on);
   if(uploadCard) uploadCard.classList.toggle('hidden', on);
-  if(on) window.scrollTo({ top: 0, behavior: 'smooth' });
+  if(on) window.scrollTo({ top: 0, behavior: (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'auto' : 'smooth' });
 }
 
 function hasHeader(){
@@ -346,7 +346,7 @@ function selectedLeaveAsIs(){
 
 // ---- Column validation report (read-only; backed by /api/validate) ----
 let validationConfig = { column_types: {} };
-const VAL_TYPES = ['numeric','integer','currency','date','email','phone','categorical','identifier','text'];
+const VAL_TYPES = ['numeric','integer','currency','date','email','phone','categorical','identifier','text','boolean'];
 const VAL_CATS = ['valid','invalid','suspicious','missing','unresolved'];
 
 function renderValidation(v){
@@ -403,6 +403,13 @@ document.addEventListener('change', e => {
   revalidate();
 });
 
+// Types the user explicitly confirmed in the validation table. Sent with the cleaning request so numeric text
+// in those columns ("35") can be converted safely; omitted entirely when nothing was confirmed.
+function confirmedColumnTypes(){
+  const t = validationConfig && validationConfig.column_types;
+  return t && Object.keys(t).length ? t : undefined;
+}
+
 function setStage(text, cls){
   stage.textContent = text;
   stage.className = 'stage' + (cls ? ' ' + cls : '');
@@ -427,7 +434,7 @@ runBtn.addEventListener('click', async () => {
       method:'POST',
       credentials:'include',
       headers: apiHeaders({'Content-Type':'application/json'}),
-      body: JSON.stringify({ rules, resolutions: selectedResolutions(), leave_as_is: selectedLeaveAsIs(), has_header: hasHeader(), profile_id: (window.OmixaPro && OmixaPro.profileId()) || undefined })
+      body: JSON.stringify({ rules, resolutions: selectedResolutions(), leave_as_is: selectedLeaveAsIs(), column_types: confirmedColumnTypes(), has_header: hasHeader(), profile_id: (window.OmixaPro && OmixaPro.profileId()) || undefined })
     });
     let procJson = await procRes.json();
     if(!procRes.ok) throw upgradeAwareError(procRes, procJson, 'processing failed');
@@ -528,6 +535,59 @@ function renderResults(summary){
     const block = document.createElement('div');
     block.innerHTML = `<h3>Cleaning summary</h3><pre class="cleaning-summary-text">${escHtml(summary.cleaning_summary.text)}</pre>`;
     detailBlocks.appendChild(block);
+  }
+
+
+  // Data state: what was missing / invalid / normalized / left for review, before and after (see
+  // cleaning/summary.build_data_state). Reporting only, every number comes from the server.
+  const ds = summary.cleaning_summary && summary.cleaning_summary.data_state;
+  if(ds){
+    const block = document.createElement('div');
+    const mv = ds.missing_values, iv = ds.invalid_values, nm = ds.normalized, nr = ds.needs_review;
+    let html = `<h3>Data check: before vs after</h3><div class="stats">` +
+      `<div class="stat"><div class="n">${mv.before} → ${mv.after}</div><div class="l">Missing values</div></div>` +
+      `<div class="stat"><div class="n">${iv.before} → ${iv.after}</div><div class="l">Invalid values</div></div>` +
+      `<div class="stat"><div class="n">${nm.total}</div><div class="l">Values normalized</div></div>` +
+      `<div class="stat"><div class="n">${nr.total}</div><div class="l">Need your review</div></div></div>`;
+    if(mv.note) html += `<p class="hint">${escHtml(mv.note)}</p>`;
+    block.innerHTML = html;
+    detailBlocks.appendChild(block);
+
+    const typeRows = ds.column_types.map(c => [c.column, c.type + (c.confirmed_by_user ? ' (confirmed)' : (c.status === 'needs_confirmation' ? ' (please confirm)' : '')),
+      Math.round((c.confidence || 0) * 100) + '%']);
+    if(typeRows.length){
+      const b = document.createElement('div');
+      b.innerHTML = `<h3>Detected column types</h3>` + tableFrom(['column','type','confidence'], typeRows);
+      detailBlocks.appendChild(b);
+    }
+    if(mv.per_column.length){
+      const b = document.createElement('div');
+      b.innerHTML = `<h3>Missing values before and after</h3>` + tableFrom(['column','before','after','markers standardized','filled'],
+        mv.per_column.map(r => [r.column, r.before, r.after ?? '(column removed)', r.markers_standardized || 0, r.filled || 0]));
+      if(mv.unresolved.length) b.innerHTML += `<p class="hint"><strong>Still unresolved:</strong> ` +
+        mv.unresolved.map(u => `${escHtml(u.column)} (${u.count})`).join(', ') + `. Omixa never invents replacement values.</p>`;
+      detailBlocks.appendChild(b);
+    }
+    if(iv.per_column.length){
+      const b = document.createElement('div');
+      b.innerHTML = `<h3>Invalid values per column</h3>` + tableFrom(['column','before','after','why'],
+        iv.per_column.map(r => [r.column, r.before, r.after, Object.keys(r.issues || {}).filter(k => k !== 'empty' && k !== 'missing_marker').join(', ').replace(/_/g,' ')]));
+      b.innerHTML += `<p class="hint">Invalid values are kept exactly as uploaded, never deleted, zeroed or guessed. Fix them in your source file or choose a resolution above.</p>`;
+      detailBlocks.appendChild(b);
+    }
+    const conv = Object.entries(nm.type_conversions || {});
+    if(conv.length){
+      const b = document.createElement('div');
+      b.innerHTML = `<h3>Numbers stored as text, converted</h3>` + tableFrom(['column','converted','left for review'],
+        conv.map(([col, v]) => [col, v.converted, v.left_for_review || 0]));
+      detailBlocks.appendChild(b);
+    }
+    if(nr.per_column.length){
+      const b = document.createElement('div');
+      b.innerHTML = `<h3>Values requiring manual review</h3>` + tableFrom(['column','invalid','unresolved','suspicious'],
+        nr.per_column.map(r => [r.column, r.invalid, r.unresolved, r.suspicious]));
+      detailBlocks.appendChild(b);
+    }
   }
 
   if(d.missing_values){

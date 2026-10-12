@@ -172,7 +172,9 @@ def _compact_validation(v: dict) -> dict:
     """Counts only (no example values): small enough to ship with every cleaning result."""
     return {"row_count": v["row_count"], "totals": v["totals"], "needs_attention": v["needs_attention"],
             "columns": [{"column": c["column"], "effective_type": c["effective_type"], "type_status": c["type_status"],
-                         "counts": c["counts"], "fully_valid": c["fully_valid"]} for c in v["columns"]]}
+                         "type_confidence": c["type_confidence"], "counts": c["counts"], "issues": c["issues"],
+                         "numeric_stored_as_text": c.get("numeric_stored_as_text", 0),
+                         "fully_valid": c["fully_valid"]} for c in v["columns"]]}
 
 
 def _missing_tracking(missing_before: dict, audit, *, labels_final: dict, cleaned_df, rows_in: int) -> dict:
@@ -257,6 +259,7 @@ def run_pipeline(
     cleaning_profile: Optional[dict] = None,
     max_cells: int = 0,
     leave_as_is: Optional[List[str]] = None,
+    column_types: Optional[dict] = None,
 ) -> dict:
     """
     Returns a summary dict the frontend can display, e.g.:
@@ -284,6 +287,11 @@ def run_pipeline(
     silently, they come back in result["column_options"]["unmatched"]. An explicit resolution the user
     picked for a locked column still runs (it is their own direct instruction) and is reported as a
     conflict so the contradiction is visible.
+
+    `column_types` (optional) is {column name in the uploaded file: type} the user CONFIRMED (one of
+    cleaning.validation.TYPES). It drives type-aware validation and, for numeric/integer/currency columns,
+    the safe conversion of numeric text ("35" -> 35) in cleaning/type_normalization.py. Values that cannot
+    be converted safely ("comma", "ERROR") are left exactly as uploaded and reported for review.
 
     `cleaning_profile` (optional) is a declarative per-column rule configuration, see
     cleaning/engine/. It is parsed and AUTHORIZED here as well as in the API (defence in depth:
@@ -321,7 +329,8 @@ def run_pipeline(
     # report /api/report/<job_id> would return for this file.
     quality_before = generate_report(df)
     from cleaning.validation import validate_dataframe
-    validation_before = _compact_validation(validate_dataframe(df, include_examples=False))
+    validation_cfg = {"column_types": dict(column_types)} if column_types else None
+    validation_before = _compact_validation(validate_dataframe(df, validation_cfg, include_examples=False))
     missing_before = {str(c): int(df[c].isna().sum()) for c in df.columns}
 
     audit = AuditLog()
@@ -343,6 +352,13 @@ def run_pipeline(
     # exactly which source column each surviving cleaned_df column will end up as,
     # which is what the exporter needs to look up "this output column's original
     # font/size/bold/italic/width" even after apply_rules renames every header.
+    # User-confirmed numeric columns: convert numeric text that is safe to convert. Runs on the ORIGINAL header
+    # names (what the user confirmed against); everything unsafe is preserved and stays visible to validation.
+    type_report = None
+    if column_types:
+        from cleaning.type_normalization import normalize_confirmed_types
+        df, type_report = normalize_confirmed_types(df, column_types, locked=locked, audit=audit, labels=labels)
+
     source_positions = [original_column_positions[name] for name in df.columns]
     columns_after_resolutions = list(df.columns)
 
@@ -399,7 +415,21 @@ def run_pipeline(
     # so the frontend can show a before/after score, not just a list of
     # "N cells changed" counts.
     post_report = generate_report(cleaned_df, provenance={"imputed": imputed})
-    validation_after = _compact_validation(validate_dataframe(cleaned_df, include_examples=False))
+    # The cleaned file may have renamed headers: carry each confirmed type over to the column's new name.
+    after_cfg = None
+    if column_types:
+        norm = lambda x: "".join(ch for ch in str(x).lower() if ch.isalnum())  # noqa: E731
+        by_norm = {norm(k): t for k, t in column_types.items()}
+        after_types = {}
+        for cleaned_name in cleaned_df.columns:
+            orig = cleaned_labels.get(cleaned_name, cleaned_name)
+            t = column_types.get(str(orig)) or by_norm.get(norm(orig))
+            if t:
+                after_types[str(cleaned_name)] = t
+        after_cfg = {"column_types": after_types}
+    validation_after = _compact_validation(validate_dataframe(cleaned_df, after_cfg, include_examples=False))
+    missing_tracking = _missing_tracking(missing_before, audit, labels_final=cleaned_labels,
+                                         cleaned_df=cleaned_df, rows_in=rows_in)
 
     cleaning_summary = build_cleaning_summary(
         rows_in=rows_in,
@@ -411,6 +441,11 @@ def run_pipeline(
         resolution_log=resolution_log,
         audit=audit,
         imputed=imputed,
+        data_state_args={
+            "validation_before": validation_before, "validation_after": validation_after,
+            "labels_final": {str(k): str(v) for k, v in cleaned_labels.items()},
+            "missing_tracking": missing_tracking, "type_report": type_report,
+        },
     )
 
     audit_entries = audit.public_entries()
@@ -455,6 +490,6 @@ def run_pipeline(
     result["validation_before"] = validation_before
     result["validation_after"] = validation_after
     result["change_log"] = audit.change_log()
-    result["missing_tracking"] = _missing_tracking(missing_before, audit, labels_final=cleaned_labels,
-                                                   cleaned_df=cleaned_df, rows_in=rows_in)
+    result["missing_tracking"] = missing_tracking
+    result["type_normalization"] = type_report
     return result

@@ -212,7 +212,8 @@ def _clean_body(job_id: str, spec: dict):
     return run_pipeline(job_id, rules=spec.get("rules"), resolutions=spec.get("resolutions"),
                         has_header=spec.get("has_header", True), pro=bool(spec.get("pro")),
                         profile=spec.get("profile"), cleaning_profile=spec.get("cleaning_profile"),
-                        max_cells=int(spec.get("max_cells") or 0), leave_as_is=spec.get("leave_as_is"))
+                        max_cells=int(spec.get("max_cells") or 0), leave_as_is=spec.get("leave_as_is"),
+                        column_types=spec.get("column_types"))
 
 
 def _analyze_body(job_id: str, spec: dict):

@@ -35,7 +35,8 @@ def process_file(job_id):
                 "resolutions": [
                   {"column": "signup_date", "issue": "ambiguous_date_format", "choice": "day_first"}
                 ],
-                "has_header": true
+                "has_header": true,
+                "column_types": {"Age": "numeric"}      # optional: types confirmed in the validation report
               }
     Response: { "job_id": "...", "status": "completed", "summary": {...} }
               or { "status": "failed", "error": "..." }, 422
@@ -89,6 +90,15 @@ def process_file(job_id):
     if not isinstance(has_header, bool):
         return jsonify({"error": "'has_header' must be true or false"}), 400
 
+    # Optional, additive: column types the user confirmed in the validation report.
+    column_types = body.get("column_types")
+    if column_types is not None:
+        from cleaning import validation as _validation
+        if not (isinstance(column_types, dict) and len(column_types) <= 1000
+                and all(isinstance(k, str) and v in _validation.TYPES for k, v in column_types.items())):
+            return jsonify({"error": "'column_types' must map column names to one of: "
+                                     + ", ".join(_validation.TYPES)}), 400
+
     if rules is not None:
         if not isinstance(rules, list) or not all(isinstance(r, str) for r in rules):
             return jsonify({"error": "'rules' must be a list of rule name strings"}), 400
@@ -140,13 +150,13 @@ def process_file(job_id):
         remember_entitlement(uid, is_pro)
 
     if queue_mode:
-        return _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, cleaning_profile, leave_as_is)
+        return _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, cleaning_profile, leave_as_is, column_types)
 
     started = time.monotonic()
     try:
         summary = run_pipeline(job_id, rules=rules, resolutions=resolutions, has_header=has_header,
                                pro=is_pro, profile=profile, cleaning_profile=cleaning_profile,
-                               leave_as_is=leave_as_is)
+                               leave_as_is=leave_as_is, column_types=column_types)
     except (RuleConfigError, FeatureNotAvailable) as exc:
         # e.g. the profile names a column that is not in the file; nothing was changed or exported
         payload = exc.to_response() if isinstance(exc, FeatureNotAvailable) else exc.to_dict()
@@ -202,7 +212,8 @@ def process_file(job_id):
     }), 200
 
 
-def _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, cleaning_profile=None, leave_as_is=None):
+def _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, cleaning_profile=None, leave_as_is=None,
+             column_types=None):
     """Queue mode: the API only validates, applies admission control and creates the job. A
     dedicated worker (worker.py) does the cleaning. Everything the worker needs (including the
     server-decided is_pro flag and the Quality Profile) is frozen into the job record here, so
@@ -221,7 +232,7 @@ def _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, clean
 
     spec = {"kind": "clean", "rules": rules, "resolutions": resolutions, "has_header": has_header,
             "pro": is_pro, "uid": uid, "profile": profile, "cleaning_profile": cleaning_profile,
-            "leave_as_is": leave_as_is}
+            "leave_as_is": leave_as_is, "column_types": column_types}
     try:
         queued = job_service.submit(job_id, spec, is_pro, get_request_id())
     except Exception:

@@ -45,9 +45,15 @@ from cleaning import currencies as _currencies
 VALID, INVALID, SUSPICIOUS, MISSING, UNRESOLVED = "valid", "invalid", "suspicious", "missing", "unresolved"
 CATEGORIES = (VALID, INVALID, SUSPICIOUS, MISSING, UNRESOLVED)
 
-NUMERIC, INTEGER, CURRENCY, DATE, EMAIL, PHONE, CATEGORICAL, IDENTIFIER, TEXT = (
-    "numeric", "integer", "currency", "date", "email", "phone", "categorical", "identifier", "text")
-TYPES = (NUMERIC, INTEGER, CURRENCY, DATE, EMAIL, PHONE, CATEGORICAL, IDENTIFIER, TEXT)
+NUMERIC, INTEGER, CURRENCY, DATE, EMAIL, PHONE, CATEGORICAL, IDENTIFIER, TEXT, BOOLEAN = (
+    "numeric", "integer", "currency", "date", "email", "phone", "categorical", "identifier", "text", "boolean")
+TYPES = (NUMERIC, INTEGER, CURRENCY, DATE, EMAIL, PHONE, CATEGORICAL, IDENTIFIER, TEXT, BOOLEAN)
+# Types whose values a word like "ERROR" can never legitimately be (in free text / categories it can).
+_TYPED = (NUMERIC, INTEGER, CURRENCY, DATE, EMAIL, PHONE, BOOLEAN)
+# Spreadsheet / system error strings. NOT missing markers: they mean "this value is broken", so they are
+# reported as INVALID in typed columns and never blanked, zeroed or guessed.
+ERROR_TOKENS = {"error", "err", "#error", "#error!", "#err", "#value!", "#div/0!", "#ref!", "#name?", "#num!",
+                "#null!", "#spill!", "#calc!"}
 
 CONFIDENT_TYPE = 0.75          # detected-type confidence at or above which rules are applied as INVALID
 MIN_SHAPE_SHARE = 0.30         # a name hint is ignored unless at least this share of values fit the type
@@ -165,6 +171,11 @@ def _numeric_value(v) -> Optional[float]:
     return detectors.try_parse_float(detectors.strip_numeric_noise(_text(v)))
 
 
+def _looks_like_iso_date(t: str) -> bool:
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?$", t)
+    return bool(m and 1900 <= int(m.group(1)) <= 2100 and 1 <= int(m.group(2)) <= 12 and 1 <= int(m.group(3)) <= 31)
+
+
 def _is_shaped(ctype: str, v) -> bool:
     """Loose, TYPE-DETECTION-ONLY shape test: 'looks like it is trying to be a …', so a malformed value
     ("person@@example.com", "31/02/2026") still counts as evidence for the type instead of hiding it."""
@@ -174,6 +185,8 @@ def _is_shaped(ctype: str, v) -> bool:
     if ctype == EMAIL:
         return "@" in t
     if ctype == PHONE:
+        if _looks_like_iso_date(t):   # 2026-01-15 is made of digits and hyphens but is a date, not a phone number
+            return False
         return bool(_PHONE_CHARS.match(t)) and sum(ch.isdigit() for ch in t) >= 6
     if ctype == DATE:
         return bool(_SLASH_DATE.match(t) or _RELATIVE_DATE.match(t) or _try_named(t) is not None
@@ -190,7 +203,8 @@ def detect_type(name: str, series: pd.Series, config: Optional[dict] = None) -> 
         return {"type": confirmed, "confidence": 1.0, "evidence": ["selected by the user"], "status": "confirmed"}
 
     values = [v for v in series.dropna().tolist() if not _is_blank(v)]
-    typed_vals = [v for v in values if not (isinstance(v, str) and detectors.is_missing_token(v))]
+    typed_vals = [v for v in values if not (isinstance(v, str) and (detectors.is_missing_token(v)
+                                                                    or v.strip().lower() in ERROR_TOKENS))]
     n = len(typed_vals)
     if n == 0:
         return {"type": TEXT, "confidence": 0.0, "evidence": ["no values to inspect"], "status": "needs_confirmation"}
@@ -200,7 +214,7 @@ def detect_type(name: str, series: pd.Series, config: Optional[dict] = None) -> 
     dtype = series.dtype
 
     if pd.api.types.is_bool_dtype(dtype):
-        return {"type": CATEGORICAL, "confidence": 1.0, "evidence": ["boolean column"], "status": "detected"}
+        return {"type": BOOLEAN, "confidence": 1.0, "evidence": ["true/false column"], "status": "detected"}
     if pd.api.types.is_datetime64_any_dtype(dtype):
         return {"type": DATE, "confidence": 1.0, "evidence": ["date/time column"], "status": "detected"}
 
@@ -236,6 +250,13 @@ def detect_type(name: str, series: pd.Series, config: Optional[dict] = None) -> 
     code_like = bool(str_vals) and sum(1 for v in str_vals if not re.search(r"\s", v.strip())) / len(str_vals) >= 0.8
     if name_says[IDENTIFIER] and code_like and not pd.api.types.is_numeric_dtype(dtype):
         return result(IDENTIFIER, 0.7, ["the column name looks like an identifier"])
+
+    # boolean: yes/no/true/false-style words (1/0 only when the column NAME says it is a flag)
+    bool_words = detectors.EXTENDED_BOOLEAN_WORDS if detectors.is_boolean_flag_column(str(name)) else detectors.BOOLEAN_WORDS
+    lowered = [str(v).strip().lower() for v in typed_vals]
+    in_words = [w for w in lowered if w in bool_words]
+    if n >= 3 and len(set(in_words)) >= 2 and len(in_words) / n >= 0.9:
+        return result(BOOLEAN, len(in_words) / n, [f"{round(len(in_words) / n * 100)}% of values are yes/no or true/false style"])
 
     s_num = share(NUMERIC)
     money_symbols = any(_currencies.has_currency(v) for v in str_vals[:200])
@@ -472,6 +493,14 @@ def classify_identifier(v, rules: dict) -> tuple[str, str, str]:
 _SYMBOL_ONLY = re.compile(r"^[^\w]+$", re.UNICODE)
 
 
+def classify_boolean(v, strict: bool, extended: bool) -> tuple[str, str, str]:
+    words = detectors.EXTENDED_BOOLEAN_WORDS if extended else detectors.BOOLEAN_WORDS
+    if str(v).strip().lower() in words:
+        return VALID, "ok", "Recognised yes/no or true/false value."
+    return (INVALID if strict else UNRESOLVED), "not_boolean", (
+        f"Not a yes/no or true/false value{'' if strict else ' (column type not confirmed)'}.")
+
+
 def classify_text(v) -> tuple[str, str, str]:
     t = _text(v)
     if _SYMBOL_ONLY.match(t):
@@ -533,12 +562,16 @@ def _key(s: str) -> str:
 
 
 # --------------------------------------------------------------------------- column validation
-def _marker_category(v, ctype: str) -> Optional[tuple[str, str, str]]:
+def _marker_category(v, ctype: str, strict: bool = True) -> Optional[tuple[str, str, str]]:
     """Missing / placeholder handling shared by every type. None = not a blank or marker."""
     if _is_blank(v):
         return MISSING, "empty", "Empty cell."
     if isinstance(v, str):
         low = v.strip().lower()
+        if low in ERROR_TOKENS and ctype in _TYPED:
+            return (INVALID if strict else UNRESOLVED), "error_marker", (
+                f"{v.strip()!r} is an error placeholder, not a real value. Kept as written (never zeroed or guessed): "
+                f"correct it, or mark it as missing yourself." + ("" if strict else " (column type not confirmed)"))
         if low in detectors.STRONG_MISSING_TOKENS:
             return MISSING, "missing_marker", f"{v.strip()!r} is a recognised missing-value marker."
         if low in detectors.WEAK_MISSING_TOKENS:
@@ -582,7 +615,7 @@ def classify_column(name: str, series: pd.Series, config: Optional[dict] = None)
     by_value: dict = {}
     pending: dict = {}
     for v, c in counts.items():
-        marker = _marker_category(v, ctype)
+        marker = _marker_category(v, ctype, strict)
         if marker:
             by_value[v] = marker
         else:
@@ -602,6 +635,8 @@ def classify_column(name: str, series: pd.Series, config: Optional[dict] = None)
                 by_value[v] = classify_phone(v, rules) if strict else _soften(classify_phone(v, rules))
             elif ctype == IDENTIFIER:
                 by_value[v] = classify_identifier(v, rules)
+            elif ctype == BOOLEAN:
+                by_value[v] = classify_boolean(v, strict, detectors.is_boolean_flag_column(str(name)))
             else:
                 by_value[v] = classify_text(v)
 
@@ -661,8 +696,13 @@ def validate_dataframe(df: pd.DataFrame, config: Optional[dict] = None, *, inclu
         for c in CATEGORIES:
             totals[c] += counts[c]
         info = res["type_info"]
+        stored_as_text = 0
+        if info["type"] in (NUMERIC, INTEGER, CURRENCY):
+            stored_as_text = sum(k for v, k in res["counts"].items()
+                                 if isinstance(v, str) and res["by_value"][v][0] == VALID)
         columns.append({
             "column": str(col),
+            "numeric_stored_as_text": int(stored_as_text),
             "detected_type": info["type"] if info["status"] != "confirmed" else None,
             "confirmed_type": info["type"] if info["status"] == "confirmed" else None,
             "effective_type": info["type"],

@@ -166,6 +166,86 @@ def build_quality_comparison(before: dict, after: dict, imputed: dict | None = N
     }
 
 
+def build_data_state(validation_before: dict, validation_after: dict, *, labels_final: dict | None = None,
+                     missing_tracking: dict | None = None, type_report: dict | None = None,
+                     counts: dict | None = None, rows_in: int = 0, rows_out: int = 0) -> dict:
+    """What the dataset looks like before and after cleaning, per column, from the SAME classifier
+    (cleaning/validation.py) on the uploaded data and on the cleaned data, so before/after can never be
+    computed two different ways. Reporting only: nothing here changes data.
+
+    "Missing" = an empty cell or a recognised missing-value marker. Values that are INVALID (e.g. "comma" in an
+    Age column, "ERROR") are counted separately and are never silently turned into missing or zero."""
+    labels_final = labels_final or {}
+    a_cols = {}
+    for c in validation_after.get("columns", []):
+        a_cols[str(labels_final.get(c["column"], c["column"]))] = c
+    b_cols = {c["column"]: c for c in validation_before.get("columns", [])}
+    tracking = missing_tracking or {}
+    type_cols = (type_report or {}).get("columns", {})
+
+    col_types, miss_rows, invalid_rows, review_rows, unresolved = [], [], [], [], []
+    for name, b in b_cols.items():
+        a = a_cols.get(name)  # None: the column no longer exists after cleaning
+        bc, ac = b["counts"], (a["counts"] if a else None)
+        col_types.append({
+            "column": name, "type": (a or b)["effective_type"], "type_before": b["effective_type"],
+            "status": (a or b)["type_status"], "confidence": (a or b)["type_confidence"],
+            "confirmed_by_user": (a or b)["type_status"] == "confirmed",
+            "numeric_stored_as_text_before": b.get("numeric_stored_as_text", 0),
+            "numeric_stored_as_text_after": (a or {}).get("numeric_stored_as_text", 0),
+        })
+        t = tracking.get(name, {})
+        m_before, m_after = bc["missing"], (ac["missing"] if ac else None)
+        miss_rows.append({"column": name, "before": m_before, "after": m_after,
+                          "empty_before": t.get("originally_missing"), "markers_standardized": t.get("converted_to_missing", 0),
+                          "filled": t.get("filled", 0)})
+        if ac and ac["missing"]:
+            unresolved.append({"column": name, "count": ac["missing"],
+                               "reason": "Still missing. Omixa does not invent replacement values; fill, correct or leave them."})
+        if ac and a["issues"].get("ambiguous_placeholder"):
+            unresolved.append({"column": name, "count": a["issues"]["ambiguous_placeholder"],
+                               "reason": "A placeholder word (e.g. 'unknown') kept as written because in this column it may be a real answer."})
+        inv_b, inv_a = bc["invalid"], (ac["invalid"] if ac else 0)
+        if inv_b or inv_a:
+            invalid_rows.append({"column": name, "before": inv_b, "after": inv_a,
+                                 "issues": dict(a["issues"]) if a else {}})
+        if ac and (ac["invalid"] or ac["unresolved"] or ac["suspicious"]):
+            review_rows.append({"column": name, "invalid": ac["invalid"], "unresolved": ac["unresolved"],
+                                "suspicious": ac["suspicious"], "issues": a["issues"],
+                                "type_needs_confirmation": a["type_status"] == "needs_confirmation"})
+
+    counts = counts or {}
+    breakdown = {k: counts.get(k, 0) for k in (
+        "missing_values_standardized", "boolean_values_normalized", "dates_standardized", "phone_numbers_normalized",
+        "currency_formatting_cleaned", "percentage_values_normalized", "gender_values_normalized",
+        "country_values_normalized") if counts.get(k)}
+    conv = (type_report or {}).get("converted_total", 0)
+    if conv:
+        breakdown["numeric_text_converted"] = conv
+    review_total = sum(r["invalid"] + r["unresolved"] + r["suspicious"] for r in review_rows)
+    after_totals = validation_after.get("totals", {})
+    before_totals = validation_before.get("totals", {})
+    note = None
+    if rows_in != rows_out:
+        note = (f"{rows_in - rows_out} row(s) were removed (e.g. duplicates), so 'after' counts cover {rows_out} rows "
+                f"and 'before' counts cover {rows_in}.")
+    return {
+        "missing_values": {
+            "before": before_totals.get("missing", 0), "after": after_totals.get("missing", 0),
+            "per_column": [r for r in miss_rows if r["before"] or r["after"]],
+            "unresolved": unresolved, "note": note,
+        },
+        "column_types": col_types,
+        "invalid_values": {"before": before_totals.get("invalid", 0), "after": after_totals.get("invalid", 0),
+                           "per_column": invalid_rows},
+        "normalized": {"total": sum(breakdown.values()), "breakdown": breakdown,
+                       "type_conversions": {k: v for k, v in type_cols.items() if v.get("converted")}},
+        "needs_review": {"total": review_total, "per_column": review_rows,
+                         "left_unconverted": {k: v for k, v in type_cols.items() if v.get("left_for_review")}},
+    }
+
+
+
 def build_cleaning_summary(
     rows_in: int,
     rows_out: int,
@@ -176,6 +256,7 @@ def build_cleaning_summary(
     resolution_log: dict | None = None,
     audit=None,
     imputed: dict | None = None,
+    data_state_args: dict | None = None,
 ) -> dict:
     """
     Returns:
@@ -214,6 +295,17 @@ def build_cleaning_summary(
         "invalid_values_detected": _invalid_values_detected(quality_after),
     }
 
+    data_state = None
+    if data_state_args:
+        data_state = build_data_state(counts=counts, rows_in=rows_in, rows_out=rows_out, **data_state_args)
+        counts["missing_values_before"] = data_state["missing_values"]["before"]
+        counts["missing_values_after"] = data_state["missing_values"]["after"]
+        # one source of truth: the headline "Invalid values detected" is the cell-level count of the cleaned data
+        counts["invalid_values_detected"] = data_state["invalid_values"]["after"]
+        counts["invalid_values_before"] = data_state["invalid_values"]["before"]
+        counts["invalid_values_after"] = data_state["invalid_values"]["after"]
+        counts["values_needing_review"] = data_state["needs_review"]["total"]
+
     score_before = quality_before.get("score")
     score_after = quality_after.get("score")
     grade_before = quality_before.get("grade")
@@ -236,6 +328,18 @@ def build_cleaning_summary(
         f"Duplicate rows detected: {counts['duplicate_rows_detected']}",
         f"Invalid values detected: {counts['invalid_values_detected']}",
     ]
+    if data_state:
+        mv, ms = data_state["missing_values"], data_state
+        lines += ["", f"Missing values: {mv['before']} before -> {mv['after']} after"]
+        for u in mv["unresolved"][:10]:
+            lines.append(f"  Unresolved in '{u['column']}': {u['count']} ({u['reason']})")
+        lines.append("Detected column types: " + ", ".join(
+            f"{c['column']} = {c['type']}{' (confirmed)' if c['confirmed_by_user'] else ''}" for c in ms["column_types"][:30]))
+        lines.append(f"Invalid values: {ms['invalid_values']['before']} before -> {ms['invalid_values']['after']} after")
+        for r in ms["invalid_values"]["per_column"][:10]:
+            lines.append(f"  {r['column']}: {r['before']} -> {r['after']}")
+        lines.append(f"Values successfully normalized: {ms['normalized']['total']}")
+        lines.append(f"Values requiring manual review: {ms['needs_review']['total']}")
     if score_before is not None and score_after is not None:
         delta = score_after - score_before
         sign = "+" if delta >= 0 else ""
@@ -263,6 +367,7 @@ def build_cleaning_summary(
         "quality_comparison": comparison,
         "audit_summary": audit_summary,
         "counts": counts,
+        "data_state": data_state,
         "columns_affected": _columns_affected(details),
         "quality_score_before": score_before,
         "quality_score_after": score_after,

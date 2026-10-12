@@ -1,0 +1,112 @@
+/* Omixa motion layer.
+ *
+ * Pure CSS, no dependencies, no layout changes: it only animates opacity and transform (GPU-friendly) and
+ * never sets pointer-events on anything that is visible, so uploads, processing, downloads and every
+ * other interaction behave exactly as before. Entrance animations use `backwards` fill, so no lingering
+ * transform is left on an element once it has appeared (a lingering transform would re-anchor
+ * position:fixed descendants).
+ *
+ * Everything animated is inside `prefers-reduced-motion: no-preference`; with "reduce" the page is
+ * static and the only motion left is the (functional) loading spinner, slowed down.
+ */
+
+:root {
+  --omx-ease: cubic-bezier(.2, .7, .2, 1);
+  --omx-fast: .16s;
+  --omx-med: .32s;
+}
+
+/* The progress bar is part of the markup (landing.html); hidden unless a job is running. */
+.omx-progress { display: none; height: 4px; border-radius: 999px; background: var(--gray-100, #eef0f4); overflow: hidden; margin: 2px 0 14px; }
+.omx-progress > span { display: block; height: 100%; width: 38%; border-radius: inherit; background: var(--g-purple, var(--omixa-indigo, #5b3fd1)); }
+[data-phase="working"] .omx-progress { display: block; }
+
+@media (prefers-reduced-motion: reduce) {
+  .omx-progress > span { width: 100%; opacity: .5; }
+  .work-card .stage.active::before, .spinner { animation-duration: 1.8s; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes omx-fade-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  @keyframes omx-fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes omx-pop { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+  @keyframes omx-slide-down { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+  @keyframes omx-slide-up-panel { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+  @keyframes omx-bar { 0% { transform: translateX(-110%); } 100% { transform: translateX(290%); } }
+  @keyframes omx-shake { 0%, 100% { transform: none; } 20% { transform: translateX(-5px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+  @keyframes omx-ok-ring { 0% { box-shadow: 0 0 0 0 rgba(34, 160, 94, .45); } 100% { box-shadow: 0 0 0 12px rgba(34, 160, 94, 0); } }
+  @keyframes omx-check { from { opacity: 0; transform: scale(.4); } 70% { transform: scale(1.12); } to { opacity: 1; transform: scale(1); } }
+  @keyframes omx-closing { to { opacity: 0; transform: translateY(8px) scale(.98); } }
+
+  /* ---- page + section entrances (they replay whenever a hidden section is shown again) ---- */
+  .hero-copy, .upload-card, .work-card:not(.hidden) { animation: omx-fade-up var(--omx-med) var(--omx-ease) backwards; }
+  .upload-card { animation-delay: .06s; }
+  #reportCard:not(.hidden), #recommendationsCard:not(.hidden), #results:not(.hidden), #validationGroup:not(.hidden),
+  #downloadBtn:not(.hidden), #resetBtn:not(.hidden) { animation: omx-fade-up var(--omx-med) var(--omx-ease) backwards; }
+  .marketing > * { animation: omx-fade-in .5s ease backwards; animation-delay: .12s; }
+  .topnav { animation: omx-slide-down .3s var(--omx-ease) backwards; }
+
+  /* items inside a freshly rendered section appear one after another (capped, so long lists never lag) */
+  #findings > *, #recSafeList > *, #recAmbiguousList > *, #detailBlocks > *, #stats > *, .stat-grid > * {
+    animation: omx-fade-up .34s var(--omx-ease) backwards;
+  }
+  :is(#findings, #recSafeList, #recAmbiguousList, #detailBlocks, #stats, .stat-grid) > :nth-child(1) { animation-delay: .02s; }
+  :is(#findings, #recSafeList, #recAmbiguousList, #detailBlocks, #stats, .stat-grid) > :nth-child(2) { animation-delay: .06s; }
+  :is(#findings, #recSafeList, #recAmbiguousList, #detailBlocks, #stats, .stat-grid) > :nth-child(3) { animation-delay: .10s; }
+  :is(#findings, #recSafeList, #recAmbiguousList, #detailBlocks, #stats, .stat-grid) > :nth-child(4) { animation-delay: .14s; }
+  :is(#findings, #recSafeList, #recAmbiguousList, #detailBlocks, #stats, .stat-grid) > :nth-child(5) { animation-delay: .18s; }
+  :is(#findings, #recSafeList, #recAmbiguousList, #detailBlocks, #stats, .stat-grid) > :nth-child(n+6) { animation-delay: .22s; }
+
+  /* ---- hover / press feedback ---- */
+  .btn, .link-btn, .tab, .dropzone, .rule, .rec-item, .finding, .stat, .stat-card, .step-flow-item, .faq-item, .val-count {
+    transition: transform var(--omx-fast) var(--omx-ease), box-shadow var(--omx-fast) var(--omx-ease),
+                background-color var(--omx-fast) ease, border-color var(--omx-fast) ease, color var(--omx-fast) ease, opacity var(--omx-fast) ease;
+  }
+  .btn:not(:disabled):hover { transform: translateY(-1px) scale(1.015); }
+  .btn:not(:disabled):active { transform: translateY(0) scale(.985); }
+  .rule:hover, .rec-item:hover, .stat:hover, .stat-card:hover, .step-flow-item:hover, .finding:hover {
+    transform: translateY(-2px); box-shadow: 0 8px 20px rgba(40, 25, 90, .10);
+  }
+  .dropzone:hover { transform: translateY(-1px); }
+  .dropzone.drag { transform: scale(1.012); }
+  .val-count:hover { transform: scale(1.08); }
+
+  /* ---- progress: stepper + indeterminate bar while a file is uploading / analysed / cleaned ---- */
+  .step .dot { transition: background-color .25s ease, color .25s ease, transform .25s var(--omx-ease); }
+  .step.done .dot { animation: omx-pop .3s var(--omx-ease); }
+  .step.active .dot { transform: scale(1.1); }
+  .omx-progress > span { animation: omx-bar 1.25s cubic-bezier(.45, .05, .55, .95) infinite; }
+  .work-card .stage:not(:empty) { animation: omx-fade-in .2s ease backwards; }
+
+  /* ---- feedback: upload ok, cleaning finished, error ---- */
+  [data-phase="review"] .file-chip { animation: omx-ok-ring .8s ease-out 1; border-radius: 12px; }
+  #results:not(.hidden) #resultsHeading::before {
+    content: "\2713"; display: inline-flex; align-items: center; justify-content: center; width: 1.25em; height: 1.25em;
+    margin-right: .45em; border-radius: 50%; background: var(--success, #1f9d57); color: #fff; font-size: .8em;
+    animation: omx-check .45s var(--omx-ease) .1s backwards;
+  }
+  .work-card .stage.error, .alert-error, .alert.error { animation: omx-shake .4s ease 1; }
+  .alert { animation: omx-slide-down .28s var(--omx-ease) backwards; }
+
+  /* ---- dropdowns, menus and pop-ups: smooth open AND close ---- */
+  .user-dropdown {
+    display: block; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-6px) scale(.98);
+    transform-origin: top right;
+    transition: opacity var(--omx-fast) ease, transform var(--omx-fast) var(--omx-ease), visibility 0s linear var(--omx-fast);
+  }
+  .user-dropdown.open { opacity: 1; visibility: visible; pointer-events: auto; transform: none; transition-delay: 0s; }
+
+  @media (max-width: 860px) {
+    .topnav-links {
+      display: flex; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-8px);
+      transition: opacity var(--omx-fast) ease, transform var(--omx-fast) var(--omx-ease), visibility 0s linear var(--omx-fast);
+    }
+    .topnav-links.open { opacity: 1; visibility: visible; pointer-events: auto; transform: none; transition-delay: 0s; }
+  }
+
+  .qc-panel:not(.hidden) { animation: omx-slide-up-panel .22s var(--omx-ease) backwards; transform-origin: bottom right; }
+  .qc-panel.is-closing { animation: omx-closing .16s ease forwards; pointer-events: none; }
+  .qc-fab:not(.hidden) { animation: omx-pop .3s var(--omx-ease) backwards; }
+
+  details[open] > :not(summary) { animation: omx-fade-in .22s ease backwards; }
+}
