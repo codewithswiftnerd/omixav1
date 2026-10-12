@@ -424,7 +424,7 @@ def check_unrecognized_gender(ctx: CheckContext) -> list[dict]:
 def check_unrecognized_country(ctx: CheckContext) -> list[dict]:
     out = []
     for col in ctx.text_columns():
-        if not detectors.is_country_column(str(col)):
+        if not detectors.looks_like_country_column(str(col), ctx.df[col]):
             continue
         values = real_values(ctx.df[col]).str.strip()
         bad = values[values.map(detectors.standardize_country_value).isna()]

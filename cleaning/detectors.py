@@ -188,6 +188,21 @@ def is_country_column(name: str) -> bool:
     return lname == "nation" or "country" in lname
 
 
+def looks_like_country_column(name: str, series: pd.Series) -> bool:
+    """Name says country, OR most values are recognised countries (so a generically named column such as
+    'col_d' holding Nigeria/Kenya/Ghana is still treated as one, and its odd value 'Eth' is flagged)."""
+    if is_country_column(str(name)):
+        return True
+    values = series.dropna()
+    values = values[values.map(lambda v: isinstance(v, str))].str.strip()
+    values = values[values != ""]
+    if len(values) < 4 or values.nunique() < 2:
+        return False
+    # country CODES alone (e.g. "NG") are too ambiguous to infer from: require mostly full names
+    known = values.map(lambda v: standardize_country_value(v) is not None and len(v) > 3)
+    return bool(known.mean() >= 0.7)
+
+
 # Column-name hints for values that are IDENTIFIERS rather than
 # quantities, account numbers, IBANs, BVNs/NUBANs (Nigerian bank
 # identifiers), postal codes, card numbers, etc. Nothing here should
@@ -277,6 +292,11 @@ def has_date_name(name: str) -> bool:
 MIN_DATE_PARSE_SHARE = 0.5
 
 
+_MON = r"(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*"
+# "April 2, 2024" / "Apr 2 2024" and "02-Apr-2024" / "2 April 2024": full dates with a month NAME and a 4-digit year
+_NAMED_MONTH_DATE = rf"^\s*(?:{_MON}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?,?\s+\d{{4}}|\d{{1,2}}[\s\-/.]{_MON}\.?[\s\-/.,]+\d{{4}})\s*$"
+
+
 def is_probable_date_column(name: str, series: pd.Series) -> bool:
     """Name hint (token-based, see has_date_name) backed by the values, or a sample
     of values that mostly parse as dates AND mostly contain date-shaped separators
@@ -293,7 +313,7 @@ def is_probable_date_column(name: str, series: pd.Series) -> bool:
 
     if len(values) < 3:
         return False
-    shaped = values.str.match(r"^\d{1,4}[/\-.]\d{1,2}[/\-.]\d{1,4}$")
+    shaped = values.str.match(r"^\d{1,4}[/\-.]\d{1,2}[/\-.]\d{1,4}$") | values.str.match(_NAMED_MONTH_DATE, case=False)
     if shaped.mean() < 0.8:
         return False
     parsed = pd.to_datetime(values, errors="coerce", format="mixed")

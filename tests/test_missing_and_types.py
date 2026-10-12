@@ -210,3 +210,42 @@ def test_frontend_sends_confirmed_types_and_offers_boolean():
     js = pathlib.Path("static/js/clean.js").read_text()
     assert "column_types: confirmedColumnTypes()" in js and "'boolean'" in js
     assert "prefers-reduced-motion" in js
+
+
+# ------------------------------------------------------------------ generic column names (survey-style files)
+def _survey():
+    return pd.DataFrame({
+        "B": [24, 31, 29, 45, 38, 27, 52, 33, 41],
+        "D": ["Nigeria", "Kenya", "Ghana", "Nigeria", "Kenya", "Nigeria", "Eth", "Ghana", "Nigeria"],
+        "E": ["Yes", "No", "Yes", "Y", "Unknown", "No", "Yes", "Yes", "Y"],
+        "F": ["Y", "N", "1", "TRUE", "0", "No", "Yes", "y", "N"],
+        "G": ["April 2, 2024", "02-Apr-2024", "2024/04/03", "2024-04-03", "April 4, 2024", "04-Apr-2024",
+              "2024/04/05", "2024-04-06", "April 7, 2024"],
+    })
+
+
+def test_generic_named_yes_no_columns_are_unified_and_strays_are_kept():
+    out, _ = apply_rules(_survey())
+    assert out["E"].tolist() == ["Yes", "No", "Yes", "Yes", "Unknown", "No", "Yes", "Yes", "Yes"]  # Unknown untouched
+    assert out["F"].astype(str).tolist() == ["True", "False", "True", "True", "False", "False", "True", "True", "False"]
+
+
+def test_generic_dates_with_month_names_become_one_iso_format():
+    out, _ = apply_rules(_survey())
+    assert out["G"].tolist() == ["2024-04-02", "2024-04-02", "2024-04-03", "2024-04-03", "2024-04-04",
+                                 "2024-04-04", "2024-04-05", "2024-04-06", "2024-04-07"]
+
+
+def test_ambiguous_generic_dates_and_plain_numeric_one_zero_columns_are_not_touched():
+    df = pd.DataFrame({"X": ["03/04/2024", "05/06/2024", "07/08/2024", "09/10/2024"],
+                       "Y": ["1", "0", "1", "1", "0"][:4]})
+    out, _ = apply_rules(df.copy())
+    assert out["X"].tolist() == df["X"].tolist()          # day/month ambiguous: left for a human
+    assert out["Y"].astype(str).tolist() == ["1", "0", "1", "1"]   # no yes/no words: not a boolean column
+
+
+def test_a_generically_named_country_column_flags_the_unknown_country():
+    from cleaning.quality_report import generate_report
+    out, _ = apply_rules(_survey())
+    assert out["D"].tolist()[6] == "Eth"                   # never guessed
+    assert ("unrecognized_country_value", "D") in [(f["issue"], f["column"]) for f in generate_report(out)["findings"]]

@@ -459,18 +459,25 @@ def handle_boolean_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.
         unique_vals = set(lowered.unique())
 
         name_is_flag = detectors.is_boolean_flag_column(str(col))
-        allowed_words = detectors.EXTENDED_BOOLEAN_WORDS if name_is_flag else detectors.BOOLEAN_WORDS
-        true_words = detectors.EXTENDED_TRUE_WORDS if name_is_flag else detectors.TRUE_WORDS
-        false_words = detectors.EXTENDED_FALSE_WORDS if name_is_flag else detectors.FALSE_WORDS
+        # "1"/"0" count as booleans when the NAME says flag, or when the column is clearly yes/no/true/false
+        # words (at least half the values) so the 1/0 sit among words, never in a plain numeric column.
+        word_share = lowered.isin(detectors.BOOLEAN_WORDS).mean()
+        extended = name_is_flag or word_share >= 0.5
+        allowed_words = detectors.EXTENDED_BOOLEAN_WORDS if extended else detectors.BOOLEAN_WORDS
+        true_words = detectors.EXTENDED_TRUE_WORDS if extended else detectors.TRUE_WORDS
+        false_words = detectors.EXTENDED_FALSE_WORDS if extended else detectors.FALSE_WORDS
 
         if not unique_vals:
             continue
         if not unique_vals.issubset(allowed_words):
-            # A flag column (is_verified, active...) with one or two stray values ("maybe") still has
-            # ten different spellings of yes/no. Unify the recognised ones to Yes / No text and leave the
-            # stray values exactly as typed (they are reported, not guessed). Never for generically named columns.
+            # A yes/no column with a stray value ("Unknown", "maybe") still has many spellings of yes/no.
+            # Unify the recognised ones to Yes / No text and leave the stray values exactly as typed (they are
+            # reported, not guessed). Needs >= 80% recognised, at least 3 of them, and both a yes- and no-style
+            # value present, so ordinary text columns are never reinterpreted.
             recognised = lowered.isin(allowed_words)
-            if not name_is_flag or recognised.mean() < 0.9 or recognised.all():
+            seen = set(lowered[recognised].unique())
+            if (recognised.mean() < 0.8 or recognised.sum() < 3 or recognised.all()
+                    or not (seen & true_words) or not (seen & false_words)):
                 continue
             yes_no = lowered[recognised].map(lambda v: "Yes" if v in true_words else "No")
             df.loc[yes_no.index, col] = yes_no
@@ -797,7 +804,7 @@ def handle_country_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.
     text_columns = df.select_dtypes(include=["object", "string"]).columns
 
     for col in text_columns:
-        if not detectors.is_country_column(str(col)):
+        if not detectors.looks_like_country_column(str(col), df[col]):
             continue
 
         series = df[col]
