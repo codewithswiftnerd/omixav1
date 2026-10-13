@@ -211,7 +211,7 @@ def check_inconsistent_categories(ctx: CheckContext) -> list[dict]:
         if profiling.never_impute(prof) or prof.semantic_type in (profiling.FREE_TEXT, profiling.PERSON_NAME):
             continue
         values = ctx.df[col].dropna().astype(str)
-        nunique = values.nunique()
+        nunique = casing.distinct_labels(values.unique())   # labels, not spellings: keep in step with the fixer
         if nunique < 2 or nunique > 50 or nunique > n * 0.5:
             continue
         counts = values.value_counts()
@@ -278,6 +278,8 @@ def _validation_findings(ctx: CheckContext, category: str, issue: str, what: str
         hits, samples = 0, []
         for v, k in res["counts"].items():
             cat, code, _ = res["by_value"][v]
+            if code == "negative_not_allowed" and res.get("default_age") and pd.api.types.is_numeric_dtype(ctx.df[col]):
+                continue  # a negative age in a numeric column is reported once, by impossible_age
             if cat == category and code not in _COVERED_ELSEWHERE:
                 hits += k
                 if v is not None and len(samples) < 5:
@@ -306,6 +308,7 @@ def check_unresolved_values(ctx: CheckContext) -> list[dict]:
 
 # validation "suspicious" codes reported elsewhere (casing/variants, e-mail typos, ids, amounts, years) are left out
 _NOT_SUSPICIOUS_VALUES = {"label_variant", "inconsistent_label", "possible_misspelling", "padded_identifier",
+                          "inconsistent_identifier_format",
                           "possible_domain_typo", "negative_amount", "implausible_year"}
 
 
@@ -335,6 +338,30 @@ def _codes_findings(ctx: CheckContext, codes, issue: str, what: str, suggestion,
                         "detail": f"{hits} value(s) {what}.", "suggestion": suggestion,
                         "sample_values": samples, "suggested_corrections": sugg})
     return out
+
+
+def check_inconsistent_identifier_format(ctx: CheckContext) -> list[dict]:
+    """Identifier columns that mix structures (ID-001, ID-002, 3, 6, 7). Report only: Omixa never invents a
+    prefix or renumbers an identifier, so the finding recommends a column-specific rule instead."""
+    out = _codes_findings(
+        ctx, (lambda c: c == "inconsistent_identifier_format"), "inconsistent_identifier_format",
+        "do not follow the column's most common identifier format",
+        "Not changed. Agree one format for this column (for example ID-### with zero padding) and apply it as a "
+        "column-specific rule; Omixa will not invent prefixes or renumber identifiers on its own.",
+        category="suspicious")
+    for f in out:
+        shapes: dict = {}
+        for v in ctx.df[f["column"]].dropna().astype(str):
+            if v.strip() and not detectors.is_missing_token(v):
+                shapes.setdefault(validation_identifier_shape(v), []).append(v)
+        ranked = sorted(shapes.items(), key=lambda kv: -len(kv[1]))
+        f["formats_found"] = [{"format": k, "count": len(v), "example": v[0]} for k, v in ranked[:6]]
+    return out
+
+
+def validation_identifier_shape(v) -> str:
+    from cleaning import validation
+    return validation.identifier_shape(v)
 
 
 def check_suspicious_values(ctx: CheckContext) -> list[dict]:
@@ -521,12 +548,22 @@ def check_impossible_age(ctx: CheckContext) -> list[dict]:
             continue
         ctx.evaluated.add(M.ACCURACY)
         v = ctx.df[col].dropna()
+        negative, too_high = v[v < 0], v[v > 120]
         bad = v[(v < 0) | (v > 120)]
         if len(bad):
+            # a negative age is definitively invalid; an age above 120 is merely suspicious (very rare, not impossible
+            # to type correctly), so the two are reported separately inside one finding.
+            parts = []
+            if len(negative):
+                parts.append(f"{len(negative)} negative (invalid)")
+            if len(too_high):
+                parts.append(f"{len(too_high)} above 120 (suspicious)")
             out.append({
                 "column": col, "issue": "impossible_age", "affected": int(len(bad)), "population": int(len(v)),
-                "detail": f"{len(bad)} value(s) fall outside a plausible human age range (0-120).",
-                "suggestion": "Not auto-fixed, these look like data-entry errors; review manually.",
+                "invalid_count": int(len(negative)), "suspicious_count": int(len(too_high)),
+                "detail": f"{len(bad)} value(s) fall outside a plausible human age range (0-120): " + ", ".join(parts) + ".",
+                "suggestion": "Not auto-fixed and never replaced with a default. Negative ages are data-entry errors; "
+                              "check the source for each, and confirm any age above 120.",
                 "sample_values": sorted(set(bad.tolist()))[:5],
             })
     return out

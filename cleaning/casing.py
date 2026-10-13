@@ -66,10 +66,26 @@ def is_acronym(value: str) -> bool:
 
 
 def variant_key(value: str) -> str:
-    """Spellings that differ only by case, spacing, hyphens or dots share a key
-    ("Port-Harcourt" == "Port Harcourt", "I.T." == "IT", "Web site" == "Website")."""
-    key = re.sub(r"[\W_]+", "", value.lower())
+    """Spellings that differ only by case, spacing, a hyphen BETWEEN words, or dots share a key
+    ("Port-Harcourt" == "Port Harcourt", "I.T." == "IT", "Web site" == "Website").
+
+    Any other symbol is part of the value and stays in the key. It used to be stripped, so `AB+` and `AB-`
+    (blood groups), `Grade A+` and `Grade A-`, or `R&D` and `RD` were treated as spellings of ONE category and
+    the rarer one was silently rewritten into the other. A hyphen at the start or end of a value is a sign,
+    not a separator, for the same reason."""
+    key = value.lower().replace(".", "")
+    key = re.sub(r"[\s_]+", "", key)
+    key = re.sub(r"(?<=\w)-(?=\w)", "", key)
     return key if len(key) >= 2 else " ".join(value.split()).lower()
+
+
+def distinct_labels(values) -> int:
+    """How many DIFFERENT labels a column holds once case/spacing/hyphen/dot variants are counted as one.
+
+    The "is this a small closed set of categories?" guards used the raw number of spellings, so a small
+    column whose messiness is the problem (active / Active / ACTIVE / inactive / Inactive ...) looked
+    "near-unique" and was skipped exactly when it most needed standardising."""
+    return len({variant_key(str(v)) for v in values})
 
 
 def variant_rank(value: str) -> int:
@@ -244,7 +260,7 @@ def plan_column(name: str, series: pd.Series, total_rows: int,
     plain = non_null.map(lambda v: bool(_PLAIN_LABEL.match(v.strip()))).mean()
     if plain < 0.8:
         return "", {}
-    nunique = non_null.nunique()
+    nunique = distinct_labels(non_null.unique())
     if st == profiling.IDENTIFIER or nunique < 2 or nunique > 50 or (total_rows and nunique > total_rows * 0.5):
         return "", {}
     return "category", plan_category_labels(non_null)

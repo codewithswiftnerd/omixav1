@@ -402,7 +402,8 @@ def run_pipeline(
     # report /api/report/<job_id> would return for this file.
     quality_before = generate_report(df)
     from cleaning.validation import validate_dataframe
-    validation_before = _compact_validation(validate_dataframe(df, vconfig, include_examples=False))
+    flagged_before: dict = {}   # {column: {row label: kind}}: lets the final report separate "fixed" from "row removed"
+    validation_before = _compact_validation(validate_dataframe(df, vconfig, include_examples=False, collect_flagged=flagged_before))
     missing_before = {str(c): int(df[c].isna().sum()) for c in df.columns}
 
     audit = AuditLog()
@@ -576,7 +577,8 @@ def run_pipeline(
     result["missing_tracking"] = _missing_tracking(missing_before, audit, labels_final=cleaned_labels,
                                                    cleaned_df=cleaned_df, rows_in=rows_in)
 
-    from cleaning.integrity import build_integrity_report
+    from cleaning.integrity import build_integrity_report, issues_removed_with_rows
+    removed_with_rows = issues_removed_with_rows(flagged_before, kept_index)
     duplicates_after = analyze_duplicates(cleaned_df, _cleaned_keys(options.get("duplicate_keys"), cleaned_labels),
                                           has_header=has_header)
     # row labels of the cleaned frame are 0..n-1; show the position the user sees in the exported file
@@ -586,7 +588,8 @@ def run_pipeline(
         validation_before=validation_before, validation_after=validation_after, cleaned_labels=cleaned_labels,
         missing_tracking=result["missing_tracking"], audit=audit, details=change_log["details"],
         rules_applied=change_log["rules_applied"], duplicates_before=duplicates_before, duplicates_after=duplicates_after,
-        quality_before=quality_before, quality_after=post_report, export_verification=export_verification)
+        quality_before=quality_before, quality_after=post_report, export_verification=export_verification,
+        removed_with_rows=removed_with_rows)
     ir = result["integrity_report"]
     cleaning_summary["integrity"] = {"status": ir["status"], "fully_clean": ir["fully_clean"], "export_verified": ir["export_verified"]}
     if isinstance(cleaning_summary.get("text"), str):

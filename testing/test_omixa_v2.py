@@ -245,8 +245,14 @@ def test_cleaning_summary_includes_resolution_driven_date_fixes():
         rows_in=len(df), rows_out=len(resolved), column_count=len(resolved.columns),
         change_log=log, quality_before=before, quality_after=after, resolution_log=resolution_log,
     )
-    assert summary["counts"]["dates_standardized"] == resolution_log["applied"][0]["changed"]
-    assert summary["counts"]["dates_standardized"] > 0
+    # The two dates that can only be read one way (15/06/2024, 20/12/2023) are standardised by the default rule on
+    # their own; only the genuinely ambiguous 03/04/2025 waits for the user's day-first choice. The summary must
+    # credit BOTH sources (it used to equal the resolution alone only because the rule skipped the whole column).
+    rule_changed = log["changes"]["date_standardization_changed"]
+    resolution_changed = resolution_log["applied"][0]["changed"]
+    assert (rule_changed, resolution_changed) == (2, 1)
+    assert summary["counts"]["dates_standardized"] == rule_changed + resolution_changed
+    assert resolved["signup_date"].tolist() == ["2025-04-03", "2024-06-15", "2023-12-20"]
 
 
 # --------------------------------------------------------------------

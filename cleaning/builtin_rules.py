@@ -114,6 +114,18 @@ R(RuleSpec(
     detector=C.check_mixed_types,
 ))
 
+R(RuleSpec(
+    id="OMX-CON-004", issue="inconsistent_identifier_format", title="Inconsistent identifier format",
+    dimension=M.CONSISTENCY, criticality=0.5, confidence=0.8, max_level=M.HIGH,
+    remediation=M.REQUIRES_REVIEW, operation=M.NONE, resolver=None, reversibility=M.NOT_APPLICABLE,
+    explanation="Identifiers in one column follow different formats (ID-001 next to a bare 3). Joins, lookups and "
+                "sorting treat them as unrelated values. Omixa cannot know whether 3 means ID-003, so it does not "
+                "invent a prefix or renumber anything.",
+    recommendation="Decide the column's identifier format, then apply it as a column-specific rule. Identifiers "
+                   "are kept as text, leading zeros included.",
+    detector=C.check_inconsistent_identifier_format,
+))
+
 # ---- validity -----------------------------------------------------------
 R(RuleSpec(
     id="OMX-VAL-001", issue="invalid_email_format", title="Malformed email address", dimension=M.VALIDITY,

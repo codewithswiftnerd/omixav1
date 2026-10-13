@@ -643,7 +643,7 @@ def handle_categorical_standardization(df: pd.DataFrame, details: dict) -> tuple
     for col in text_columns:
         series = df[col]
         non_null = series.dropna().astype(str)
-        nunique = non_null.nunique()
+        nunique = casing.distinct_labels(non_null.unique())   # labels, not spellings (see casing.distinct_labels)
         if nunique < 2 or nunique > 50 or (total_rows and nunique > total_rows * 0.5):
             continue
 
@@ -909,9 +909,16 @@ def handle_date_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.Dat
             continue
 
         parsed = detectors.unambiguous_date_parse(series)
+        left_over = None
         if parsed is None:
+            # The column has at least one genuinely ambiguous value, so its convention is unknown and is NOT
+            # guessed. Cells that can only be read one way (2024-01-15, 15/02/2024) are still safe to
+            # standardise on their own; ambiguous, impossible (32/13/2025) and placeholder cells stay exactly
+            # as uploaded and the column stays flagged for review.
             skipped.append(col)
-            continue
+            parsed, left_over = detectors.unambiguous_date_cells(series)
+            if parsed is None:
+                continue
 
         formatted = parsed.dt.strftime("%Y-%m-%d")
         original = series.astype("string")
@@ -928,6 +935,8 @@ def handle_date_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.Dat
             df[col] = new_values
             changed += count
             per_column[col] = {"changed": count, "format": "YYYY-MM-DD"}
+            if left_over:
+                per_column[col].update(left_ambiguous=left_over["ambiguous"], left_unparseable=left_over["unparseable"])
 
     details["date_standardization"] = {
         "per_column": per_column, "skipped_ambiguous": skipped, "skipped_has_time_component": skipped_time,

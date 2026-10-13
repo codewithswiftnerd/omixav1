@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import difflib
 import re
+from collections import Counter
 from datetime import date, datetime
 from typing import Any, Optional
 
@@ -210,8 +211,20 @@ def detect_type(name: str, series: pd.Series, config: Optional[dict] = None) -> 
     if pd.api.types.is_datetime64_any_dtype(dtype):
         return {"type": DATE, "confidence": 1.0, "evidence": ["date/time column"], "status": "detected"}
 
+    # Shape tests are pure functions of the value, so judge each DISTINCT value once and weight by how often it
+    # occurs (date-format probing per cell made type detection the slowest step of a run). Same result, far less work.
+    try:
+        weighted = list(Counter(typed_vals).items())
+    except TypeError:                       # unhashable cells in an odd file
+        weighted = [(v, 1) for v in typed_vals]
+
     def share(t):
-        return sum(1 for v in typed_vals if _is_shaped(t, v)) / n
+        if t == PHONE and not name_says[PHONE]:
+            # A cell that is already a real number (45000, 30000.0 after cleaning) is a quantity or an amount, never a
+            # phone number: only a column NAMED like a phone may hold phone numbers stored as numbers. Without this,
+            # a cleaned Amount column of 6+ digit values was re-read as "phone" and every value reported invalid.
+            return sum(c for v, c in weighted if isinstance(v, str) and _is_shaped(t, v)) / n
+        return sum(c for v, c in weighted if _is_shaped(t, v)) / n
 
     def result(t, conf, ev):
         return {"type": t, "confidence": round(min(conf, 1.0), 2), "evidence": ev,
@@ -230,7 +243,11 @@ def detect_type(name: str, series: pd.Series, config: Optional[dict] = None) -> 
     if lead_zero and (lead_zero / n >= 0.2 or name_says[IDENTIFIER]) and not name_says[PHONE]:
         return result(IDENTIFIER, 0.8, ["values have meaningful leading zeros, so they are codes, not quantities"])
 
+    # a column NAMED like an amount / price / age is not a phone column because its digit strings are long
+    money_or_age_name = (name_says[CURRENCY] or age_like(str(name))) and not name_says[PHONE]
     for t in ((EMAIL, DATE, PHONE) if not name_says[PHONE] else (EMAIL, PHONE, DATE)):
+        if t == PHONE and money_or_age_name:
+            continue
         s = share(t)
         if s >= 0.6:
             boosted = name_says[t]
@@ -405,6 +422,10 @@ def _range_checks(num: float, rules: dict, default_age: bool, ctype: str, domain
     if default_age:
         if num < 0 and "allow_negative" not in rules:
             return INVALID, "negative_not_allowed", "An age cannot be negative."
+        if num == 0 and "min" not in rules and "soft_min" not in rules:
+            # Possible (a newborn) but in most datasets 0 is a placeholder for "unknown". Neither guessed nor
+            # blanked: the value stays and is listed for a person to confirm. Set `min: 0` to declare it valid.
+            return SUSPICIOUS, "zero_age", "An age of 0 is possible (an infant) but is often a placeholder for an unknown age; please check."
         if num > _AGE_DEFAULT_SOFT_MAX and "soft_max" not in rules and "max" not in rules:
             return SUSPICIOUS, "implausible_age", f"An age above {_AGE_DEFAULT_SOFT_MAX} is possible but unlikely; please check."
     elif domain == "quantity" and num < 0 and "allow_negative" not in rules:
@@ -491,6 +512,44 @@ def classify_email(v, rules: dict, strict: bool) -> tuple[str, str, str]:
     if t.rsplit("@", 1)[1].lower() in _EMAIL_DOMAIN_TYPOS:
         return SUSPICIOUS, "possible_domain_typo", "Valid shape, but the domain looks like a common misspelling."
     return VALID, "ok", "Valid e-mail syntax (deliverability is not checked)."
+
+
+_ID_LETTERS, _ID_DIGITS = re.compile(r"[^\W\d_]+", re.UNICODE), re.compile(r"\d+")
+
+
+def identifier_shape(v) -> str:
+    """The STRUCTURE of an identifier with the characters abstracted: 'ID-001' -> 'A-9', '3' -> '9',
+    'C001' -> 'A9'. Letters are 'A', digit runs are '9', separators stay as typed. The width of a digit run is
+    ignored on purpose (ID-999 -> ID-1000 is normal growth) and so is the case of the prefix."""
+    t = (v if isinstance(v, str) else str(v)).strip()
+    return _ID_DIGITS.sub("9", _ID_LETTERS.sub("A", t))
+
+
+def _flag_identifier_formats(pending: dict, by_value: dict) -> None:
+    """Report (never rewrite) identifiers whose structure differs from the column's most common one.
+
+    ID-001, ID-002, 3, 6, 7 share a column but not a format. Omixa does not know whether `3` means
+    ID-003 (it may be a different numbering scheme, a legacy key or a typo), so no prefix is invented and no value
+    changes: the cells that do not follow the most common structure are marked SUSPICIOUS for review."""
+    shapes: dict = {}
+    for v, c in pending.items():
+        if by_value.get(v, (None,))[0] != VALID:
+            continue
+        shapes.setdefault(identifier_shape(v), []).append((c, v))
+    if len(shapes) < 2:
+        return
+    # the most common structure; ties go to the one seen first so the choice is deterministic
+    order = list(shapes)
+    top = max(order, key=lambda k: (sum(c for c, _ in shapes[k]), -order.index(k)))
+    example = max(shapes[top])[1]
+    for shape, members in shapes.items():
+        if shape == top:
+            continue
+        for _, v in members:
+            by_value[v] = (SUSPICIOUS, "inconsistent_identifier_format",
+                           f"Format '{shape}' differs from the column's most common identifier format '{top}' "
+                           f"(e.g. {_text(example)!r}). Not changed: Omixa will not invent a prefix or renumber; "
+                           f"agree one format for this column and apply it deliberately.")
 
 
 def classify_identifier(v, rules: dict) -> tuple[str, str, str]:
@@ -583,7 +642,10 @@ def _plausible_typo(rare: str, common: str) -> bool:
 
 
 def _key(s: str) -> str:
-    return re.sub(r"[^\w]", "", s.lower())
+    """Same notion of "the same label written differently" as the fixer (casing.variant_key), so the report can
+    never call `AB+` and `AB-` variants of one label while the fixer treats them as different."""
+    from cleaning import casing
+    return casing.variant_key(s)
 
 
 # --------------------------------------------------------------------------- column validation
@@ -668,6 +730,9 @@ def classify_column(name: str, series: pd.Series, config: Optional[dict] = None)
             else:
                 by_value[v] = classify_text(v)
 
+    if ctype == IDENTIFIER and "pattern" not in rules:
+        _flag_identifier_formats(pending, by_value)
+
     if rules.get("unique") and ctype in (IDENTIFIER, TEXT, NUMERIC, INTEGER, EMAIL, PHONE):
         for v, c in pending.items():
             if c > 1 and by_value[v][0] == VALID:
@@ -703,7 +768,10 @@ def _suggested_actions(name: str, info: dict, counts: dict, issues: dict) -> lis
     return acts
 
 
-def validate_dataframe(df: pd.DataFrame, config: Optional[dict] = None, *, include_examples: bool = True) -> dict:
+def validate_dataframe(df: pd.DataFrame, config: Optional[dict] = None, *, include_examples: bool = True,
+                       collect_flagged: Optional[dict] = None) -> dict:
+    """`collect_flagged` (optional, filled in place): {column: {row label: invalid|suspicious|unresolved}} for every
+    flagged cell, so a later report can tell which issues disappeared only because their ROW was removed."""
     cfg = normalize_config(config)
     n = len(df)
     columns = []
@@ -721,6 +789,19 @@ def validate_dataframe(df: pd.DataFrame, config: Optional[dict] = None, *, inclu
                 if include_examples and len(examples[cat]) < MAX_EXAMPLES:
                     examples[cat].append({"value": None if v is None else _jsonable(v), "count": k, "code": code, "reason": why})
         assert sum(counts.values()) == n, f"column {col!r}: counts {counts} do not add up to {n} rows"
+        if collect_flagged is not None and (counts[INVALID] or counts[SUSPICIOUS] or counts[UNRESOLVED]):
+            flagged_value_cat = {v: res["by_value"][v][0] for v in res["counts"]
+                                 if res["by_value"][v][0] in (INVALID, SUSPICIOUS, UNRESOLVED)}
+            try:
+                hit = df[col].astype(object).map(flagged_value_cat).dropna()      # hash lookup, no Python row loop
+                cells = hit.to_dict()
+            except TypeError:                                                      # unhashable cells in an odd file
+                cells = {}
+                for lab, v in df[col].astype(object).items():
+                    cat = flagged_value_cat.get(None if _is_blank(v) else v) if not isinstance(v, (list, dict, set)) else None
+                    if cat:
+                        cells[lab] = cat
+            collect_flagged[str(col)] = cells
         for c in CATEGORIES:
             totals[c] += counts[c]
         info = res["type_info"]

@@ -385,6 +385,33 @@ def unambiguous_date_parse(values: pd.Series) -> Optional[pd.Series]:
     return resolved.reindex(values.index)
 
 
+def unambiguous_date_cells(values: pd.Series) -> tuple[Optional[pd.Series], dict]:
+    """Cell-by-cell variant of `unambiguous_date_parse` for a column that contains ambiguous values.
+
+    A date is converted only when it can be read ONE way: day-first and month-first agree (ISO dates),
+    or only one of them is a real date (15/02/2024 cannot be month-first). A genuinely ambiguous cell
+    (03/04/2025), an impossible one (32/13/2025) and a placeholder are NOT converted: they come back as
+    NaT so the caller leaves them exactly as uploaded. The column's convention is never guessed from
+    its other cells.
+
+    Returns (resolved dates aligned to `values`, or None when no cell could be converted;
+             {"converted_candidates", "ambiguous", "unparseable"})."""
+    non_null = values.dropna().astype(str)
+    stats = {"converted_candidates": 0, "ambiguous": 0, "unparseable": 0}
+    if non_null.empty:
+        return None, stats
+    day_first = parse_dates(non_null, dayfirst=True)
+    month_first = parse_dates(non_null, dayfirst=False)
+    day_ok, month_ok = day_first.notna(), month_first.notna()
+    ambiguous = day_ok & month_ok & (day_first != month_first)
+    resolved = day_first.where(day_ok, month_first).where(~ambiguous)
+    stats.update(converted_candidates=int(resolved.notna().sum()), ambiguous=int(ambiguous.sum()),
+                 unparseable=int((~day_ok & ~month_ok).sum()))
+    if not stats["converted_candidates"]:
+        return None, stats
+    return resolved.reindex(values.index), stats
+
+
 # A comma is a thousands separator only when it sits in proper groups of three
 # ("1,200", "12,345,678.50"). A comma followed by one or two digits at the end
 # ("3,45") is a decimal comma. Anything else with a comma is ambiguous.
@@ -639,7 +666,11 @@ def has_time_component(values: pd.Series) -> bool:
     non_null = values.dropna().astype(str)
     if non_null.empty:
         return False
-    return bool(non_null.str.contains(r"\d{1,2}:\d{2}", regex=True).any())
+    # A real Excel date cell reaches us as a midnight timestamp ("2024-02-15 00:00:00"): that is a date with no
+    # time of day, nothing is lost by writing it as YYYY-MM-DD. Any other time (14:30) is real information.
+    has_clock = non_null.str.contains(r"\d{1,2}:\d{2}", regex=True)
+    midnight = non_null.str.contains(r"(?:^|[ T])0{1,2}:00(?::00(?:\.0+)?)?\s*$", regex=True)
+    return bool((has_clock & ~midnight).any())
 
 
 def fill_with_median(series: pd.Series) -> tuple[pd.Series, float]:

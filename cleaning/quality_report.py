@@ -181,6 +181,10 @@ def enrich_finding(raw: dict, ctx: CheckContext) -> dict:
         finding["semantic_type"] = ctx.profile[col].semantic_type
     if "sample_values" in raw:
         finding["sample_values"] = raw["sample_values"]
+    # optional breakdowns a check may attach (additive: existing clients ignore unknown keys)
+    for extra in ("formats_found", "invalid_count", "suspicious_count"):
+        if extra in raw:
+            finding[extra] = raw[extra]
     return finding
 
 

@@ -24,6 +24,9 @@ _FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@", "\t", "\r")
 # these with an apostrophe silently corrupts legitimate data ("-5", "+2348061234567")
 # and an apostrophe is literally shown in CSV viewers, so they are exempt.
 _PLAIN_SIGNED_NUMBER_RE = re.compile(r"^[+-]\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$")
+# A lone "-" or "+" (a dash used as "no value") carries no payload either: there is nothing after the sign to
+# execute. Prefixing it wrote the literal text '- into the cleaned file.
+_LONE_SIGN_RE = re.compile(r"^[+-]$")
 
 
 def _defuse_cell(value):
@@ -33,7 +36,7 @@ def _defuse_cell(value):
     Leaves non-strings (numbers, booleans, NaN) untouched; only text
     cells can carry a formula payload."""
     if isinstance(value, str) and value[:1] in _FORMULA_TRIGGER_CHARS:
-        if _PLAIN_SIGNED_NUMBER_RE.match(value):
+        if _PLAIN_SIGNED_NUMBER_RE.match(value) or _LONE_SIGN_RE.match(value):
             return value
         return "'" + value
     return value

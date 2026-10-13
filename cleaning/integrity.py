@@ -33,11 +33,19 @@ def _sum(counts: dict, keys=_ISSUE_KEYS) -> int:
     return sum(int(counts.get(k, 0)) for k in keys)
 
 
+def issues_removed_with_rows(flagged_before: dict, kept_labels) -> dict:
+    """{uploaded column: number of flagged cells that sat in rows which are no longer in the cleaned data}.
+    An issue that vanished because its whole row was removed (an exact duplicate) was not corrected."""
+    kept = set(kept_labels or [])
+    return {col: sum(1 for lab in cells if lab not in kept) for col, cells in (flagged_before or {}).items()
+            if any(lab not in kept for lab in cells)}
+
+
 def build_integrity_report(
     *, rows_in: int, rows_out: int, cols_in: int, cols_out: int, validation_before: dict, validation_after: dict,
     cleaned_labels: dict, missing_tracking: dict, audit, details: dict, rules_applied: list,
     duplicates_before: dict, duplicates_after: dict, quality_before: dict, quality_after: dict,
-    export_verification: Optional[dict],
+    export_verification: Optional[dict], removed_with_rows: Optional[dict] = None,
 ) -> dict:
     before = _by_column(validation_before)
     after = _by_column(validation_after, lambda c: cleaned_labels.get(c, c))
@@ -52,6 +60,9 @@ def build_integrity_report(
 
     columns, unresolved = [], []
     tot = {"before": dict.fromkeys(_ISSUE_KEYS, 0), "after": dict.fromkeys(_ISSUE_KEYS, 0)}
+    # Judged per column (never netted across columns) and net of issues that left only because their row was
+    # removed: "corrected" = flagged in the upload, no longer flagged in the cleaned file, row still present.
+    corrected_total = introduced_total = removed_total = 0
     for label, b in before.items():
         a = after.get(label)
         mt = missing_tracking.get(label, {})
@@ -62,7 +73,13 @@ def build_integrity_report(
             tot["before"][k] += int(b["counts"].get(k, 0))
             tot["after"][k] += int(a["counts"].get(k, 0))
         issues_b, issues_a = _sum(b["counts"]), _sum(a["counts"])
-        resolved = max(0, issues_b - issues_a)
+        gone_with_rows = min(issues_b, int((removed_with_rows or {}).get(label, 0)))
+        comparable_before = issues_b - gone_with_rows
+        resolved = max(0, comparable_before - issues_a)
+        introduced = max(0, issues_a - comparable_before)
+        corrected_total += resolved
+        introduced_total += introduced
+        removed_total += gone_with_rows
         changed = cells_by_col.get(label, 0)
         if issues_a == 0:
             status = SUCCESS
@@ -83,6 +100,7 @@ def build_integrity_report(
             "missing_before": mt.get("originally_missing", int(b["counts"].get("missing", 0))),
             "missing_after": int(a["counts"].get("missing", 0)),
             "invalid_before": issues_b, "invalid_resolved": resolved, "needs_review_after": issues_a,
+            "invalid_removed_with_rows": gone_with_rows, "invalid_introduced": introduced,
             "counts_before": b["counts"], "counts_after": a["counts"],
             "cells_changed": changed, "status": status, "notes": notes,
         })
@@ -132,9 +150,31 @@ def build_integrity_report(
                            "after": total_missing_after,
                            "converted_from_placeholders": sum(int(v.get("converted_to_missing", 0)) for v in missing_tracking.values()),
                            "filled": sum(int(v.get("filled", 0)) for v in missing_tracking.values())},
-        "invalid_values": {"detected": _sum(tot["before"]), "resolved": max(0, _sum(tot["before"]) - _sum(tot["after"])),
+        "invalid_values": {"detected": _sum(tot["before"]), "resolved": corrected_total,
+                           "removed_with_duplicate_rows": removed_total, "introduced_by_cleaning": introduced_total,
                            "requiring_manual_review": _sum(tot["after"]),
                            "by_kind_before": tot["before"], "by_kind_after": tot["after"]},
+        # The five things a reader needs kept apart (all counted on the data, none assumed from the rules that ran):
+        "issue_summary": {
+            "detected": _sum(tot["before"]),
+            "automatically_corrected": corrected_total,
+            "removed_with_duplicate_rows": removed_total,
+            "introduced_by_cleaning": introduced_total,
+            "remaining": _sum(tot["after"]),
+            "requires_review": int(tot["after"]["suspicious"]) + int(tot["after"]["unresolved"]),
+            "cannot_be_corrected_automatically": int(tot["after"]["invalid"]),
+            "cells_normalised": sum(cells_by_col.values()),
+            "definitions": {
+                "detected": "Values in the uploaded file that were invalid, suspicious or could not be interpreted (missing values and valid-but-untidy formatting are not counted here).",
+                "automatically_corrected": "Detected values that are no longer a problem in the cleaned file and whose row is still there.",
+                "removed_with_duplicate_rows": "Detected values that left only because their whole row was an exact duplicate and was removed. They were not corrected.",
+                "introduced_by_cleaning": "Values that are a problem in the cleaned file but were not in the upload.",
+                "remaining": "Values that are still a problem in the cleaned file; every one was kept exactly as uploaded.",
+                "requires_review": "Remaining values that are suspicious or ambiguous: a person has to confirm or correct them.",
+                "cannot_be_corrected_automatically": "Remaining values that are definitely invalid (a negative age, an impossible date) and have no safe automatic correction.",
+                "cells_normalised": "Cells whose text was rewritten to a consistent form (trimmed, ISO date, plain number, one capitalisation). Most were valid before and are not 'issues'.",
+            },
+        },
         "duplicates": {"exact_rows_detected": exact_found, "removal_authorized": removal_authorized, "exact_rows_removed": exact_removed,
                        "by_key": duplicates_after["by_key"], "potential": duplicates_after["potential"]},
         "data_type_inconsistencies": {"before": _finding_total(quality_before, {"mixed_data_types"}),

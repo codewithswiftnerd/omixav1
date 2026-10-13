@@ -126,3 +126,20 @@ exactly as uploaded (CSV: byte-for-byte), and re-validation gives the same probl
 with minimal formatting and unchanged cells get their uploaded text back (`7` stays `7`, `45.50` stays `45.50`).
 The formula-injection apostrophe is counted and reported as the only intended difference. Files above 1.5M cells
 skip the per-cell checks and say so.
+
+
+## Accuracy audit (October 2026)
+- **Dates are judged per cell.** A column with an ambiguous value (03/04/2025) no longer blocks the valid ones: ISO dates and
+  dates that can only be read one way (15/02/2024) are written as YYYY-MM-DD; ambiguous, impossible (32/13/2025) and
+  placeholder cells stay exactly as uploaded and the column stays flagged. The convention is never guessed from other cells.
+  Midnight timestamps (real Excel date cells) count as dates; a real time of day (14:30) still blocks rewriting.
+- **Identifier formats** (`inconsistent_identifier_format`, OMX-CON-004): ID-001 next to a bare 3 is reported with the formats found
+  and a recommendation to agree a column rule. Nothing is renumbered and no prefix is invented.
+- **Ages**: negative = invalid; above 120 and exactly 0 = suspicious (0 is often a placeholder; `min: 0` declares it valid). Never defaulted.
+- **Categories** are judged on distinct *labels*, not spellings, so small messy columns (active/Active/ACTIVE) are standardised.
+  `casing.variant_key` ignores only case, spaces, dots and a hyphen between words: `AB+`/`AB-`, `Grade A+`/`A-`, `R&D`/`RD` are different.
+- **Type detection**: a real number (or a column named amount/price/age) is never read as a phone number.
+- **Integrity report**: `invalid_values.resolved` is computed per column and excludes issues that left only because a duplicate row was
+  removed (`removed_with_duplicate_rows`); new `issue_summary` separates detected / automatically_corrected / remaining /
+  requires_review / cannot_be_corrected_automatically / introduced_by_cleaning.
+- A bare `-` or `+` is no longer prefixed with an apostrophe on export.
