@@ -75,7 +75,8 @@ def test_resolution_on_locked_column_is_reported_as_conflict():
 def test_free_unknown_and_spoken_numbers_survive_default_cleaning():
     df = pd.DataFrame({"amount_paid": ["25000", "15000", "free", "unknown", "ten thousand naira", "₦1,200", None]})
     out, log = apply_rules(df.copy())
-    assert out["amount_paid"].tolist()[:6] == ["25000", "15000", "free", "unknown", "ten thousand naira", "₦1,200"]
+    # words and the ambiguous placeholder stay exactly as uploaded; only the safely-readable money is normalised
+    assert out["amount_paid"].tolist()[:6] == [25000, 15000, "free", "unknown", "ten thousand naira", 1200]
     assert log["details"]["numeric_text_cleaning"]["left_unconverted"]["amount_paid"]["count"] >= 2
 
 
@@ -143,8 +144,9 @@ def test_missing_tracking_explains_a_rise_in_missing_values(client):
     body = client.post(f"/api/process/{job}", json={}).get_json()
     s = body.get("summary") or body
     t = s["missing_tracking"]["qty"]
-    # "N/A" is already empty when the file is read; "unknown" is converted by the rule, and says so
-    assert (t["originally_missing"], t["converted_to_missing"], t["missing_after"], t["filled"]) == (1, 1, 2, 0)
+    # Markers are no longer swallowed by pandas at read time: neither "N/A" nor "unknown" was empty in the upload,
+    # both are converted by the rule, and both are traceable in the audit (original value preserved).
+    assert (t["originally_missing"], t["converted_to_missing"], t["missing_after"], t["filled"]) == (0, 2, 2, 0)
     assert "missing_token_normalization" in t["by_rule"]
     assert s["change_log"]["cell_changes_total"] >= 1
 

@@ -188,21 +188,6 @@ def is_country_column(name: str) -> bool:
     return lname == "nation" or "country" in lname
 
 
-def looks_like_country_column(name: str, series: pd.Series) -> bool:
-    """Name says country, OR most values are recognised countries (so a generically named column such as
-    'col_d' holding Nigeria/Kenya/Ghana is still treated as one, and its odd value 'Eth' is flagged)."""
-    if is_country_column(str(name)):
-        return True
-    values = series.dropna()
-    values = values[values.map(lambda v: isinstance(v, str))].str.strip()
-    values = values[values != ""]
-    if len(values) < 4 or values.nunique() < 2:
-        return False
-    # country CODES alone (e.g. "NG") are too ambiguous to infer from: require mostly full names
-    known = values.map(lambda v: standardize_country_value(v) is not None and len(v) > 3)
-    return bool(known.mean() >= 0.7)
-
-
 # Column-name hints for values that are IDENTIFIERS rather than
 # quantities, account numbers, IBANs, BVNs/NUBANs (Nigerian bank
 # identifiers), postal codes, card numbers, etc. Nothing here should
@@ -292,11 +277,6 @@ def has_date_name(name: str) -> bool:
 MIN_DATE_PARSE_SHARE = 0.5
 
 
-_MON = r"(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*"
-# "April 2, 2024" / "Apr 2 2024" and "02-Apr-2024" / "2 April 2024": full dates with a month NAME and a 4-digit year
-_NAMED_MONTH_DATE = rf"^\s*(?:{_MON}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?,?\s+\d{{4}}|\d{{1,2}}[\s\-/.]{_MON}\.?[\s\-/.,]+\d{{4}})\s*$"
-
-
 def is_probable_date_column(name: str, series: pd.Series) -> bool:
     """Name hint (token-based, see has_date_name) backed by the values, or a sample
     of values that mostly parse as dates AND mostly contain date-shaped separators
@@ -313,7 +293,7 @@ def is_probable_date_column(name: str, series: pd.Series) -> bool:
 
     if len(values) < 3:
         return False
-    shaped = values.str.match(r"^\d{1,4}[/\-.]\d{1,2}[/\-.]\d{1,4}$") | values.str.match(_NAMED_MONTH_DATE, case=False)
+    shaped = values.str.match(r"^\d{1,4}[/\-.]\d{1,2}[/\-.]\d{1,4}$")
     if shaped.mean() < 0.8:
         return False
     parsed = pd.to_datetime(values, errors="coerce", format="mixed")
@@ -677,3 +657,89 @@ def fill_with_median(series: pd.Series) -> tuple[pd.Series, float]:
     elif is_int_like and pd.notna(median):
         median = int(median)
     return series.fillna(median), median
+
+
+# --- per-cell numeric normalisation with a column-level number format -----------------------------
+# A comma is only a thousands separator or a decimal comma when the COLUMN says so. "1,234" is 1234 in a
+# column that also holds "12,500.50" or "₦2,500", but 1.234 in a column that also holds "3,45", and it is
+# genuinely ambiguous when both conventions appear. Nothing here guesses: a value that cannot be read
+# safely is reported as "ambiguous"/"not_numeric" and the caller leaves it exactly as uploaded.
+_COMMA_GROUP_RE = re.compile(r"^-?\d{1,3}(,\d{3})+(\.\d+)?$")
+_SINGLE_GROUP_RE = re.compile(r"^-?\d{1,3},\d{3}$")
+_DEC_COMMA_RE = re.compile(r"^-?\d+,\d{1,2}$")
+_EU_FULL_RE = re.compile(r"^-?\d{1,3}(\.\d{3})+,\d+$")
+NUMBER_FORMATS = ("auto", "thousands_comma", "decimal_comma")
+
+
+def column_number_format(values) -> str:
+    """'thousands_comma' | 'decimal_comma' | 'mixed' | 'unknown' from the evidence in one column."""
+    thousands = decimal = False
+    for v in values:
+        if not isinstance(v, str):
+            continue
+        core = _currencies.strip_currency(v).strip().replace(" ", "")
+        if "," not in core and "." not in core:
+            continue
+        if _EU_FULL_RE.match(core) or _DEC_COMMA_RE.match(core):
+            decimal = True
+        elif (_COMMA_GROUP_RE.match(core) and ("." in core or core.count(",") >= 2)) or \
+                (_COMMA_GROUP_RE.match(core) and _currencies.has_currency(v)):
+            thousands = True
+    return "mixed" if (thousands and decimal) else "thousands_comma" if thousands else \
+        "decimal_comma" if decimal else "unknown"
+
+
+def _canonical_number(cleaned: str):
+    f = try_parse_float(cleaned)
+    if f is None:
+        return None
+    return int(f) if (f == int(f) and "." not in cleaned and "e" not in cleaned.lower()) else f
+
+
+def normalize_numeric_cell(raw, number_format: str = "auto", number_words: bool = False, explicit_format: bool = False):
+    """(status, value, reason). status: 'unchanged' (already a bare number), 'converted' (safe formatting
+    removed), 'ambiguous' (could mean two numbers), 'not_numeric'. value is None unless converted."""
+    if not isinstance(raw, str):
+        return "unchanged", None, ""
+    t = raw.strip()
+    core = _currencies.strip_currency(t).strip()
+    has_money = _currencies.has_currency(t)
+    if not core:
+        return "not_numeric", None, "empty after removing the currency symbol"
+    fmt = number_format
+    if "," in core or (fmt == "decimal_comma" and "." in core):
+        flat = core.replace(" ", "")
+        if fmt == "decimal_comma":
+            if _SINGLE_GROUP_RE.match(flat) and not explicit_format:
+                # three digits after one comma: 1.234 under a decimal-comma convention, 1234 under a thousands one.
+                # The convention was only INFERRED from other cells, so this value is not guessed.
+                return "ambiguous", None, "'1,234' is 1.234 or 1234: decimal commas were only inferred from other cells; set number_format to decide"
+            if _EU_FULL_RE.match(flat) or _DEC_COMMA_RE.match(flat) or _SINGLE_GROUP_RE.match(flat):
+                num = _canonical_number(flat.replace(".", "").replace(",", "."))
+                return ("converted", num, "decimal comma (column number format)") if num is not None \
+                    else ("not_numeric", None, "")
+            return "not_numeric", None, "does not fit the decimal-comma number format"
+        if _COMMA_GROUP_RE.match(flat):
+            if _SINGLE_GROUP_RE.match(flat) and fmt == "mixed":
+                return "ambiguous", None, "'1,234' is 1234 or 1.234: this column mixes thousands and decimal commas"
+            num = _canonical_number(flat.replace(",", ""))
+            return ("converted", num, "thousands separator removed") if num is not None else ("not_numeric", None, "")
+        if _DEC_COMMA_RE.match(flat):
+            if fmt in ("thousands_comma", "mixed"):
+                return "ambiguous", None, "a comma followed by 1-2 digits: decimal comma or typo (column uses thousands commas)"
+            num = _canonical_number(flat.replace(",", "."))
+            return ("converted", num, "decimal comma read as decimal point") if num is not None else ("not_numeric", None, "")
+        if re.fullmatch(r"[-\d,.\s]+", flat) and re.search(r"\d", flat):
+            return "ambiguous", None, "comma placement does not form a valid number"
+        return "not_numeric", None, "not a number"
+    cleaned = strip_numeric_noise(t)
+    num = _canonical_number(cleaned)
+    if num is None and number_words:
+        w = spoken_number(t)
+        if w is not None:
+            return "converted", w, "number written in words (rule enabled)"
+    if num is None:
+        return "not_numeric", None, "not a number"
+    if cleaned == t:
+        return "unchanged", None, ""
+    return "converted", num, ("currency symbol removed" if has_money else "numeric formatting removed")

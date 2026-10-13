@@ -122,7 +122,9 @@ def test_age_with_units_becomes_numeric_but_number_words_are_never_guessed():
     assert out["age"].tolist() == [44, 26, 39, 51]
     df = pd.DataFrame({"age": ["44 yrs", "26", "twenty", "39 years", "51"]})
     out, _ = clean(df)
-    assert out["age"].tolist() == ["44 yrs", "26", "twenty", "39 years", "51"]  # untouched, not invented
+    # "twenty" is never guessed and is preserved byte-for-byte; the cells that ARE safely readable ("44 yrs")
+    # are normalised on their own instead of being blocked by the one word (per-cell normalisation)
+    assert out["age"].tolist() == [44, 26, "twenty", 39, 51]
 
 
 def test_letter_o_typed_for_zero_in_a_number():

@@ -447,18 +447,3 @@ Paystack's API. Firestore rules deny all client writes.
   inline only for files up to 500k cells in queue mode (larger files get the validation block in the analysis
   report); the quality score still rewards explicit imputation in the Completeness dimension, offset by the
   flagged Accuracy finding.
-
-
-## Missing values, column types and the cleaning summary
-
-* **Missing**: an empty cell, whitespace, or a recognised marker (`NULL`, `N/A`, `NA`, `None`, ...). Weak markers such as
-  `UNKNOWN` are blanked only in numeric/date/e-mail/phone columns; in text columns they are kept and flagged.
-  `ERROR` / `#VALUE!` style strings are never missing: in typed columns they are **invalid** (kept as written).
-* **Types** (`cleaning/validation.py`): numeric, integer, currency, date, boolean, email, phone, categorical, identifier, text.
-  Users can confirm a type; `POST /api/process/<job_id>` accepts `"column_types": {"Age": "numeric"}` (optional).
-  For confirmed numeric/integer/currency columns, plain numeric text ("35", "1,200") is converted
-  (`cleaning/type_normalization.py`); words ("comma"), `ERROR`, leading-zero codes and fractions in integer columns are never
-  guessed, zeroed or deleted.
-* `summary.cleaning_summary.data_state` reports missing before/after (with unresolved columns), detected types, invalid values
-  per column, values normalized and values needing review. Existing keys are unchanged.
-* UI motion lives in `static/css/motion.css` (CSS only, honours `prefers-reduced-motion`).

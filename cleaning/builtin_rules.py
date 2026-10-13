@@ -182,6 +182,24 @@ R(RuleSpec(
     detector=C.check_unresolved_values,
 ))
 R(RuleSpec(
+    id="OMX-ACC-005", issue="suspicious_values", title="Suspicious values (warnings)", dimension=M.ACCURACY,
+    criticality=0.45, confidence=0.7, min_level=M.LOW,
+    remediation=M.REQUIRES_REVIEW, operation=M.NONE, resolver=None, reversibility=M.NOT_APPLICABLE,
+    explanation="Values that are valid numbers or dates but implausible for the column: an age above 120, a negative "
+                "quantity, a signup date in the future. They are warnings, not errors, and are never changed automatically.",
+    recommendation="Confirm each value at the source. If it is legitimate, set the column's allowed range or sign rule.",
+    detector=C.check_suspicious_values,
+))
+R(RuleSpec(
+    id="OMX-CON-020", issue="possible_misspelling", title="Possible misspelling", dimension=M.CONSISTENCY,
+    criticality=0.4, confidence=0.6, min_level=M.LOW,
+    remediation=M.REQUIRES_REVIEW, operation=M.NONE, resolver=None, reversibility=M.NOT_APPLICABLE,
+    explanation="A rare spelling that is very close to a common value (for example 'Lagoss' next to 'Lagos'). It may "
+                "be a typo or a different, real value, so it is only suggested, never replaced automatically.",
+    recommendation="Approve the suggested spelling for each value you recognise as a typo.",
+    detector=C.check_possible_misspellings,
+))
+R(RuleSpec(
     id="OMX-VAL-006", issue="ambiguous_date_format", title="Ambiguous date format", dimension=M.VALIDITY,
     criticality=0.7, confidence=0.9,
     remediation=M.REQUIRES_REVIEW, operation=M.INFERENCE, resolver="ambiguous_date_format",

@@ -15,6 +15,7 @@ Nothing here mutates a dataframe.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -303,6 +304,52 @@ def check_unresolved_values(ctx: CheckContext) -> list[dict]:
                                 "cannot be interpreted safely (e.g. 'free' in an amount, or a placeholder in notes)")
 
 
+# validation "suspicious" codes reported elsewhere (casing/variants, e-mail typos, ids, amounts, years) are left out
+_NOT_SUSPICIOUS_VALUES = {"label_variant", "inconsistent_label", "possible_misspelling", "padded_identifier",
+                          "possible_domain_typo", "negative_amount", "implausible_year"}
+
+
+def _codes_findings(ctx: CheckContext, codes, issue: str, what: str, suggestion, *, skip_numeric_age=False,
+                    category=None) -> list[dict]:
+    """Findings for cells whose validation CODE is in `codes` (the category alone is too broad)."""
+    from cleaning import validation
+    out = []
+    for col in ctx.df.columns:
+        res = validation.classify_column(str(col), ctx.df[col], None)
+        hits, samples, sugg = 0, [], {}
+        for v, k in res["counts"].items():
+            cat, code, why = res["by_value"][v]
+            if (category and cat != category) or not codes(code):
+                continue
+            if skip_numeric_age and code == "implausible_age" and pd.api.types.is_numeric_dtype(ctx.df[col]):
+                continue  # check_impossible_age already reports it for real numeric columns
+            hits += k
+            if v is not None and len(samples) < 5:
+                samples.append(str(v))
+                m = re.search(r"'([^']+)'", why or "")
+                if m:
+                    sugg[str(v)] = m.group(1)
+        pop = sum(k for v, k in res["counts"].items() if v is not None)
+        if hits and pop:
+            out.append({"column": col, "issue": issue, "affected": int(hits), "population": int(pop),
+                        "detail": f"{hits} value(s) {what}.", "suggestion": suggestion,
+                        "sample_values": samples, "suggested_corrections": sugg})
+    return out
+
+
+def check_suspicious_values(ctx: CheckContext) -> list[dict]:
+    return _codes_findings(
+        ctx, (lambda c: c not in _NOT_SUSPICIOUS_VALUES), "suspicious_values", "are well-formed but implausible for this column (warning, not an error)",
+        "Not changed. Check the source; set allow_negative / allow_future_dates / a range for the column if the value is legitimate.",
+        skip_numeric_age=True, category="suspicious")
+
+
+def check_possible_misspellings(ctx: CheckContext) -> list[dict]:
+    return _codes_findings(
+        ctx, (lambda c: c == "possible_misspelling"), "possible_misspelling", "look like a misspelling of a more common value",
+        "Suggested correction shown, never applied automatically. Approve it per value in the review step.")
+
+
 # ------------------------------------------------------------------ validity
 def check_outliers(ctx: CheckContext) -> list[dict]:
     out = []
@@ -424,7 +471,7 @@ def check_unrecognized_gender(ctx: CheckContext) -> list[dict]:
 def check_unrecognized_country(ctx: CheckContext) -> list[dict]:
     out = []
     for col in ctx.text_columns():
-        if not detectors.looks_like_country_column(str(col), ctx.df[col]):
+        if not detectors.is_country_column(str(col)):
             continue
         values = real_values(ctx.df[col]).str.strip()
         bad = values[values.map(detectors.standardize_country_value).isna()]

@@ -23,7 +23,7 @@ _FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@", "\t", "\r")
 # function call, reference, operator or separator an attacker could use. Prefixing
 # these with an apostrophe silently corrupts legitimate data ("-5", "+2348061234567")
 # and an apostrophe is literally shown in CSV viewers, so they are exempt.
-_PLAIN_SIGNED_NUMBER_RE = re.compile(r"^[+-]\d+(?:\.\d+)?$")
+_PLAIN_SIGNED_NUMBER_RE = re.compile(r"^[+-]\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$")
 
 
 def _defuse_cell(value):

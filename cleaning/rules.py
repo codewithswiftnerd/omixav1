@@ -298,17 +298,30 @@ def handle_missing_token_normalization(df: pd.DataFrame, details: dict) -> tuple
     per_column = {}
     kept_weak: dict = {}
     text_columns = df.select_dtypes(include=["object", "string"]).columns
+    # User-configured markers (e.g. "error", "unknown") are WEAK: blanked only where the column is clearly
+    # numeric/date/e-mail/phone, preserved and surfaced everywhere else, exactly like built-in weak markers.
+    extra = set((details.get("_options") or {}).get("missing_markers") or [])
 
     for col in text_columns:
         series = df[col]
         strong = series.apply(lambda v: isinstance(v, str) and detectors.is_strong_missing_token(v))
-        weak = series.apply(lambda v: isinstance(v, str) and detectors.is_weak_missing_token(v))
+        weak = series.apply(lambda v: isinstance(v, str) and (detectors.is_weak_missing_token(v)
+                                                              or v.strip().lower() in extra))
         if weak.any():
             try:
                 ptype = profiling.profile_column(str(col), series, len(series))
                 blankable = ptype.semantic_type in _BLANKABLE_TYPES and ptype.confidence >= 0.6
             except Exception:
                 blankable = False
+            if not blankable and extra:
+                # a marker the USER configured ("error" means missing): honour it wherever the rest of the column
+                # is clearly numbers, even if the profiler is unsure because of that very marker
+                rest = series[~weak & series.notna()]
+                rest = rest[rest.map(lambda v: isinstance(v, str) and not detectors.is_strong_missing_token(v))]
+                if len(rest) >= 3:
+                    ok = rest.map(lambda v: detectors.normalize_numeric_cell(v)[0] in ("unchanged", "converted"))
+                    blankable = bool(ok.mean() >= 0.8) and bool(weak[weak].index.map(
+                        lambda i: str(series[i]).strip().lower() in extra).all())
             if not blankable:
                 kept_weak[col] = {"count": int(weak.sum()),
                                   "values": sorted({str(v).strip() for v in series[weak].unique()})[:10]}
@@ -358,22 +371,58 @@ def handle_numeric_text_cleaning(df: pd.DataFrame, details: dict) -> tuple[pd.Da
         if detectors.is_identifier_column(str(col), non_null):
             continue
 
-        # FORMATTING only: symbols, thousands separators, %, parentheses. Words are never read as numbers
-        # here ("free" is not 0, "forty" is not 40): that is an interpretation the user must choose, via
-        # the explicit resolutions in cleaning/resolutions.py (words_to_numbers / free_as_zero).
-        cleaned_strs = non_null.map(detectors.strip_numeric_noise)
-        # Placeholder markers ("N/A", "unknown") are missing values, not text: they do not block a column
-        # from being a number column, and they stay as they are (they are blanked, or not, by the
-        # missing-token rule, never turned into a number).
+        # FORMATTING only: symbols, thousands separators, %, parentheses. Words are only read as numbers when
+        # the user enabled the rule (options.number_words) or chose it per column (resolutions.words_to_numbers).
+        opts = details.get("_options") or {}
         marker = non_null.map(detectors.is_missing_token)
-        parsed = cleaned_strs.map(detectors.try_parse_float)
-        if parsed[~marker].isna().any():
-            if len(non_null[~marker]):
-                # not every real value converts cleanly -> leave the column exactly as uploaded and
-                # record WHY, so the summary can show it instead of silently doing nothing
-                bad = non_null[~marker][parsed[~marker].isna()]
+        real = non_null[~marker]
+        fmt_opt = opts.get("number_format", "auto")
+        explicit_fmt = fmt_opt in ("thousands_comma", "decimal_comma")
+        fmt = fmt_opt if explicit_fmt else detectors.column_number_format(real)
+        number_words = bool(opts.get("number_words"))
+        verdicts = real.map(lambda v: detectors.normalize_numeric_cell(v, fmt, number_words, explicit_fmt))
+        statuses = verdicts.map(lambda x: x[0])
+        bad_mask = statuses.isin(["ambiguous", "not_numeric"])
+        if bad_mask.any():
+            n_ok = int((~bad_mask).sum())
+            if not len(real) or n_ok < 2 or n_ok / len(real) < 0.6:   # same share validation.detect_type needs for a number column
+                # not a number column: leave exactly as uploaded and record WHY
+                bad = real[bad_mask]
                 unconverted[col] = {"count": int(len(bad)), "examples": [str(v) for v in bad.unique()[:5]]}
                 continue
+            # A NUMBER column with a few bad cells. Every cell that can be read safely is normalised on its
+            # own; each one that cannot (words, "comma", an ambiguous "1,234") is preserved byte-for-byte and
+            # flagged. One bad value no longer blocks the rest of the column.
+            new_col = df[col].astype(object)
+            converted_idx = [i for i, v in verdicts.items() if v[0] == "converted"]
+            for i in converted_idx:
+                new_col.at[i] = verdicts[i][1]
+            # Plain numbers ("26") become real numbers too, but ONLY when the number prints back identically, so
+            # "45.50" and "007" keep their exact text and the column is not a confusing mix of text and numbers.
+            for i, v in (verdicts.items() if converted_idx else ()):   # nothing needed fixing => touch nothing
+                if v[0] == "unchanged":
+                    raw = str(real[i]).strip()
+                    num = detectors._canonical_number(detectors.strip_numeric_noise(raw))
+                    if num is not None and str(num) == raw:
+                        new_col.at[i] = num
+            df[col] = new_col
+            changed += len(converted_idx)
+            bad = real[bad_mask]
+            unconverted[col] = {
+                "count": int(len(bad)), "examples": [str(v) for v in bad.unique()[:5]],
+                "reasons": {str(v): verdicts[i][2] for i, v in list(bad.items())[:20]},
+                "partially_normalised": len(converted_idx), "number_format": fmt,
+            }
+            per_column[col] = {"changed": len(converted_idx), "type": "partial_normalisation"}
+            continue
+        # Every real value converts safely: normalise the whole column (same as before), but with the
+        # column's number format so "1,234" is never read the wrong way round.
+        def _clean(v):
+            st, num, _ = detectors.normalize_numeric_cell(v, fmt, number_words, explicit_fmt)
+            return str(num) if st == "converted" else detectors.strip_numeric_noise(v)
+
+        cleaned_strs = non_null.map(lambda v: v if detectors.is_missing_token(v) else _clean(v))
+        parsed = cleaned_strs.map(detectors.try_parse_float)
         if marker.any():
             continue  # markers still in the column: leave the dtype alone until they are resolved
 
@@ -459,25 +508,18 @@ def handle_boolean_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.
         unique_vals = set(lowered.unique())
 
         name_is_flag = detectors.is_boolean_flag_column(str(col))
-        # "1"/"0" count as booleans when the NAME says flag, or when the column is clearly yes/no/true/false
-        # words (at least half the values) so the 1/0 sit among words, never in a plain numeric column.
-        word_share = lowered.isin(detectors.BOOLEAN_WORDS).mean()
-        extended = name_is_flag or word_share >= 0.5
-        allowed_words = detectors.EXTENDED_BOOLEAN_WORDS if extended else detectors.BOOLEAN_WORDS
-        true_words = detectors.EXTENDED_TRUE_WORDS if extended else detectors.TRUE_WORDS
-        false_words = detectors.EXTENDED_FALSE_WORDS if extended else detectors.FALSE_WORDS
+        allowed_words = detectors.EXTENDED_BOOLEAN_WORDS if name_is_flag else detectors.BOOLEAN_WORDS
+        true_words = detectors.EXTENDED_TRUE_WORDS if name_is_flag else detectors.TRUE_WORDS
+        false_words = detectors.EXTENDED_FALSE_WORDS if name_is_flag else detectors.FALSE_WORDS
 
         if not unique_vals:
             continue
         if not unique_vals.issubset(allowed_words):
-            # A yes/no column with a stray value ("Unknown", "maybe") still has many spellings of yes/no.
-            # Unify the recognised ones to Yes / No text and leave the stray values exactly as typed (they are
-            # reported, not guessed). Needs >= 80% recognised, at least 3 of them, and both a yes- and no-style
-            # value present, so ordinary text columns are never reinterpreted.
+            # A flag column (is_verified, active...) with one or two stray values ("maybe") still has
+            # ten different spellings of yes/no. Unify the recognised ones to Yes / No text and leave the
+            # stray values exactly as typed (they are reported, not guessed). Never for generically named columns.
             recognised = lowered.isin(allowed_words)
-            seen = set(lowered[recognised].unique())
-            if (recognised.mean() < 0.8 or recognised.sum() < 3 or recognised.all()
-                    or not (seen & true_words) or not (seen & false_words)):
+            if not name_is_flag or recognised.mean() < 0.9 or recognised.all():
                 continue
             yes_no = lowered[recognised].map(lambda v: "Yes" if v in true_words else "No")
             df.loc[yes_no.index, col] = yes_no
@@ -804,7 +846,7 @@ def handle_country_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.
     text_columns = df.select_dtypes(include=["object", "string"]).columns
 
     for col in text_columns:
-        if not detectors.looks_like_country_column(str(col), df[col]):
+        if not detectors.is_country_column(str(col)):
             continue
 
         series = df[col]
@@ -951,6 +993,7 @@ def apply_rules(
     protected_blank: dict | None = None,
     held_out: dict | None = None,
     locked_columns: set | list | None = None,
+    options: dict | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """
     rules=None            -> run DEFAULT_RULES (the normal "Clean my
@@ -985,6 +1028,7 @@ def apply_rules(
     labels = dict(column_labels) if column_labels else {c: c for c in df.columns}
     # cells a user deliberately emptied via a resolution: {name in uploaded file: {row labels}}
     details["_protected_blank"] = protected_blank or {}
+    details["_options"] = dict(options or {})
 
     for rule_name in selected:
         fn = RULE_DISPATCH.get(rule_name)
@@ -992,6 +1036,9 @@ def apply_rules(
             continue
         before = df.copy() if audit is not None else None
         before_cols = list(df.columns)
+        step_approval = approval
+        if rule_name == "numeric_text_cleaning" and (options or {}).get("number_words"):
+            step_approval = M.APPROVAL_USER_SELECTED   # the user switched number-word reading on
         details["_column_labels"] = labels
         held = _split_held(df, labels, held_out, rule_name)
         if held is not None:
@@ -1008,7 +1055,7 @@ def apply_rules(
                 rule_id=spec.id if spec else None,
                 operation=spec.operation if spec else M.NORMALIZATION,
                 confidence=spec.fix_confidence if spec else None,
-                approval=approval,
+                approval=step_approval,
                 reason=spec.explanation if spec else "",
                 reversibility=spec.reversibility if spec else M.REVERSIBLE,
                 column_labels=labels,
@@ -1016,6 +1063,7 @@ def apply_rules(
         labels = _rename_labels(labels, before_cols, list(df.columns))
 
     details.pop("_protected_blank", None)
+    details.pop("_options", None)
     details.pop("_column_labels", None)
     log = {"rules_applied": selected, "changes": changes, "details": details}
     log["imputed"] = dict((details.get("missing_values") or {}).get("imputed") or {})

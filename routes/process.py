@@ -12,6 +12,7 @@ import jobs.service as job_service
 import storage as object_storage
 from processing.pipeline import DatasetTooLargeError, run_pipeline
 from cleaning.rules import RULE_DISPATCH
+from cleaning.options import OptionsError, parse_options
 import db as metadata_db
 from accounts import auth
 from accounts.entitlements import effective
@@ -35,8 +36,7 @@ def process_file(job_id):
                 "resolutions": [
                   {"column": "signup_date", "issue": "ambiguous_date_format", "choice": "day_first"}
                 ],
-                "has_header": true,
-                "column_types": {"Age": "numeric"}      # optional: types confirmed in the validation report
+                "has_header": true
               }
     Response: { "job_id": "...", "status": "completed", "summary": {...} }
               or { "status": "failed", "error": "..." }, 422
@@ -90,14 +90,13 @@ def process_file(job_id):
     if not isinstance(has_header, bool):
         return jsonify({"error": "'has_header' must be true or false"}), 400
 
-    # Optional, additive: column types the user confirmed in the validation report.
-    column_types = body.get("column_types")
-    if column_types is not None:
-        from cleaning import validation as _validation
-        if not (isinstance(column_types, dict) and len(column_types) <= 1000
-                and all(isinstance(k, str) and v in _validation.TYPES for k, v in column_types.items())):
-            return jsonify({"error": "'column_types' must map column names to one of: "
-                                     + ", ".join(_validation.TYPES)}), 400
+    # Optional cleaning options (number format, number words, extra missing markers, duplicate keys,
+    # validation ranges). Whitelisted and bounded; every one extends a Free capability, so nothing here
+    # can unlock a Pro rule (Pro rules still go through authorize_profile below).
+    try:
+        options = parse_options(body.get("options"))
+    except OptionsError as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_OPTIONS"}), 400
 
     if rules is not None:
         if not isinstance(rules, list) or not all(isinstance(r, str) for r in rules):
@@ -150,13 +149,13 @@ def process_file(job_id):
         remember_entitlement(uid, is_pro)
 
     if queue_mode:
-        return _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, cleaning_profile, leave_as_is, column_types)
+        return _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, cleaning_profile, leave_as_is, options)
 
     started = time.monotonic()
     try:
         summary = run_pipeline(job_id, rules=rules, resolutions=resolutions, has_header=has_header,
                                pro=is_pro, profile=profile, cleaning_profile=cleaning_profile,
-                               leave_as_is=leave_as_is, column_types=column_types)
+                               leave_as_is=leave_as_is, options=options)
     except (RuleConfigError, FeatureNotAvailable) as exc:
         # e.g. the profile names a column that is not in the file; nothing was changed or exported
         payload = exc.to_response() if isinstance(exc, FeatureNotAvailable) else exc.to_dict()
@@ -213,7 +212,7 @@ def process_file(job_id):
 
 
 def _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, cleaning_profile=None, leave_as_is=None,
-             column_types=None):
+             options=None):
     """Queue mode: the API only validates, applies admission control and creates the job. A
     dedicated worker (worker.py) does the cleaning. Everything the worker needs (including the
     server-decided is_pro flag and the Quality Profile) is frozen into the job record here, so
@@ -232,7 +231,7 @@ def _enqueue(job_id, rules, resolutions, has_header, is_pro, uid, profile, clean
 
     spec = {"kind": "clean", "rules": rules, "resolutions": resolutions, "has_header": has_header,
             "pro": is_pro, "uid": uid, "profile": profile, "cleaning_profile": cleaning_profile,
-            "leave_as_is": leave_as_is, "column_types": column_types}
+            "leave_as_is": leave_as_is, "options": options or {}}
     try:
         queued = job_service.submit(job_id, spec, is_pro, get_request_id())
     except Exception:

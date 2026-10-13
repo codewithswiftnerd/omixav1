@@ -23,7 +23,7 @@ from typing import Optional
 
 import pandas as pd
 
-from cleaning import detectors, profiling
+from cleaning import profiling
 
 ACRONYM_MAX_LETTERS = 4
 _LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
@@ -228,18 +228,6 @@ def plan_column(name: str, series: pd.Series, total_rows: int,
     non_null = non_null[non_null.map(lambda v: isinstance(v, str))]
     if non_null.empty:
         return "", {}
-    # A mostly-numeric column is not a label column: the odd word in it ("comma", "ERROR") is an INVALID value
-    # to be reviewed exactly as uploaded, never "tidied" into "Comma" / "Error".
-    everything = series.dropna()
-    if len(everything):
-        def _num(v):
-            if isinstance(v, bool):
-                return False
-            if isinstance(v, (int, float)):
-                return True
-            return isinstance(v, str) and detectors.try_parse_float(detectors.strip_numeric_noise(v)) is not None
-        if everything.map(_num).mean() >= 0.5:
-            return "", {}
     prof = prof or profiling.profile_column(str(name), series, total_rows)
     st, conf = prof.semantic_type, prof.confidence
 

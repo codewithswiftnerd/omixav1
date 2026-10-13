@@ -6,6 +6,7 @@ code. This file just wires the steps together in order.
 """
 
 import os
+import re
 from typing import Optional, List
 import pandas as pd
 
@@ -28,14 +29,21 @@ class DatasetTooLargeError(ValueError):
     """Raised with a message that is safe to show the user (it contains no file paths)."""
 
 
+# pandas' default na_values silently turns "N/A", "NULL", "NA", "None", "nan" ... into NaN BEFORE any Omixa
+# rule runs. That (a) erased which marker the user had (no audit entry, "missing before" under-reported what
+# was converted) and (b) turned whole integer columns into float64, so valid values were exported as "45.0".
+# Only a truly empty cell is missing at read time; every marker reaches the missing-token rule intact.
+_NA_KWARGS = {"keep_default_na": False, "na_values": [""]}
+
+
 def _read_csv(path: str, **kwargs) -> pd.DataFrame:
     """Uploads are accepted as UTF-8 or Latin-1 text (see utils.file_handler), so reading
     must tolerate both: a legacy Excel "CSV" saved in Windows-1252 used to pass upload
     validation and then crash here with UnicodeDecodeError."""
     try:
-        return pd.read_csv(path, encoding="utf-8-sig", **kwargs)
+        return pd.read_csv(path, encoding="utf-8-sig", **_NA_KWARGS, **kwargs)
     except UnicodeDecodeError:
-        return pd.read_csv(path, encoding="latin-1", **kwargs)
+        return pd.read_csv(path, encoding="latin-1", **_NA_KWARGS, **kwargs)
 
 
 def _sheet_extent(path: str, ext: str, ncols_hint: int, max_rows: int, cell_cap: int = 0):
@@ -140,7 +148,7 @@ def read_source(path: str, has_header: bool = True, max_cells: int = 0) -> pd.Da
             data_rows = extent[0] - (1 if has_header else 0)
             if data_rows > max_rows:
                 raise _too_large()  # rejected BEFORE pandas loads the sheet
-        df = pd.read_excel(path, dtype=dtype_overrides, header=header_arg)
+        df = pd.read_excel(path, dtype=dtype_overrides, header=header_arg, **_NA_KWARGS)
 
     if len(df) > max_rows:
         raise _too_large()
@@ -172,9 +180,7 @@ def _compact_validation(v: dict) -> dict:
     """Counts only (no example values): small enough to ship with every cleaning result."""
     return {"row_count": v["row_count"], "totals": v["totals"], "needs_attention": v["needs_attention"],
             "columns": [{"column": c["column"], "effective_type": c["effective_type"], "type_status": c["type_status"],
-                         "type_confidence": c["type_confidence"], "counts": c["counts"], "issues": c["issues"],
-                         "numeric_stored_as_text": c.get("numeric_stored_as_text", 0),
-                         "fully_valid": c["fully_valid"]} for c in v["columns"]]}
+                         "counts": c["counts"], "fully_valid": c["fully_valid"]} for c in v["columns"]]}
 
 
 def _missing_tracking(missing_before: dict, audit, *, labels_final: dict, cleaned_df, rows_in: int) -> dict:
@@ -201,6 +207,52 @@ def _missing_tracking(missing_before: dict, audit, *, labels_final: dict, cleane
             "rows_removed_note": audit.removed_rows_total or None,
         }
     return out
+
+
+_PLAIN_NUMBER_TEXT = re.compile(r"^[+-]?\d+(?:\.\d+)?$")
+
+
+def _render_floats_for_csv(cleaned_df, *, source_text_df, kept_index, cleaned_labels, source_positions, ledger):
+    """A float64 column prints every whole number as "7.0" ("45" -> "45.0", the original reported bug) because
+    one decimal elsewhere in the column forces the float dtype. Floats are therefore written with minimal
+    formatting, and a cell the pipeline did NOT change gets its exact uploaded text back ("7", "7.0", "45.50"
+    stay as typed). Only float columns are touched, and only the CSV text; the dataset itself is unchanged."""
+    float_cols = [c for c in cleaned_df.columns if pd.api.types.is_float_dtype(cleaned_df[c])]
+    if not float_cols:
+        return cleaned_df
+    changed = {(c.get("row"), c.get("column")) for c in ledger.get("cell_changes", [])}
+    can_restore = source_text_df is not None and not ledger.get("truncated")
+    out = cleaned_df.copy()
+    for col in float_cols:
+        j = list(cleaned_df.columns).index(col)
+        sp = source_positions[j] if j < len(source_positions) else None
+        label = cleaned_labels.get(col, str(col))
+        orig = None
+        if can_restore and sp is not None and sp < source_text_df.shape[1]:
+            orig = source_text_df.iloc[:, sp].reindex(kept_index).tolist()
+        rendered = []
+        for i, v in enumerate(cleaned_df[col].tolist()):
+            if v is None or v != v:
+                rendered.append(None)
+                continue
+            text = f"{v:.15g}"
+            if orig is not None and (kept_index[i], label) not in changed:
+                o = orig[i]
+                if isinstance(o, str) and _PLAIN_NUMBER_TEXT.match(o.strip()) and float(o) == v:
+                    text = o.strip()
+            rendered.append(text)
+        out[col] = pd.Series(rendered, index=out.index, dtype="object")
+    return out
+
+
+def _cleaned_keys(keys, cleaned_labels):
+    """Duplicate key columns are named as in the uploaded file; the cleaned frame may have renamed them."""
+    if not keys:
+        return keys
+    back = {}
+    for cleaned, uploaded in cleaned_labels.items():
+        back.setdefault(str(uploaded), cleaned)
+    return [back.get(k, k) for k in keys]
 
 
 def _resolve_locks(df, leave_as_is, resolutions, engine_profile):
@@ -259,7 +311,7 @@ def run_pipeline(
     cleaning_profile: Optional[dict] = None,
     max_cells: int = 0,
     leave_as_is: Optional[List[str]] = None,
-    column_types: Optional[dict] = None,
+    options: Optional[dict] = None,
 ) -> dict:
     """
     Returns a summary dict the frontend can display, e.g.:
@@ -288,17 +340,17 @@ def run_pipeline(
     picked for a locked column still runs (it is their own direct instruction) and is reported as a
     conflict so the contradiction is visible.
 
-    `column_types` (optional) is {column name in the uploaded file: type} the user CONFIRMED (one of
-    cleaning.validation.TYPES). It drives type-aware validation and, for numeric/integer/currency columns,
-    the safe conversion of numeric text ("35" -> 35) in cleaning/type_normalization.py. Values that cannot
-    be converted safely ("comma", "ERROR") are left exactly as uploaded and reported for review.
-
     `cleaning_profile` (optional) is a declarative per-column rule configuration, see
     cleaning/engine/. It is parsed and AUTHORIZED here as well as in the API (defence in depth:
     `pro` is the server-derived entitlement frozen into the job, never a client value). It runs
     after resolutions and before the default rule set; columns it configures are held out from the
     default rules that would otherwise re-write its output.
     """
+    from cleaning.options import parse_options, validation_config
+    options = parse_options(options)   # whitelist + bounds, again here (defence in depth: the queue payload is data)
+    vconfig = validation_config(options)
+    if options.get("number_format") in ("thousands_comma", "decimal_comma"):
+        vconfig = {**(vconfig or {}), "defaults": {**((vconfig or {}).get("defaults") or {}), "number_format": options["number_format"]}}
     engine_profile = None
     if cleaning_profile:
         from cleaning.engine import authorize_profile, parse_profile
@@ -312,6 +364,27 @@ def run_pipeline(
     df = read_source(source_path, has_header=has_header, max_cells=max_cells)
     rows_in = len(df)
     columns_in = len(df.columns)
+    # What the file said, for the post-export check "cells we did not change still read as uploaded".
+    # CSV: the raw text (so "45" can never silently become "45.0"); Excel: the typed values as read.
+    source_ext = source_path.rsplit(".", 1)[1].lower()
+    try:
+        source_text_df = (_read_csv(source_path, dtype=str, header=0 if has_header else None)
+                          if source_ext == "csv" else df.copy())
+        if source_ext == "csv" and (source_text_df.shape != df.shape):
+            source_text_df = None
+    except Exception:
+        source_text_df = None
+    from cleaning import detectors
+    from cleaning.duplicates import analyze_duplicates
+    # The number convention of each column as the UPLOADED data shows it. Once "3,45" has been normalised the
+    # evidence is gone from the cleaned data, so the final validation is told what the file said.
+    inferred_formats = {}
+    for _c in df.columns:
+        if not pd.api.types.is_numeric_dtype(df[_c]):
+            _f = detectors.column_number_format([v for v in df[_c].dropna().tolist() if isinstance(v, str)])
+            if _f != "unknown":
+                inferred_formats[str(_c)] = _f
+    duplicates_before = analyze_duplicates(df, options.get("duplicate_keys"), has_header=has_header)
     # Pro only: keep the uploaded data so a Quality Profile can be evaluated before AND after cleaning.
     original_df = df.copy() if (pro and profile) else None
 
@@ -329,8 +402,7 @@ def run_pipeline(
     # report /api/report/<job_id> would return for this file.
     quality_before = generate_report(df)
     from cleaning.validation import validate_dataframe
-    validation_cfg = {"column_types": dict(column_types)} if column_types else None
-    validation_before = _compact_validation(validate_dataframe(df, validation_cfg, include_examples=False))
+    validation_before = _compact_validation(validate_dataframe(df, vconfig, include_examples=False))
     missing_before = {str(c): int(df[c].isna().sum()) for c in df.columns}
 
     audit = AuditLog()
@@ -352,13 +424,6 @@ def run_pipeline(
     # exactly which source column each surviving cleaned_df column will end up as,
     # which is what the exporter needs to look up "this output column's original
     # font/size/bold/italic/width" even after apply_rules renames every header.
-    # User-confirmed numeric columns: convert numeric text that is safe to convert. Runs on the ORIGINAL header
-    # names (what the user confirmed against); everything unsafe is preserved and stays visible to validation.
-    type_report = None
-    if column_types:
-        from cleaning.type_normalization import normalize_confirmed_types
-        df, type_report = normalize_confirmed_types(df, column_types, locked=locked, audit=audit, labels=labels)
-
     source_positions = [original_column_positions[name] for name in df.columns]
     columns_after_resolutions = list(df.columns)
 
@@ -371,7 +436,7 @@ def run_pipeline(
 
     cleaned_df, change_log = apply_rules(
         df, rules=rules, audit=audit, column_labels=labels, protected_blank=resolution_log.get("blanked"),
-        held_out=held_out, locked_columns=locked,
+        held_out=held_out, locked_columns=locked, options=options,
     )
 
     # Provenance: cells holding an ESTIMATE rather than an observation. Used so the
@@ -386,6 +451,7 @@ def run_pipeline(
 
     # Row identity was kept as the ORIGINAL index through the whole run (for the audit);
     # export wants a plain 0..n-1 index.
+    kept_index = [i.item() if hasattr(i, "item") else i for i in cleaned_df.index]
     cleaned_df = cleaned_df.reset_index(drop=True)
     rows_out = len(cleaned_df)
     cleaned_labels = dict(change_log.get("column_labels") or {})   # cleaned name -> name in the uploaded file
@@ -401,8 +467,13 @@ def run_pipeline(
     # see _first_sheet_name()), only a .xlsx source can.
     out_ext = "xlsx" if ext == "xls" else ext
     out_path = cleaned_file_path(job_id, out_ext)
+    export_frame = cleaned_df
+    if out_ext == "csv":
+        export_frame = _render_floats_for_csv(
+            cleaned_df, source_text_df=source_text_df, kept_index=kept_index, cleaned_labels=cleaned_labels,
+            source_positions=source_positions, ledger=audit.change_log())
     export_dataframe(
-        cleaned_df,
+        export_frame,
         out_path,
         ext=out_ext,
         source_path=source_path,
@@ -411,25 +482,34 @@ def run_pipeline(
         source_positions=source_positions,
     )
 
+    # Check the file that was actually written, not just the dataframe that was meant to be written.
+    from export.verify import verify_export
+    vconfig_after = vconfig
+    if inferred_formats:
+        vconfig_after = {**(vconfig or {}), "rules": {**((vconfig or {}).get("rules") or {})}}
+        for _c in cleaned_df.columns:
+            _f = inferred_formats.get(str(cleaned_labels.get(_c, _c)))
+            if _f:
+                vconfig_after["rules"][str(_c)] = {**vconfig_after["rules"].get(str(_c), {}), "inferred_number_format": _f}
+    validation_after_full = validate_dataframe(cleaned_df, vconfig_after, include_examples=False)
+    try:
+        export_verification = verify_export(
+            out_path=out_path, ext=out_ext, cleaned_df=cleaned_df, kept_index=kept_index, column_labels=cleaned_labels,
+            source_text_df=source_text_df, source_positions=source_positions, ledger=audit.change_log(),
+            validation_after_totals=validation_after_full["totals"], validation_config=vconfig_after,
+            sheet_name=_first_sheet_name(source_path) if out_ext == "xlsx" else None)
+    except Exception:
+        import logging
+        logging.getLogger("omixa.export").exception("export verification crashed for job %s", job_id)
+        export_verification = {"verified": False, "notes": [], "checks": [
+            {"check": "verification", "passed": False, "detail": "The exported file could not be verified.", "count": 0, "samples": []}]}
+    source_text_df = None
+
     # Re-run the same read-only quality checks against the cleaned data
     # so the frontend can show a before/after score, not just a list of
     # "N cells changed" counts.
     post_report = generate_report(cleaned_df, provenance={"imputed": imputed})
-    # The cleaned file may have renamed headers: carry each confirmed type over to the column's new name.
-    after_cfg = None
-    if column_types:
-        norm = lambda x: "".join(ch for ch in str(x).lower() if ch.isalnum())  # noqa: E731
-        by_norm = {norm(k): t for k, t in column_types.items()}
-        after_types = {}
-        for cleaned_name in cleaned_df.columns:
-            orig = cleaned_labels.get(cleaned_name, cleaned_name)
-            t = column_types.get(str(orig)) or by_norm.get(norm(orig))
-            if t:
-                after_types[str(cleaned_name)] = t
-        after_cfg = {"column_types": after_types}
-    validation_after = _compact_validation(validate_dataframe(cleaned_df, after_cfg, include_examples=False))
-    missing_tracking = _missing_tracking(missing_before, audit, labels_final=cleaned_labels,
-                                         cleaned_df=cleaned_df, rows_in=rows_in)
+    validation_after = _compact_validation(validation_after_full)
 
     cleaning_summary = build_cleaning_summary(
         rows_in=rows_in,
@@ -441,11 +521,6 @@ def run_pipeline(
         resolution_log=resolution_log,
         audit=audit,
         imputed=imputed,
-        data_state_args={
-            "validation_before": validation_before, "validation_after": validation_after,
-            "labels_final": {str(k): str(v) for k, v in cleaned_labels.items()},
-            "missing_tracking": missing_tracking, "type_report": type_report,
-        },
     )
 
     audit_entries = audit.public_entries()
@@ -489,7 +564,35 @@ def run_pipeline(
     result["column_options"] = column_options
     result["validation_before"] = validation_before
     result["validation_after"] = validation_after
-    result["change_log"] = audit.change_log()
-    result["missing_tracking"] = missing_tracking
-    result["type_normalization"] = type_report
+    change_log_out = audit.change_log()
+    row_offset = 2 if has_header else 1   # 0-based row label -> the row number the user sees in their spreadsheet
+    for entry in change_log_out["cell_changes"]:
+        if isinstance(entry.get("row"), int):
+            entry["source_row"] = entry["row"] + row_offset
+    for entry in change_log_out["removed_rows"]:
+        if isinstance(entry.get("row"), int):
+            entry["source_row"] = entry["row"] + row_offset
+    result["change_log"] = change_log_out
+    result["missing_tracking"] = _missing_tracking(missing_before, audit, labels_final=cleaned_labels,
+                                                   cleaned_df=cleaned_df, rows_in=rows_in)
+
+    from cleaning.integrity import build_integrity_report
+    duplicates_after = analyze_duplicates(cleaned_df, _cleaned_keys(options.get("duplicate_keys"), cleaned_labels),
+                                          has_header=has_header)
+    # row labels of the cleaned frame are 0..n-1; show the position the user sees in the exported file
+    result["export_verification"] = export_verification
+    result["integrity_report"] = build_integrity_report(
+        rows_in=rows_in, rows_out=rows_out, cols_in=columns_in, cols_out=len(cleaned_df.columns),
+        validation_before=validation_before, validation_after=validation_after, cleaned_labels=cleaned_labels,
+        missing_tracking=result["missing_tracking"], audit=audit, details=change_log["details"],
+        rules_applied=change_log["rules_applied"], duplicates_before=duplicates_before, duplicates_after=duplicates_after,
+        quality_before=quality_before, quality_after=post_report, export_verification=export_verification)
+    ir = result["integrity_report"]
+    cleaning_summary["integrity"] = {"status": ir["status"], "fully_clean": ir["fully_clean"], "export_verified": ir["export_verified"]}
+    if isinstance(cleaning_summary.get("text"), str):
+        label = {"successfully_cleaned": "Successfully cleaned", "partially_cleaned": "Partially cleaned",
+                 "requires_manual_review": "Requires manual review"}[ir["status"]]
+        extra = [f"\nOutcome: {label}" + (" (fully clean)" if ir["fully_clean"] else " (NOT fully clean)")]
+        extra += [f"  - {w}" for w in ir["warnings"]]
+        cleaning_summary["text"] += "\n".join(extra)
     return result

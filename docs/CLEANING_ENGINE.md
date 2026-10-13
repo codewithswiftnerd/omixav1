@@ -82,3 +82,47 @@ placeholder, never silently changed). `account_status` / `account_type` are no l
 - Worded placeholders (`not known`, `TBD`, `not available`...) count as missing; `Naija` resolves to Nigeria.
 - Mixed `dd/mm/yyyy` and `mm-dd-yyyy` dates are still NOT converted: they are genuinely ambiguous, so the engine
   reports the column instead of guessing.
+
+## Data integrity: per-cell normalisation, honest reports, verified exports
+
+**Reading.** CSV/Excel are read with `keep_default_na=False`: only a truly empty cell is missing at read time.
+`N/A`, `NULL`, `NA`, `None` reach the missing-token rule, so each is converted *and* written to the audit ledger.
+(pandas used to swallow them silently, which also turned integer columns into floats: `45` -> `45.0`.)
+
+**Numbers (`numeric_text_cleaning`).** Every cell is judged on its own (`detectors.normalize_numeric_cell`):
+`" 35 "` -> 35, `"₦2,500"` -> 2500, `"(45)"` -> -45. A cell that cannot be read safely (`comma`, `invalid`,
+`ERROR`, an ambiguous `1,234`) is preserved byte-for-byte and flagged; it no longer blocks the rest of the column.
+A column is only treated as numeric when >= 60% of its values read as numbers. A comma means thousands or a
+decimal point only according to the *column* (`column_number_format`): evidence like `12,500.50` or `₦2,500`
+means thousands; `3,45` means decimal comma, but a lone `1,234` in such a column stays ambiguous unless the user
+sets `options.number_format`. Words (`forty-five`) are read only with `options.number_words` (recorded as
+`user_selected`) or the per-column `words_to_numbers` resolution. Arbitrary text never becomes 0.
+
+**Validation.** Plausibility checks (age < 0 or > 120, negative quantity, future signup date) run whatever the
+column-type confidence, are warnings (`suspicious`) unless the user configured a hard range, and are reported as
+`suspicious_values` (OMX-ACC-005). `allow_negative` / `allow_future_dates` / ranges are set through
+`options.validation` (same shape as `/api/validate`). `possible_misspelling` (OMX-CON-020) suggests a correction
+(`Lagoss` -> `Lagos`) and never applies it; a different real word (`Inactive` next to `Active`) is not a typo.
+
+**Options** (`POST /api/process/<job>` body `options`, all optional, whitelisted in `cleaning/options.py`):
+`number_format` (`auto|thousands_comma|decimal_comma`), `number_words` (bool), `missing_markers` (extra WEAK
+markers such as `error`, blanked only where the column is clearly numeric), `duplicate_keys` (columns; detection
+only), `validation` (`{column_types, rules, defaults}`). Every option extends a Free capability; Pro rules and
+features still go through `cleaning/engine/access.authorize`.
+
+**Duplicates** (`cleaning/duplicates.py`, read-only): *exact* rows (removed only by the `duplicates` rule, first
+kept, every removal audited), *by key* (same key columns, other columns differ: review only), *potential* (same
+e-mail/phone, not an exact copy: review only). A shared name is never an identity.
+
+**Report** (`summary.integrity_report`): computed from re-validating the final dataset. Per column and overall:
+`successfully_cleaned` | `partially_cleaned` | `requires_manual_review`; plus row/column counts, missing before/after,
+invalid/suspicious/unresolved detected, resolved, needing review, duplicates, type/date/category inconsistencies,
+changes per column, operations, warnings. `fully_clean` is true only when nothing needs a person and the export
+verified. Audit entries carry `source_row` (the row number in the uploaded sheet).
+
+**Export verification** (`summary.export_verification`, `export/verify.py`): the written file is re-read and
+checked: shape, header, every cell vs the dataset, every ledger change present, cells nobody changed still read
+exactly as uploaded (CSV: byte-for-byte), and re-validation gives the same problem counts. CSV floats are written
+with minimal formatting and unchanged cells get their uploaded text back (`7` stays `7`, `45.50` stays `45.50`).
+The formula-injection apostrophe is counted and reported as the only intended difference. Files above 1.5M cells
+skip the per-cell checks and say so.
