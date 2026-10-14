@@ -177,6 +177,11 @@ def enrich_finding(raw: dict, ctx: CheckContext) -> dict:
         "field_importance": round(importance, 2),
         "criticality": spec.criticality,
     }
+    if raw.get("advisory"):
+        # An offered action, not a defect: shown with its resolution, never scored, never caps the score.
+        finding["advisory"] = True
+        finding["level"], finding["severity"] = M.LOW, M.LEGACY_SEVERITY[M.LOW]
+        finding["impact"] = 0.0
     if col in ctx.profile:
         finding["semantic_type"] = ctx.profile[col].semantic_type
     if "sample_values" in raw:

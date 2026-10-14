@@ -203,6 +203,10 @@ class Config:
     MAX_ACTIVE_JOBS_USER = int(os.environ.get("OMIXA_MAX_ACTIVE_JOBS_USER", "3"))
     MAX_ACTIVE_JOBS_PRO = int(os.environ.get("OMIXA_MAX_ACTIVE_JOBS_PRO", "8"))
     GLOBAL_MAX_RUNNING = int(os.environ.get("OMIXA_GLOBAL_MAX_RUNNING", "50"))
+    # Independent worker processes one `python worker.py` container supervises. Each runs ONE job at a time in
+    # its own isolated child, so total concurrency = replicas x this. Default 1 keeps the old behaviour.
+    # Size by memory: peak usage is roughly WORKER_PROCESSES x OMIXA_JOB_MEMORY_LIMIT_MB per container.
+    WORKER_PROCESSES = max(1, min(16, int(os.environ.get("OMIXA_WORKER_PROCESSES", "1") or 1)))
     JOB_TIMEOUT_SECONDS = int(os.environ.get("OMIXA_JOB_TIMEOUT_SECONDS", "900"))
     JOB_MEMORY_LIMIT_MB = int(os.environ.get("OMIXA_JOB_MEMORY_LIMIT_MB", "1536"))  # 0 disables
     JOB_MAX_ATTEMPTS = int(os.environ.get("OMIXA_JOB_MAX_ATTEMPTS", "3"))

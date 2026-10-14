@@ -5,6 +5,7 @@ This file doesn't know the details of any single cleaning rule, that lives in cl
 code. This file just wires the steps together in order.
 """
 
+import logging
 import os
 import re
 from typing import Optional, List
@@ -19,6 +20,8 @@ from cleaning.resolutions import apply_resolutions
 from cleaning.quality_report import generate_report
 from cleaning.summary import build_cleaning_summary
 from export.exporter import export_dataframe
+
+logger = logging.getLogger("omixa.pipeline")
 
 # The audit returned to the browser is capped so a pathological file cannot produce a
 # multi-megabyte response; the totals in audit["summary"] stay exact.
@@ -591,6 +594,28 @@ def run_pipeline(
         quality_before=quality_before, quality_after=post_report, export_verification=export_verification,
         removed_with_rows=removed_with_rows)
     ir = result["integrity_report"]
+    # Row-count reconciliation: every record that left the dataset must be explained by an audited,
+    # rule-attributed removal. A mismatch is never accepted silently (see docs/CLEANING_ENGINE.md).
+    removed_audited = int(audit.removed_rows_total or 0)
+    unexplained = (rows_in - rows_out) - removed_audited
+    ir["row_reconciliation"] = ({
+        "retained": rows_out,
+        "removed_audited": removed_audited,
+        "unexplained": unexplained,
+        "original": rows_in,
+        "cells_modified": int(audit.cell_changes_total or 0),
+    })
+    if unexplained != 0:
+        logger.error("row-count mismatch for job %s: in=%s out=%s audited_removed=%s",
+                     job_id, rows_in, rows_out, removed_audited)
+        ir["warnings"].append(
+            f"Row count changed from {rows_in} to {rows_out} but only {removed_audited} removal(s) are recorded "
+            f"in the change history ({abs(unexplained)} unexplained). Do not rely on this export until reviewed.")
+        ir["status"] = "requires_manual_review"
+        ir["fully_clean"] = False
+        result["processing_warnings"] = list(result.get("processing_warnings") or []) + [
+            {"code": "unexplained_row_count_change", "rows_in": rows_in, "rows_out": rows_out,
+             "audited_removed": removed_audited, "unexplained": unexplained}]
     cleaning_summary["integrity"] = {"status": ir["status"], "fully_clean": ir["fully_clean"], "export_verified": ir["export_verified"]}
     if isinstance(cleaning_summary.get("text"), str):
         label = {"successfully_cleaned": "Successfully cleaned", "partially_cleaned": "Partially cleaned",

@@ -77,6 +77,33 @@ DEFAULT_RULES = [
 HIGH_MISSING_THRESHOLD = 70
 
 
+# Execution order is part of the contract and does NOT depend on the order a client lists rules in
+# (the UI's checkbox order, API callers and batch jobs all get identical results). Header names first, then
+# the default rules in their documented order, and the estimate-based fill LAST so a filled cell can
+# never be mistaken for a duplicate or be normalized as if it were original data.
+RULE_ORDER = ["column_names"] + DEFAULT_RULES + ["missing_values"]
+
+
+def canonical_rule_order(rules) -> list:
+    """Selected rules, each once, in RULE_ORDER. Names that are not rules are kept (at the end, in the
+    order given) so apply_rules can reject them loudly instead of hiding them here."""
+    wanted = list(dict.fromkeys(rules))
+    known = [r for r in RULE_ORDER if r in wanted]
+    return known + [r for r in wanted if r not in RULE_ORDER]
+
+
+NUMERIC_BY_CONTENT_SHARE = 0.5   # strictly more than half of the non-missing values
+
+
+def _mostly_numeric(series: pd.Series) -> bool:
+    """True when MORE THAN HALF of the non-missing values read as numbers (see detectors.try_parse_float)."""
+    present = series.dropna()
+    if present.empty:
+        return False
+    parsed = present.map(lambda v: detectors.try_parse_float(v) if isinstance(v, str) else (float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None))
+    return float(parsed.notna().mean()) > NUMERIC_BY_CONTENT_SHARE
+
+
 def handle_missing_values(df: pd.DataFrame, details: dict) -> tuple[pd.DataFrame, int]:
     """
     Rules MV-001 -> MV-004.
@@ -120,6 +147,21 @@ def handle_missing_values(df: pd.DataFrame, details: dict) -> tuple[pd.DataFrame
             per_column[col] = {
                 "action": "not_imputable", "missing_percentage": missing_pct,
                 "reason": f"{col_profile.semantic_type} values cannot be guessed",
+            }
+            continue
+
+        # Numeric by CONTENT, not just by dtype. A numeric column that still holds a few invalid strings
+        # (e.g. "ERROR") has object dtype; treating it as text would write the word "Unknown" into a column
+        # of numbers and report those cells as filled. Fill nothing and say why: resolve the invalid
+        # values first, then impute.
+        if (not pd.api.types.is_bool_dtype(df[col]) and not pd.api.types.is_numeric_dtype(df[col])
+                and _mostly_numeric(df[col])):
+            held_back.append({"column": col, "semantic_type": "numeric_with_invalid_values",
+                              "missing_percentage": missing_pct})
+            per_column[col] = {
+                "action": "not_imputable", "missing_percentage": missing_pct,
+                "reason": "mostly numbers but contains non-numeric values; resolve those first. "
+                          "No text placeholder was written into this numeric column",
             }
             continue
 
@@ -1022,7 +1064,7 @@ def apply_rules(
     rules still see every column.
     """
     explicit = rules is not None
-    selected = DEFAULT_RULES if rules is None else rules
+    selected = DEFAULT_RULES if rules is None else canonical_rule_order(rules)
     # "Leave as is": columns the user locked keep every value exactly as uploaded. A locked column is
     # parked away from EVERY value-changing rule (cleaning, formatting, imputation, case...), whichever
     # rule is selected and whether or not it is a default. The only rules that still see it are
@@ -1039,10 +1081,16 @@ def apply_rules(
     details["_protected_blank"] = protected_blank or {}
     details["_options"] = dict(options or {})
 
+    # An operation that cannot run must fail the job, never be skipped and reported as done.
+    # Validated up front so a bad name cannot leave the data half-processed.
+    unknown = [r for r in selected if r not in RULE_DISPATCH]
+    if unknown:
+        from cleaning.engine.base import RuleConfigError
+        raise RuleConfigError(f"Unsupported cleaning operation(s): {', '.join(map(str, unknown))}. "
+                              "Nothing was changed.", code="UNKNOWN_RULE")
+
     for rule_name in selected:
-        fn = RULE_DISPATCH.get(rule_name)
-        if not fn:
-            continue
+        fn = RULE_DISPATCH[rule_name]
         before = df.copy() if audit is not None else None
         before_cols = list(df.columns)
         step_approval = approval

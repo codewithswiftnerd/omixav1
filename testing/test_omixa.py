@@ -67,12 +67,13 @@ def test_rules_selected_only():
     assert set(log["changes"].keys()) == {"formatting_changed"}
 
 
-def test_unknown_rule_name_is_ignored_not_crashed():
-    # apply_rules itself is lenient (route-level validation in
-    # routes/process.py is what actually rejects unknown names before
-    # this is ever called), verify the lower layer doesn't crash.
-    cleaned, log = apply_rules(_messy_df(), rules=["not_a_real_rule"])
-    assert log["changes"] == {}
+def test_unknown_rule_name_is_rejected_not_silently_skipped():
+    # CHANGED CONTRACT (was: "ignored, not crashed"). An operation that cannot run must fail the job
+    # with a clear error instead of being skipped and reported as done. The route already rejects
+    # unknown names with a 400; this makes the lower layer (worker/batch path) equally strict.
+    from cleaning.engine.base import RuleConfigError
+    with pytest.raises(RuleConfigError, match="Unsupported cleaning operation"):
+        apply_rules(_messy_df(), rules=["not_a_real_rule"])
 
 
 # --------------------------------------------------------------------

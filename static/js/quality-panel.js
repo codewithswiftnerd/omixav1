@@ -166,6 +166,13 @@
          </div>`
       : `<div class="qc-score-badge ${tier}">${report.score}${report.grade ? '<span>' + esc(report.grade) + '</span>' : ''}</div>`;
 
+    // The score is held down by an unresolved critical/high issue even when the underlying
+    // dimensions improve. Say so, otherwise "89 -> 89" looks like the cleaning did nothing.
+    const capped = report.score_capped_by && report.score_before_cap != null && report.score_before_cap > report.score;
+    const capNoteHTML = capped
+      ? `<p class="qc-score-cap" role="note">Held at ${esc(report.score)} by an unresolved ${esc(report.score_capped_by)}-priority issue. It would be ${esc(report.score_before_cap)} without it.</p>`
+      : '';
+
     const groupsHTML = CATEGORY_ORDER.map((cat) => {
       const items = groups[cat];
       if (!items.length) return '';
@@ -205,7 +212,7 @@
 
     return `
       <div class="qc-panel-header">
-        ${scoreBadgeHTML}
+        ${scoreBadgeHTML}${capNoteHTML}
         <div class="qc-panel-headline">
           <strong>Data quality control center</strong>
           <span class="qc-panel-sub">${report.row_count} rows &middot; ${report.column_count} columns &middot; ${c.critical || 0} critical, ${c.warning || 0} warning, ${c.info || 0} info</span>

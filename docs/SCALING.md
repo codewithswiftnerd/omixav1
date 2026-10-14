@@ -30,7 +30,7 @@ test pass). Peak RAM at these sizes is small, but worker memory still must cover
 | Queue/workers | add replicas | jobs/min = replicas x (60 / seconds per job) | worker CPU-hours (dominant) |
 | Firebase | quota-based | Auth verifications, Firestore reads/writes | per-operation billing |
 
-Workers: concurrency = replicas (one job each). Jobs/min per worker ~ 60/avg_seconds. Example:
+Workers: concurrency = replicas x `OMIXA_WORKER_PROCESSES` (one job per worker process; default 1, max 16). Jobs/min per worker ~ 60/avg_seconds. Example:
 avg 30 s/job and 2,000 jobs/min peak needs ~1,000 workers: that is the real cost curve, so
 vectorising the engine (above) is worth more than any infra tweak. "1M connected users" is
 mostly CDN + stateless API + cached polling; "thousands of simultaneous jobs" is the worker bill.
@@ -76,3 +76,22 @@ priority (Pro first).
 ## Benchmarks
 
 `python benchmarks/bench_cleaning.py` (add `--quick` for 1k/10k rows) times the default rule set on 1k-100k rows, a wide (120-column) and a text-heavy dataset. On the development sandbox the engine ran at roughly 70k cells/second with linear scaling (100k rows x 7 columns in about 9 s). Treat figures as relative, not as guarantees.
+
+
+## Why a second user's job "waits in a queue" (and the minimum change)
+
+There is no global lock in the application. Each `worker.py` process takes ONE job at a time (each in its own
+memory-capped child process), and the default deployment is ONE worker. With one worker, user B's job is
+`queued` until user A's job finishes. Verified live with `scripts/check_concurrency.py --workers 1`:
+job B started at 22.7 s, exactly when job A finished.
+
+Minimum change, no new infrastructure (the database's atomic job claim already makes this safe):
+
+* Set `OMIXA_WORKER_PROCESSES=2` (or more) on the worker service. One container then supervises N
+  independent worker processes, restarts a crashed one, and drains all of them on SIGTERM; or
+* add worker replicas (Railway: raise the worker service's replica count; k8s: `deploy/k8s/omixa.yaml`).
+
+Bounds and cost: peak memory is about `OMIXA_WORKER_PROCESSES x OMIXA_JOB_MEMORY_LIMIT_MB` per container, and
+CPU-bound jobs only run faster in parallel if the container has that many cores. Concurrency stays bounded
+by `OMIXA_GLOBAL_MAX_RUNNING`, the per-user active-job limits, and the upload size limits.
+Check it on your own topology with `python scripts/check_concurrency.py --workers 1 --processes 2`.

@@ -18,6 +18,8 @@ import logging
 import os
 import signal
 import socket
+import subprocess
+import sys
 import time
 import uuid
 
@@ -65,7 +67,8 @@ def run_one(worker_id: str) -> str:
     return outcome
 
 
-def main() -> None:
+def _worker_loop() -> None:
+    """One worker: claims and runs ONE job at a time (unchanged behaviour)."""
     observability.configure_logging(logging.INFO, Config.LOG_FORMAT)
     metadata_db.init_db()
     signal.signal(signal.SIGTERM, _on_signal)
@@ -87,6 +90,54 @@ def main() -> None:
         if outcome in ("idle", "throttled"):
             time.sleep(0.5 if outcome == "idle" else 2)
     logger.info("worker stopped")
+
+
+def _supervise(n: int) -> None:
+    """Run n independent worker processes in this container so independent users' jobs run side by side
+    without extra infrastructure. Jobs stay isolated (each worker forks its own capped child per job) and
+    the compare-and-set claim in the database already guarantees no job runs twice. A crashed worker is
+    restarted; SIGTERM is forwarded so every worker finishes its current job before the container exits."""
+    observability.configure_logging(logging.INFO, Config.LOG_FORMAT)
+    env = dict(os.environ, OMIXA_WORKER_PROCESSES="1")
+    children: list[subprocess.Popen] = [None] * n  # type: ignore[list-item]
+
+    def spawn(i: int) -> None:
+        children[i] = subprocess.Popen([sys.executable, os.path.abspath(__file__)], env=env)
+
+    def forward(signum, _frame):
+        global _stop
+        _stop = True
+        for c in children:
+            if c is not None and c.poll() is None:
+                c.send_signal(signal.SIGTERM)
+
+    signal.signal(signal.SIGTERM, forward)
+    signal.signal(signal.SIGINT, forward)
+    logger.info("supervisor starting %d worker processes", n)
+    for i in range(n):
+        spawn(i)
+    while True:
+        alive = 0
+        for i, c in enumerate(children):
+            if c.poll() is None:
+                alive += 1
+            elif not _stop:
+                logger.error("worker process %d exited with %s; restarting", i, c.returncode)
+                time.sleep(1)
+                spawn(i)
+                alive += 1
+        if _stop and alive == 0:
+            break
+        time.sleep(0.5)
+    logger.info("supervisor stopped")
+
+
+def main() -> None:
+    n = Config.WORKER_PROCESSES
+    if n > 1:
+        _supervise(n)
+    else:
+        _worker_loop()
 
 
 if __name__ == "__main__":

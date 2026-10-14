@@ -136,7 +136,10 @@ def check_possible_duplicate_records(ctx: CheckContext) -> list[dict]:
         return []
     exact = df.duplicated(keep=False)
     best_col, best = None, 0
+    from cleaning import detectors
     for col in df.columns:
+        if detectors.is_identifier_column(str(col), df[col]) or detectors.is_unique_record_key(df[col]):
+            continue  # an identifier that differs means a different record, not a near-duplicate
         others = [c for c in df.columns if c != col]
         near = df.duplicated(subset=others, keep=False)
         cand = int((near & ~exact).sum())
@@ -435,7 +438,13 @@ def check_invalid_email(ctx: CheckContext) -> list[dict]:
     return out
 
 
+_E164_RE = re.compile(r"^\+\d{8,15}$")
+
+
 def check_suspicious_phone(ctx: CheckContext) -> list[dict]:
+    """Offer the country-confirmed phone standardization for any phone column that is not
+    already in international (+<digits>) form, not only for odd digit counts. The country is
+    NEVER guessed: the resolution defaults to "Leave as is" and the user picks the region."""
     out = []
     for col in ctx.text_columns():
         if not detectors.is_phone_column(str(col)):
@@ -444,14 +453,26 @@ def check_suspicious_phone(ctx: CheckContext) -> list[dict]:
         if values.empty:
             continue
         digits = values.str.replace(r"\D", "", regex=True).str.len()
-        bad = int(((digits < 7) | (digits > 15)).sum())
-        if bad:
-            out.append({
-                "column": col, "issue": "suspicious_phone_format", "affected": bad, "population": int(len(values)),
-                "detail": f"{bad} value(s) have an unusual number of digits for a phone number.",
-                "suggestion": "Not auto-fixed, worth a manual check. If you know the country, the "
-                              "resolution below can normalize to international format.",
-            })
+        odd_length = int(((digits < 7) | (digits > 15)).sum())
+        not_intl = int((~values.astype(str).str.strip().str.match(_E164_RE)).sum())
+        if not_intl:
+            detail = f"{not_intl} value(s) are not in international (+country code) format."
+            if odd_length:
+                detail += f" {odd_length} of them have an unusual number of digits for a phone number."
+            raw = {
+                "column": col, "issue": "suspicious_phone_format",
+                # Digit-count problems are scored exactly as before. A column whose numbers merely lack a
+                # country code is an OFFER (advisory): it appears with its country picker but does not
+                # change the quality score, because nothing is wrong with the numbers themselves.
+                "affected": odd_length if odd_length else not_intl, "population": int(len(values)),
+                "detail": detail,
+                "suggestion": "Not auto-fixed: Omixa never guesses a country. Choose the country below to "
+                              "standardize matching numbers to +country-code form; values that don't match "
+                              "are kept exactly as they are and listed for review.",
+            }
+            if not odd_length:
+                raw["advisory"] = True
+            out.append(raw)
     return out
 
 

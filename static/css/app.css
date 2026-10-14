@@ -464,3 +464,5 @@ fieldset.rules { border: none; padding: 0; margin: 0 0 20px; }
 /* Column validation report */
 .val-count { background: none; border: 0; padding: 0 2px; font: inherit; color: var(--text-primary); text-decoration: underline; cursor: pointer; }
 .val-type { max-width: 190px; font-size: 0.8rem; }
+
+.qc-score-cap { margin: 6px 0 0; font-size: 0.75rem; line-height: 1.3; color: var(--text-secondary); }

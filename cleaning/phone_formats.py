@@ -255,6 +255,13 @@ def normalize_phone(raw_value: str, country_code: str) -> str | None:
     trunk = country["trunk_prefix"]
     lo, hi = country["national_digits"]
 
+    # 0) An explicit international prefix ("+" or "00") is evidence by itself, whichever country it
+    #    names: keep it as that country's E.164 number if (and only if) the length fits that country's
+    #    rules. Anything else (e.g. "+234 0803...", a trunk 0 left inside) is left for review.
+    stripped = raw_value.strip()
+    if stripped.startswith("+") or digits.startswith("00"):
+        return _international_e164(digits if stripped.startswith("+") else digits[2:])
+
     # 1) Already carries this country's dial code.
     if digits.startswith(dial) and lo <= len(digits) - len(dial) <= hi:
         national = digits[len(dial):]
@@ -263,7 +270,23 @@ def normalize_phone(raw_value: str, country_code: str) -> str | None:
     #    evidence, unlike a bare digit-count coincidence.
     elif trunk and digits.startswith(trunk) and lo <= len(digits) - len(trunk) <= hi:
         national = digits[len(trunk):]
+    # 3) Nigeria only, and only because the user chose Nigeria for this column: a bare 10-digit number
+    #    starting 7/8/9 is a Nigerian mobile number whose leading 0 was lost (typically a spreadsheet
+    #    storing it as a number). No other country, and no other first digit, gets this treatment.
+    elif country_code == "NG" and len(digits) == 10 and digits[0] in "789":
+        national = digits
     else:
         return None
 
     return f"+{dial}{national}"
+
+
+def _international_e164(digits: str) -> str | None:
+    """'+<digits>' when the digits begin with a known dial code and the remainder has a plausible
+    national length for a country using it; otherwise None (left as uploaded, flagged for review)."""
+    for c in COUNTRIES.values():
+        d = c["dial_code"]
+        lo, hi = c["national_digits"]
+        if digits.startswith(d) and lo <= len(digits) - len(d) <= hi:
+            return "+" + digits
+    return None

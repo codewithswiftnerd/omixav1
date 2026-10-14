@@ -74,6 +74,7 @@ def score_dataset(findings: list[dict], profile: dict, *, total_rows: int, evalu
     affected_count, population, criticality, level).
     Returns {"overall": int, "grade": str, "dimensions": {...}, "capped_by": level|None}.
     """
+    findings = [f for f in findings if not f.get("advisory")]   # offers are not defects
     importances = [p.importance for p in profile.values()]
     total_importance = sum(importances) or 1.0
 

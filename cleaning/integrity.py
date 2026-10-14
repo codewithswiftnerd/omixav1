@@ -118,8 +118,23 @@ def build_integrity_report(
     warnings = []
     if tot["after"]["invalid"]:
         warnings.append(f"{tot['after']['invalid']} invalid value(s) remain in the cleaned data (kept exactly as uploaded).")
-    if tot["after"]["unresolved"]:
-        warnings.append(f"{tot['after']['unresolved']} value(s) cannot be interpreted safely and need a decision.")
+    # Cells the selected fill rule wrote as the text label "Unknown" are placeholders this run created, not
+    # values the file arrived with. They still count as unresolved (no real data was added), but they are
+    # reported on their own line so the two groups are never merged into one misleading figure.
+    per_col_fill = ((details or {}).get("missing_values") or {}).get("per_column") or {}
+    labelled = sum(int(v.get("filled", 0)) for v in per_col_fill.values() if v.get("action") == "unknown_category")
+    estimated = sum(int(v.get("filled", 0)) for v in per_col_fill.values()
+                    if v.get("action") in ("median_imputation", "mode_imputation"))
+    labelled_unresolved = min(labelled, int(tot["after"]["unresolved"]))
+    unresolved_original = int(tot["after"]["unresolved"]) - labelled_unresolved
+    if unresolved_original:
+        warnings.append(f"{unresolved_original} value(s) cannot be interpreted safely and need a decision.")
+    if labelled_unresolved:
+        warnings.append(f"{labelled_unresolved} blank cell(s) were labelled 'Unknown' by the fill-missing rule you "
+                        "selected. That is a placeholder label, not real data, so they still need a real value.")
+    if estimated:
+        warnings.append(f"{estimated} blank cell(s) were filled with an estimate (column median / most common value). "
+                        "These are not original data.")
     if tot["after"]["suspicious"]:
         warnings.append(f"{tot['after']['suspicious']} suspicious value(s) were flagged as warnings and left unchanged.")
     if exact_found and not exact_removed:
@@ -146,6 +161,8 @@ def build_integrity_report(
         "status": overall, "fully_clean": bool(fully_clean),
         "rows": {"original": rows_in, "final": rows_out, "removed": max(0, rows_in - rows_out)},
         "columns_count": {"original": cols_in, "final": cols_out},
+        "imputation": {"labelled_unknown": labelled, "estimated": estimated,
+                       "unresolved_original": unresolved_original, "unresolved_total_after": int(tot["after"]["unresolved"])},
         "missing_values": {"before": sum(c.get("missing_before", 0) for c in columns if c["status"] != "removed"),
                            "after": total_missing_after,
                            "converted_from_placeholders": sum(int(v.get("converted_to_missing", 0)) for v in missing_tracking.values()),

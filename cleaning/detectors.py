@@ -137,8 +137,8 @@ def is_email_column(name: str, series: pd.Series) -> bool:
 def is_phone_column(name: str) -> bool:
     lname = name.lower()
     return any(k in lname for k in (
-        "phone", "mobile", "contact_no", "contact no", "contactnumber",
-        "contact_number", "telephone", "tel_no", "whatsapp", "fax",
+        "phone", "mobile", "contact_no", "contact no", "contactno", "contactnumber",
+        "contact_number", "contact number", "telephone", "tel_no", "tel no", "whatsapp", "fax",
     )) or lname.strip() in ("tel", "cell")
 
 
@@ -242,6 +242,21 @@ def is_identifier_column(name: str, series: pd.Series) -> bool:
     if values.empty:
         return False
     return bool(values.str.match(_LEADING_ZERO_RE).any())
+
+
+def is_unique_record_key(series: pd.Series) -> bool:
+    """True when (nearly) every filled value in the column is different, so the column tells
+    records apart (transaction id, receipt no., order ref...) whatever it is called. Rows that
+    differ in such a column are different records, never near-duplicates of each other."""
+    values = series.dropna()
+    if len(values) < 20:  # too few rows to infer that a column identifies records
+        return False
+    if len(values) < 0.9 * len(series):  # mostly empty columns say nothing about identity
+        return False
+    text = values.astype(str).str.strip()
+    if (text.str.contains(r"\s", regex=True).mean()) > 0.1:  # free text (notes, names), not a key
+        return False
+    return bool(values.nunique() >= 0.98 * len(values))
 
 
 _DATE_NAME_TOKENS = {

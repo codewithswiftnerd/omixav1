@@ -302,6 +302,12 @@ def _resolve_impossible_date(df: pd.DataFrame, column: str, choice: str) -> tupl
 
 
 def _resolve_possible_duplicates(df: pd.DataFrame, column: str, choice: str) -> tuple[pd.DataFrame, int]:
+    from cleaning import detectors
+    if detectors.is_identifier_column(str(column), df[column]) or detectors.is_unique_record_key(df[column]):
+        # Records with different identifiers are different records, even when every other field
+        # happens to match (two customers can buy the same item on the same day).
+        raise ResolutionRefused(f"'{column}' identifies each record (its values are unique): rows with different identifiers are "
+                                "distinct records, so none were removed")
     other_cols = [c for c in df.columns if c != column]
     if not other_cols:
         return df, 0
