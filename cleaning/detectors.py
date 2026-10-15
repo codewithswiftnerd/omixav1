@@ -12,6 +12,7 @@ questions. Nothing in here mutates a dataframe.
 """
 
 from __future__ import annotations
+from functools import lru_cache
 import re
 from typing import Optional
 import pandas as pd
@@ -485,6 +486,7 @@ def is_zero_word(value: str) -> bool:
     return str(value).strip().lower() in ZERO_WORDS
 
 
+@lru_cache(maxsize=131072)  # pure function of its text; called per cell on every pass
 def strip_numeric_noise(value: str, *, number_words: bool = False) -> str:
     """Strips FORMATTING noise (currency symbols, thousands separators, %, accounting parentheses).
 

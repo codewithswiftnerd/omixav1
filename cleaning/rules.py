@@ -418,6 +418,14 @@ def handle_numeric_text_cleaning(df: pd.DataFrame, details: dict) -> tuple[pd.Da
         opts = details.get("_options") or {}
         marker = non_null.map(detectors.is_missing_token)
         real = non_null[~marker]
+        # A column that mixes currencies (₦ next to $ and £) must not be flattened into bare numbers: the
+        # amounts would silently lose which currency each was in. Leave it exactly as uploaded and say why.
+        mixed = currencies.mixed_currency_markers(real.unique())
+        if mixed:
+            carrying = real[real.map(lambda v: currencies.currency_marker(str(v)) is not None)]
+            unconverted[col] = {"count": int(len(carrying)), "examples": [str(v) for v in carrying.unique()[:5]],
+                                "reason": "mixed_currencies", "currencies": mixed}
+            continue
         fmt_opt = opts.get("number_format", "auto")
         explicit_fmt = fmt_opt in ("thousands_comma", "decimal_comma")
         fmt = fmt_opt if explicit_fmt else detectors.column_number_format(real)

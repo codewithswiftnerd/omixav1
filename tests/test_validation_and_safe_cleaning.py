@@ -81,7 +81,10 @@ def test_free_unknown_and_spoken_numbers_survive_default_cleaning():
 
 
 def test_currency_symbols_and_thousands_separators_still_convert_when_every_value_is_a_number():
-    out, _ = apply_rules(pd.DataFrame({"amount": ["₦25,000", "$1,200.50", "(45)", None]}))
+    # One currency per column. (This test used to mix ₦ and $ and expect bare numbers; merging different
+    # currencies silently loses which one each amount was in, so such a column is now left as uploaded and
+    # flagged: see test_spec_scenarios.py::test_a_column_mixing_currencies_is_never_flattened_into_bare_numbers.)
+    out, _ = apply_rules(pd.DataFrame({"amount": ["₦25,000", "₦1,200.50", "(45)", None]}))
     assert out["amount"].dropna().tolist() == [25000, 1200.5, -45]
 
 

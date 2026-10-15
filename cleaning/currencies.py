@@ -17,6 +17,8 @@ Whatever is left must still parse as a number, otherwise the column is left unto
 """
 
 from __future__ import annotations
+from functools import lru_cache
+from typing import Optional
 
 import re
 
@@ -233,12 +235,60 @@ CURRENCY_HINT_RE = re.compile(
 )
 
 
+@lru_cache(maxsize=131072)  # pure function of its text; called per cell on every pass
 def strip_currency(value: str) -> str:
     """Removes currency symbols/abbreviations from around a number. Leaves everything else."""
     v = value.strip()
     v = _LEAD_RE.sub(r"\1", v, count=1)
     v = _TRAIL_RE.sub(r"\1", v, count=1)
     return SYMBOL_CHAR_RE.sub("", v)
+
+
+@lru_cache(maxsize=131072)
+def currency_marker(value: str) -> Optional[str]:
+    """The currency symbol or code a value carries ('₦', '$', 'USD'), or None when it carries none.
+    Used to notice a column that mixes currencies, whose amounts must never be merged into bare numbers."""
+    v = value.strip()
+    m = _LEAD_RE.match(v)
+    if m:
+        tok = v[m.end(1):m.end()].strip()
+    else:
+        m = _TRAIL_RE.search(v)
+        if m:
+            tok = v[m.start():m.start(1)].strip()
+        else:
+            found = SYMBOL_CHAR_RE.findall(v)
+            tok = found[0] if found else ""
+    if not tok:
+        return None
+    return tok.upper() if tok.isalpha() else tok
+
+
+@lru_cache(maxsize=1)
+def _token_codes() -> dict:
+    """symbol / abbreviation / name (upper-cased when alphabetic) -> the ISO codes it can stand for. '$' maps to
+    several codes (USD, CAD, AUD...), so it agrees with 'USD' but never with '₦'."""
+    out: dict = {}
+    for code, _countries, tokens in CURRENCIES:
+        for tok in (code, *tokens):
+            key = tok.upper() if tok.isalpha() else tok
+            out[key] = out.get(key, frozenset()) | {code}
+    return out
+
+
+def mixed_currency_markers(values) -> Optional[list]:
+    """The distinct markers found when the values cannot all be one currency ('₦' with 'NGN' or 'Naira' is one
+    currency; '₦' with '$' or '£' is not), else None. Values without any currency marker are ignored."""
+    markers: set = set()
+    common = None
+    for v in values:
+        mk = currency_marker(str(v))
+        if not mk:
+            continue
+        markers.add(mk)
+        codes = _token_codes().get(mk, frozenset({mk}))
+        common = codes if common is None else (common & codes)
+    return sorted(markers) if common is not None and not common else None
 
 
 def has_currency(value: str) -> bool:

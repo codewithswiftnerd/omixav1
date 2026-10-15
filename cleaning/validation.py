@@ -31,6 +31,7 @@ with few distinct values costs about the same as a small one.
 """
 
 from __future__ import annotations
+from functools import lru_cache
 
 import difflib
 import re
@@ -282,7 +283,10 @@ def age_like(name: str) -> bool:
 
 
 # --------------------------------------------------------------------------- date parsing
+@lru_cache(maxsize=131072)
 def _try_named(t: str) -> Optional[date]:
+    """Pure function of the text, and called for every distinct value on every type-detection pass
+    (a 10,000-row file made ~1.6 million strptime calls), so its answer is cached."""
     for fmt in _NAMED_FORMATS:
         try:
             return datetime.strptime(t, fmt).date()

@@ -41,6 +41,15 @@ def issues_removed_with_rows(flagged_before: dict, kept_labels) -> dict:
             if any(lab not in kept for lab in cells)}
 
 
+def _unique_cells_changed(audit) -> Optional[int]:
+    """Exact count of distinct (row, column) cells that were changed, from the per-cell change log. The log is
+    capped for huge runs; when it holds fewer entries than changes were made, the figure is unknown (None)."""
+    log = getattr(audit, "cell_log", None) or []
+    if int(getattr(audit, "cell_changes_total", 0) or 0) > len(log):
+        return None
+    return len({(e.get("row"), e.get("column")) for e in log})
+
+
 def build_integrity_report(
     *, rows_in: int, rows_out: int, cols_in: int, cols_out: int, validation_before: dict, validation_after: dict,
     cleaned_labels: dict, missing_tracking: dict, audit, details: dict, rules_applied: list,
@@ -181,6 +190,7 @@ def build_integrity_report(
             "requires_review": int(tot["after"]["suspicious"]) + int(tot["after"]["unresolved"]),
             "cannot_be_corrected_automatically": int(tot["after"]["invalid"]),
             "cells_normalised": sum(cells_by_col.values()),
+            "unique_cells_changed": _unique_cells_changed(audit),
             "definitions": {
                 "detected": "Values in the uploaded file that were invalid, suspicious or could not be interpreted (missing values and valid-but-untidy formatting are not counted here).",
                 "automatically_corrected": "Detected values that are no longer a problem in the cleaned file and whose row is still there.",
@@ -189,7 +199,8 @@ def build_integrity_report(
                 "remaining": "Values that are still a problem in the cleaned file; every one was kept exactly as uploaded.",
                 "requires_review": "Remaining values that are suspicious or ambiguous: a person has to confirm or correct them.",
                 "cannot_be_corrected_automatically": "Remaining values that are definitely invalid (a negative age, an impossible date) and have no safe automatic correction.",
-                "cells_normalised": "Cells whose text was rewritten to a consistent form (trimmed, ISO date, plain number, one capitalisation). Most were valid before and are not 'issues'.",
+                "cells_normalised": "Cell changes made by the selected operations (trimmed, ISO date, plain number, one capitalisation, placeholder to missing, gap filled). A cell changed by two operations counts once per operation, so this can exceed unique_cells_changed. Most changes were valid before and are not 'issues'.",
+                "unique_cells_changed": "Distinct cells whose value was changed, each counted once however many operations touched it. Null when the per-cell log was truncated and the exact figure cannot be derived from it.",
             },
         },
         "duplicates": {"exact_rows_detected": exact_found, "removal_authorized": removal_authorized, "exact_rows_removed": exact_removed,
