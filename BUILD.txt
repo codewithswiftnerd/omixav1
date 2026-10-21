@@ -1,0 +1,1 @@
+omixa build v6 - 2026-10-21 - responsive pass, google login CSP fix, pro upsell
