@@ -416,6 +416,7 @@ function selectedRules(){
 runBtn.addEventListener('click', async () => {
   if(!selectedFile || !lastJobId) return;
   runBtn.disabled = true;
+  runBtn.setAttribute('aria-busy', 'true');   // spinner while the real request runs (motion.css)
   results.classList.add('hidden');
   downloadBtn.classList.add('hidden');
   try{
@@ -450,6 +451,7 @@ runBtn.addEventListener('click', async () => {
     setPhase(lastJobId ? 'review' : 'error');
   }finally{
     runBtn.disabled = false;
+    runBtn.removeAttribute('aria-busy');
   }
 });
 
@@ -688,7 +690,13 @@ async function saveDownloadedFile(blob, filename){
 }
 
 downloadBtn.addEventListener('click', async () => {
-  if(!lastJobId) return;
+  if(!lastJobId || downloadBtn.getAttribute('aria-busy') === 'true') return;
+  downloadBtn.setAttribute('aria-busy', 'true');
+  try{ await doDownload(); }
+  finally{ downloadBtn.removeAttribute('aria-busy'); }
+});
+
+async function doDownload(){
   let r;
   try{
     r = await fetch(base() + '/api/download/' + lastJobId + '?format=url', { credentials:'include', headers: apiHeaders() });
@@ -724,7 +732,7 @@ downloadBtn.addEventListener('click', async () => {
   const filename = match ? match[1] : 'cleaned_output';
   await saveDownloadedFile(blob, filename);
   downloadBtn.classList.add('hidden'); // job is deleted server-side after download
-});
+}
 
 function resetAll(){
   selectedFile = null; lastJobId = null; preCleanScore = null;

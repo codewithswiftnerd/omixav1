@@ -45,6 +45,9 @@ if (!cfg || !cfg.apiKey) {
   $('authForm').addEventListener('submit', async e => {
     e.preventDefault(); msg.textContent = '';
     const email = $('email').value.trim(), pw = $('password').value;
+    const submitBtn = $('submitBtn');
+    if (submitBtn.getAttribute('aria-busy') === 'true') return;
+    submitBtn.setAttribute('aria-busy', 'true');
     try {
       let cred;
       if (mode === 'signin') cred = await signInWithEmailAndPassword(auth, email, pw);
@@ -55,6 +58,7 @@ if (!cfg || !cfg.apiKey) {
       }
       await finish(cred.user);
     } catch (err) { msg.textContent = friendly(err); }
+    finally { submitBtn.removeAttribute('aria-busy'); }
   });
   $('googleBtn').addEventListener('click', async () => {
     msg.textContent = '';

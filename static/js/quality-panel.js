@@ -261,16 +261,34 @@
     let currentRecommendations = null;
     let beforeScore = null;
 
+    let closeTimer = null;
+
     function isOpen() {
-      return !panelEl.classList.contains('hidden');
+      return !panelEl.classList.contains('hidden') && !panelEl.classList.contains('closing');
+    }
+
+    // Closing plays a short exit animation (motion.css .qc-panel.closing) and then hides the panel.
+    // The timer is the source of truth, so the panel can never be left half-closed.
+    function finishClose() {
+      clearTimeout(closeTimer);
+      closeTimer = null;
+      panelEl.classList.remove('closing');
+      panelEl.classList.add('hidden');
     }
 
     function close() {
-      panelEl.classList.add('hidden');
       fabEl.setAttribute('aria-expanded', 'false');
+      if (panelEl.classList.contains('hidden') || panelEl.classList.contains('closing')) return;
+      const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (calm) { finishClose(); return; }
+      panelEl.classList.add('closing');
+      closeTimer = setTimeout(finishClose, 210);
     }
 
     function open() {
+      clearTimeout(closeTimer);
+      closeTimer = null;
+      panelEl.classList.remove('closing');
       panelEl.classList.remove('hidden');
       fabEl.setAttribute('aria-expanded', 'true');
     }

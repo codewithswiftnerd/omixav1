@@ -14,6 +14,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/motion.css') }}">
+<script nonce="{{ csp_nonce }}">if ('IntersectionObserver' in window) document.documentElement.classList.add('motion');</script>
 {% block head %}{% endblock %}
 </head>
 <body>
@@ -70,17 +72,26 @@
     var btn = document.getElementById('hamburgerBtn');
     var links = document.getElementById('navLinks');
     if (!btn || !links) return;
-    btn.addEventListener('click', function () {
-      var open = links.classList.toggle('open');
+    function setOpen(open, returnFocus) {
+      links.classList.toggle('open', open);
       btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    });
+      if (!open && returnFocus) btn.focus();
+    }
+    btn.addEventListener('click', function () { setOpen(!links.classList.contains('open')); });
     links.addEventListener('click', function (e) {
-      if (e.target.tagName === 'A') { links.classList.remove('open'); btn.setAttribute('aria-expanded', 'false'); }
+      if (e.target.closest && e.target.closest('a')) setOpen(false);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && links.classList.contains('open')) setOpen(false, true);
+    });
+    document.addEventListener('click', function (e) {
+      if (links.classList.contains('open') && !links.contains(e.target) && !btn.contains(e.target)) setOpen(false);
     });
   })();
 </script>
 <script src="{{ url_for('static', filename='js/pro-common.js') }}"></script>
 <script src="{{ url_for('static', filename='js/nav-auth.js') }}"></script>
+<script src="{{ url_for('static', filename='js/motion.js') }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

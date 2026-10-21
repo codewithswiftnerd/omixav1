@@ -30,24 +30,62 @@
   var tabs = document.querySelectorAll('#qTabs .tab');
   if (!before || !after || !tabs.length) return;
 
+  function row(text, i, cls, tag) {
+    var li = document.createElement('li');
+    li.style.setProperty('--i', i);
+    if (cls) li.className = cls;
+    li.appendChild(document.createTextNode(text));
+    if (tag) { var t = document.createElement('span'); t.className = 'ba-tag'; t.textContent = tag; li.appendChild(t); }
+    return li;
+  }
   function render(key) {
     var d = DATA[key];
     if (!d) return;
     before.innerHTML = '';
     after.innerHTML = '';
-    d.before.forEach(function (t) { var li = document.createElement('li'); li.textContent = t; before.appendChild(li); });
-    d.after.forEach(function (t) { var li = document.createElement('li'); li.textContent = t; after.appendChild(li); });
+    d.before.forEach(function (t, i) { before.appendChild(row(t, i)); });
+    // A row is "changed" only if the cleaned value really differs from the original (comparison is exact).
+    d.after.forEach(function (t, i) {
+      var changed = t !== d.before[i];
+      after.appendChild(row(t, i, changed ? 'changed' : 'same', changed ? '' : 'unchanged'));
+    });
   }
 
-  tabs.forEach(function (tab) {
-    tab.addEventListener('click', function () {
-      tabs.forEach(function (t) { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
-      tab.classList.add('active');
-      tab.setAttribute('aria-selected', 'true');
-      render(tab.dataset.tab);
+  // Replays the before -> after sequence (CSS does the movement; see .is-animating in motion.css).
+  var card = document.getElementById('baCard');
+  function play() {
+    if (!card) return;
+    card.classList.remove('is-animating');
+    void card.offsetWidth;                  // restart the CSS animation
+    card.classList.add('is-animating');
+  }
+
+  function select(tab, focus) {
+    tabs.forEach(function (t) { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); t.tabIndex = -1; });
+    tab.classList.add('active');
+    tab.setAttribute('aria-selected', 'true');
+    tab.tabIndex = 0;
+    if (focus) tab.focus();
+    render(tab.dataset.tab);
+    play();
+  }
+  tabs.forEach(function (tab, i) {
+    tab.tabIndex = tab.classList.contains('active') ? 0 : -1;
+    tab.addEventListener('click', function () { select(tab, false); });
+    tab.addEventListener('keydown', function (e) {
+      var next = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : -1;
+      if (next < 0) return;
+      e.preventDefault();
+      select(tabs[(next + tabs.length) % tabs.length], true);
     });
   });
   render('dates');
+  if (card && 'IntersectionObserver' in window) {
+    var seen = new IntersectionObserver(function (entries) {
+      if (entries.some(function (e) { return e.isIntersecting; })) { play(); seen.disconnect(); }
+    }, { threshold: 0.4 });
+    seen.observe(card);
+  }
 
   // "Upload file" at the bottom scrolls back up and opens the picker.
   var cta = document.getElementById('ctaTop');

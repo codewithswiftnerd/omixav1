@@ -32,7 +32,7 @@
     actions.innerHTML = '<button class="btn btn-secondary btn-sm" id="manageBtn" type="button">Manage subscription</button>';
     $('manageBtn').addEventListener('click', async () => {
       const r = await api('/api/billing/manage', { method: 'POST', body: {} });
-      if (r.ok && r.json.url) window.open(r.json.url, '_blank', 'noopener'); else alert(r.json.error || 'Could not open subscription management.');
+      if (r.ok && r.json.url) window.open(r.json.url, '_blank', 'noopener'); else { const m = r.json.error || 'Could not open subscription management.'; if (Omixa.toast) Omixa.toast(m, { type: 'error' }); else alert(m); }
     });
   } else {
     actions.innerHTML = '<a class="btn btn-primary btn-sm" href="/pricing">See Omixa Pro</a>';
@@ -61,7 +61,7 @@
      <button class="btn btn-ghost btn-sm" data-del="${esc(p.id)}" type="button">Delete</button></td></tr>`).join('')}</tbody></table>`
     : '<p class="empty-state">No profiles yet. Create one to check datasets against your own standard.</p>';
   document.querySelectorAll('[data-dup]').forEach(b => b.addEventListener('click', async () => { await api('/api/profiles/' + b.dataset.dup + '/duplicate', { method: 'POST', body: {} }); location.reload(); }));
-  document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => { if (confirm('Delete this profile? Past reports that used it are kept.')) { await api('/api/profiles/' + b.dataset.del, { method: 'DELETE' }); location.reload(); } }));
+  document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => { const q = 'Delete this profile? Past reports that used it are kept.'; if (await (Omixa.confirm ? Omixa.confirm(q, { title: 'Delete profile', confirmLabel: 'Delete' }) : Promise.resolve(confirm(q)))) { await api('/api/profiles/' + b.dataset.del, { method: 'DELETE' }); location.reload(); } }));
 
   const cls = s => s >= 85 ? 'badge-success' : s >= 60 ? 'badge-warning' : 'badge-danger';
   $('history').innerHTML = sessions.length ? `<table><thead><tr><th>Dataset</th><th>Date</th><th>Score</th><th>Profile</th><th>Issues</th><th>Status</th></tr></thead><tbody>${sessions.map(s =>

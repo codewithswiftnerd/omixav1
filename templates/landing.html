@@ -147,7 +147,7 @@
         {# Done: before/after + download #}
         <section class="hidden" id="results" aria-labelledby="resultsHeading">
           <div class="done-head">
-            <div class="done-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+            <div class="done-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" pathLength="1"/></svg></div>
             <h2 id="resultsHeading">Your data is clean</h2>
             <p>Here's what changed. Your file is ready.</p>
           </div>
@@ -171,8 +171,8 @@
   <div class="marketing">
 
     <section class="m-section" id="how-it-works">
-      <h2 class="m-title">Say goodbye to messy data<br>in <span class="grad-text">three steps</span></h2>
-      <div class="steps3">
+      <h2 class="m-title" data-reveal>Say goodbye to messy data<br>in <span class="grad-text">three steps</span></h2>
+      <div class="steps3" data-stagger>
         <article class="step3">
           <div class="step3-art"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5M7.5 9.5L12 5l4.5 4.5M5 19h14"/></svg></div>
           <span class="pill"><i></i>One</span>
@@ -195,28 +195,29 @@
     </section>
 
     <section class="quality" id="quality">
-      <div class="quality-inner">
+      <div class="quality-inner" data-stagger>
         <h2>Professional quality</h2>
         <p class="q-sub">Get consistent, analysis-ready data and save hours of manual work.</p>
         <p class="q-hint">Choose a category to see the before and after:</p>
 
         <div class="tabs" role="tablist" id="qTabs">
-          <button class="tab active" role="tab" aria-selected="true" data-tab="dates">Dates</button>
-          <button class="tab" role="tab" aria-selected="false" data-tab="phones">Phones</button>
-          <button class="tab" role="tab" aria-selected="false" data-tab="countries">Countries</button>
-          <button class="tab" role="tab" aria-selected="false" data-tab="emails">Emails</button>
-          <button class="tab" role="tab" aria-selected="false" data-tab="gender">Gender</button>
+          <button class="tab active" role="tab" aria-selected="true" aria-controls="baCard" data-tab="dates">Dates</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="baCard" data-tab="phones">Phones</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="baCard" data-tab="countries">Countries</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="baCard" data-tab="emails">Emails</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="baCard" data-tab="gender">Gender</button>
         </div>
 
-        <div class="ba-card">
+        <div class="ba-card" id="baCard" role="tabpanel" aria-label="Before and after example">
           <div class="ba-col ba-before"><span class="ba-label">Before</span><ul id="baBefore"></ul></div>
           <div class="ba-col ba-after"><span class="ba-label">After</span><ul id="baAfter"></ul></div>
         </div>
+        <p class="ba-note">Example values for illustration, not your data. Omixa never changes your original file.</p>
       </div>
     </section>
 
     <section class="m-section trust">
-      <div class="trust-grid">
+      <div class="trust-grid" data-stagger>
         <div class="trust-item"><strong>No account for Free cleaning</strong><p>Upload and clean right away. An account is only needed for Omixa Pro.</p></div>
         <div class="trust-item"><strong>Temporary by design</strong><p>Uploaded files are deleted automatically, at most {{ ttl_minutes }} minutes after upload.</p></div>
         <div class="trust-item"><strong>You stay in control</strong><p>Risky changes are never made silently. Anything unclear is left for you to decide.</p></div>
@@ -224,7 +225,7 @@
     </section>
 
     <section class="m-section faq" id="faq">
-      <div class="faq-card">
+      <div class="faq-card" data-reveal>
         <h2 class="m-title">Frequently asked questions</h2>
         <details class="faq-item"><summary>What files can I upload?</summary><p>CSV, XLSX and XLS files, up to {{ free_mb }} MB on Free and {{ pro_mb }} MB with Omixa Pro. Macro-enabled workbooks (.xlsm) and other formats are rejected. Files with more than {{ max_rows }} rows or {{ max_cells }} cells are not processed.</p></details>
         <details class="faq-item"><summary>Do I need an account?</summary><p><strong>Free cleaning: no.</strong> Upload, clean, preview and download without signing up. <strong>Omixa Pro: yes.</strong> Pro features need an account because they are tied to your subscription: batch processing, Quality Profiles, saved processing history and professional (PDF) reports. These checks are made on our servers.</p></details>
@@ -238,8 +239,8 @@
     </section>
 
     <section class="m-section cta">
-      <h2 class="m-title">Let's clean your data!</h2>
-      <a class="btn-upload" href="#tool" id="ctaTop">Upload file</a>
+      <h2 class="m-title" data-reveal>Let's clean your data!</h2>
+      <a class="btn-upload" href="#tool" id="ctaTop" data-reveal>Upload file</a>
     </section>
   </div>
 </div>

@@ -1,112 +1,278 @@
-/* Omixa motion layer.
- *
- * Pure CSS, no dependencies, no layout changes: it only animates opacity and transform (GPU-friendly) and
- * never sets pointer-events on anything that is visible, so uploads, processing, downloads and every
- * other interaction behave exactly as before. Entrance animations use `backwards` fill, so no lingering
- * transform is left on an element once it has appeared (a lingering transform would re-anchor
- * position:fixed descendants).
- *
- * Everything animated is inside `prefers-reduced-motion: no-preference`; with "reduce" the page is
- * static and the only motion left is the (functional) loading spinner, slowed down.
- */
+/* ============================================================
+   Omixa motion layer. Loaded after app.css and site.css.
+
+   Principles
+   - Motion gives feedback or explains a change; it is never required to read or use the page.
+   - Only opacity and transform are animated (plus colour/shadow on hover). No width/height/top/left.
+   - Entrances ease out, exits ease in. Hover/press 150-250ms, entrances 250-600ms.
+   - Keyframes only exist inside (prefers-reduced-motion: no-preference). With reduced motion every
+     element is simply in its final state, and the few functional spinners keep a slow rotation.
+   - Entrance animations use fill-mode "backwards" (never "forwards") so they can't freeze an
+     element's transform and fight its own hover state afterwards.
+   - Colours: tokens or the logo-derived rgba() triples only (see tests/test_brand_consistency.py).
+   Behaviour (reveals, count-up, toasts, dialog) lives in static/js/motion.js.
+   ============================================================ */
 
 :root {
-  --omx-ease: cubic-bezier(.2, .7, .2, 1);
-  --omx-fast: .16s;
-  --omx-med: .32s;
+  --dur-fast: 180ms;
+  --dur-base: 260ms;
+  --dur-enter: 340ms;
+  --dur-reveal: 520ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --focus-outline: 3px solid var(--omixa-violet);
 }
 
-/* The progress bar is part of the markup (landing.html); hidden unless a job is running. */
-.omx-progress { display: none; height: 4px; border-radius: 999px; background: var(--gray-100, #eef0f4); overflow: hidden; margin: 2px 0 14px; }
-.omx-progress > span { display: block; height: 100%; width: 38%; border-radius: inherit; background: var(--g-purple, var(--omixa-indigo, #5b3fd1)); }
-[data-phase="working"] .omx-progress { display: block; }
+/* ---------- Keyboard focus: one consistent, visible indicator ---------- */
+:where(a, button, summary, [role="button"], [role="tab"], .btn, .btn-main, .btn-upload, .sample, .tab, .link-btn, .hamburger):focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: 3px;
+}
+.quality :focus-visible, .site-footer :focus-visible { outline-color: var(--white); }
+.btn-main:focus-visible, .btn-upload:focus-visible { outline-offset: 4px; }
 
-@media (prefers-reduced-motion: reduce) {
-  .omx-progress > span { width: 100%; opacity: .5; }
-  .work-card .stage.active::before, .spinner { animation-duration: 1.8s; }
+/* ---------- Buttons: restrained hover, clear pressed state ---------- */
+.btn {
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease);
+}
+.btn:active:not(:disabled), .btn-main:active:not(:disabled), .btn-upload:active, .nav-cta:active,
+.sample:active, .tab:active, .btn-ghost:active, .link-btn:active { transform: scale(0.97); }
+.btn-primary:active:not(:disabled) { transform: translateY(0) scale(0.98); }
+.btn-main, .btn-upload { transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease); }
+.btn-ghost, .link-btn, .topnav-links a, .tab {
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+/* Disabled reads as disabled: dimmed, desaturated, no hover lift */
+.btn:disabled, .btn-main:disabled { filter: saturate(0.5); cursor: not-allowed; }
+
+/* Touch screens have no hover: don't leave controls "stuck" lifted after a tap */
+@media (hover: none) {
+  .btn-primary:hover, .btn-upload:hover, .btn-main:hover:not(:disabled), .sample:hover,
+  .tool-card .dropzone:hover .btn-upload { transform: none; box-shadow: none; }
 }
 
+/* Loading state: set aria-busy="true" on a button while its request is in flight.
+   The label stays put; a small spinner takes its place on the right. */
+.btn[aria-busy="true"], .btn-main[aria-busy="true"] { pointer-events: none; position: relative; }
+.btn-main[aria-busy="true"]:disabled { opacity: 0.85; filter: none; }
+.btn[aria-busy="true"]::after, .btn-main[aria-busy="true"]::after {
+  content: ""; width: 1em; height: 1em; flex: none; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent;
+  animation: spin 0.7s linear infinite;
+}
+
+/* ---------- Cards: only the ones that read as "cards" ---------- */
+.trust-item, .price-card, .step3, .stat-card, .faq-item, .feature-card {
+  transition: transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease);
+}
+.step3-art svg, .sample svg { transition: transform var(--dur-base) var(--ease-out); }
+@media (hover: hover) {
+  .trust-item:hover, .price-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--omixa-violet-light); }
+  .stat-card:hover { border-color: var(--omixa-violet-light); box-shadow: var(--shadow-sm); }
+  .step3:hover .step3-art svg { transform: translateY(-3px) scale(1.05); }
+  .sample:hover svg { transform: translateY(-1px) scale(1.08); }
+  .faq-item:hover { box-shadow: var(--shadow-md); }
+}
+
+/* ---------- Navigation ---------- */
+.topnav { transition: box-shadow var(--dur-base) var(--ease); }
+.topnav.is-scrolled { box-shadow: var(--shadow-sm); }
+.topnav-links a:not(.nav-cta) { position: relative; }
+.topnav-links a:not(.nav-cta)::after {
+  content: ""; position: absolute; left: 14px; right: 14px; bottom: 3px; height: 2px; border-radius: 2px;
+  background: var(--omixa-violet); transform: scaleX(0); transform-origin: left center;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.topnav-links a:not(.nav-cta):hover::after, .topnav-links a[aria-current]:not(.nav-cta)::after { transform: scaleX(1); }
+.topnav-links a[aria-current]:not(.nav-cta) { color: var(--omixa-indigo); }
+
+/* ---------- Disclosure blocks (FAQ + "advanced" folds) ---------- */
+details > summary { transition: background-color var(--dur-fast) var(--ease); }
+@media (hover: hover) { .fold > summary:hover { background: var(--gray-50); } }
+@supports (selector(::details-content)) and (interpolate-size: allow-keywords) {
+  :root { interpolate-size: allow-keywords; }
+  details::details-content {
+    block-size: 0; overflow: hidden;
+    transition: block-size var(--dur-enter) var(--ease-out), content-visibility var(--dur-enter) allow-discrete;
+  }
+  details[open]::details-content { block-size: auto; }
+}
+
+/* ---------- Tabs (landing "Professional quality") ---------- */
+.tab.active { box-shadow: 0 4px 14px rgba(14, 5, 36, 0.28); }
+.tab { transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), box-shadow var(--dur-base) var(--ease), transform var(--dur-fast) var(--ease); }
+
+/* Example caption under the before/after demo (it is illustration, never a real run) */
+.ba-note { margin: 14px auto 0; max-width: 460px; font-size: 0.85rem; color: rgba(255, 255, 255, 0.72); }
+.ba-tag { margin-left: 8px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--gray-300); }
+.ba-after li.same { background: var(--white); }
+.ba-after li.changed { background: var(--success-bg); }
+
+/* ---------- Inputs: focus + validity feedback ---------- */
+input, textarea, select { transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease); }
+
+/* ---------- Upload zone states ---------- */
+.tool-card .dropzone { transition: background-color var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease), transform var(--dur-base) var(--ease-out); }
+.tool-card .dropzone.drag { transform: scale(1.01); }
+.tool-card .dropzone.drag .btn-upload { transform: translateY(-2px) scale(1.03); box-shadow: 0 10px 24px rgba(165, 84, 247, 0.35); }
+.step .dot { transition: background-color var(--dur-base) var(--ease), color var(--dur-base) var(--ease), transform var(--dur-base) var(--ease-out); }
+.step.active .dot { transform: scale(1.12); }
+
+/* ---------- Toasts (Omixa.toast in motion.js) ---------- */
+.toast-region { position: fixed; z-index: 90; top: calc(76px + env(safe-area-inset-top, 0px)); right: 16px; width: min(380px, calc(100vw - 32px));
+  display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+.toast { pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: var(--radius-md);
+  background: var(--white); border: 1px solid var(--border); border-left-width: 4px; box-shadow: var(--shadow-lg);
+  font-size: 0.9rem; color: var(--text-primary); }
+.toast-success { border-left-color: var(--success); }
+.toast-error { border-left-color: var(--danger); }
+.toast-info { border-left-color: var(--omixa-glow); }
+.toast-msg { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.toast-close { flex: none; width: 32px; height: 32px; margin: -6px -8px -6px 0; border: 0; border-radius: var(--radius-sm); background: none; cursor: pointer; font-size: 1.2rem; line-height: 1; color: var(--gray-300); }
+.toast-close:hover { background: var(--gray-100); color: var(--text-primary); }
+@media (max-width: 640px) { .toast-region { right: 16px; left: 16px; width: auto; } }
+
+/* ---------- Confirm dialog (Omixa.confirm in motion.js, built on <dialog>) ---------- */
+.m-dialog { border: 0; padding: 0; border-radius: var(--radius-lg); background: var(--white); color: var(--text-primary);
+  box-shadow: var(--shadow-lg); width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); }
+.m-dialog::backdrop { background: rgba(14, 5, 36, 0.5); }
+.m-dialog-body { padding: 24px 24px 8px; }
+.m-dialog-body h2 { font-size: 1.15rem; margin: 0 0 8px; }
+.m-dialog-body p { margin: 0; }
+.m-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px 24px; flex-wrap: wrap; }
+.m-dialog .btn-danger-solid { background: var(--danger); color: var(--white); }
+.m-dialog .btn-danger-solid:hover { background: var(--danger-ink); }
+
+/* ---------- Quality control panel: exit state (the entrance is below) ---------- */
+.qc-panel { transform-origin: bottom right; }
+
+/* ---------- Print: never hide content ---------- */
+@media print { html.motion [data-reveal] { opacity: 1 !important; transform: none !important; } }
+
+/* ============================================================
+   Everything below moves. It is skipped entirely under reduced motion.
+   ============================================================ */
 @media (prefers-reduced-motion: no-preference) {
-  @keyframes omx-fade-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-  @keyframes omx-fade-in { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes omx-pop { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
-  @keyframes omx-slide-down { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
-  @keyframes omx-slide-up-panel { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
-  @keyframes omx-bar { 0% { transform: translateX(-110%); } 100% { transform: translateX(290%); } }
-  @keyframes omx-shake { 0%, 100% { transform: none; } 20% { transform: translateX(-5px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
-  @keyframes omx-ok-ring { 0% { box-shadow: 0 0 0 0 rgba(34, 160, 94, .45); } 100% { box-shadow: 0 0 0 12px rgba(34, 160, 94, 0); } }
-  @keyframes omx-check { from { opacity: 0; transform: scale(.4); } 70% { transform: scale(1.12); } to { opacity: 1; transform: scale(1); } }
-  @keyframes omx-closing { to { opacity: 0; transform: translateY(8px) scale(.98); } }
+  @keyframes m-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @keyframes m-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes m-drop { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+  @keyframes m-scale-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+  @keyframes m-pop { 0% { opacity: 0; transform: scale(0.6); } 70% { opacity: 1; transform: scale(1.08); } 100% { transform: none; } }
+  @keyframes m-slide-in { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+  @keyframes m-slide-in-right { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+  @keyframes m-toast-out { to { opacity: 0; transform: translateX(24px); } }
+  @keyframes m-panel-in { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: none; } }
+  @keyframes m-panel-out { to { opacity: 0; transform: translateY(10px) scale(0.97); } }
+  @keyframes m-dialog-out { to { opacity: 0; transform: scale(0.96); } }
+  @keyframes m-backdrop-out { to { opacity: 0; } }
+  @keyframes m-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+  @keyframes m-highlight { 0% { background-color: var(--omixa-violet-light); } 100% { background-color: var(--success-bg); } }
+  @keyframes m-fade-out { to { opacity: 0; } }
 
-  /* ---- page + section entrances (they replay whenever a hidden section is shown again) ---- */
-  .hero-copy, .upload-card, .work-card:not(.hidden) { animation: omx-fade-up var(--omx-med) var(--omx-ease) backwards; }
-  .upload-card { animation-delay: .06s; }
-  #reportCard:not(.hidden), #recommendationsCard:not(.hidden), #results:not(.hidden), #validationGroup:not(.hidden),
-  #downloadBtn:not(.hidden), #resetBtn:not(.hidden) { animation: omx-fade-up var(--omx-med) var(--omx-ease) backwards; }
-  .marketing > * { animation: omx-fade-in .5s ease backwards; animation-delay: .12s; }
-  .topnav { animation: omx-slide-down .3s var(--omx-ease) backwards; }
+  /* Stagger index for the children of common grids (cap at 6 so nothing waits long) */
+  :is(.stat-grid, .pricing-grid, .work-card .stats, .samples-row, .main-actions) > :nth-child(2) { --i: 1; }
+  :is(.stat-grid, .pricing-grid, .work-card .stats, .samples-row, .main-actions) > :nth-child(3) { --i: 2; }
+  :is(.stat-grid, .pricing-grid, .work-card .stats, .samples-row, .main-actions) > :nth-child(4) { --i: 3; }
+  :is(.stat-grid, .pricing-grid, .work-card .stats, .samples-row, .main-actions) > :nth-child(5) { --i: 4; }
+  :is(.stat-grid, .pricing-grid, .work-card .stats, .samples-row, .main-actions) > :nth-child(n + 6) { --i: 5; }
 
-  /* items inside a freshly rendered section appear one after another (capped, so long lists never lag) */
-  #findings > *, #recSafeList > *, #recAmbiguousList > *, #detailBlocks > *, #stats > *, .stat-grid > * {
-    animation: omx-fade-up .34s var(--omx-ease) backwards;
-  }
-  :is(#findings, #recSafeList, #recAmbiguousList, #detailBlocks, #stats, .stat-grid) > :nth-child(1) { animation-delay: .02s; }
-  :is(#findings, #recSafeList, #recAmbiguousList, #detailBlocks, #stats, .stat-grid) > :nth-child(2) { animation-delay: .06s; }
-  :is(#findings, #recSafeList, #recAmbiguousList, #detailBlocks, #stats, .stat-grid) > :nth-child(3) { animation-delay: .10s; }
-  :is(#findings, #recSafeList, #recAmbiguousList, #detailBlocks, #stats, .stat-grid) > :nth-child(4) { animation-delay: .14s; }
-  :is(#findings, #recSafeList, #recAmbiguousList, #detailBlocks, #stats, .stat-grid) > :nth-child(5) { animation-delay: .18s; }
-  :is(#findings, #recSafeList, #recAmbiguousList, #detailBlocks, #stats, .stat-grid) > :nth-child(n+6) { animation-delay: .22s; }
+  /* ---- Page entrance (landing hero) ---- */
+  .hero-copy h1 { animation: m-rise 560ms var(--ease-out) backwards; }
+  .hero-copy .lead { animation: m-rise 560ms var(--ease-out) 90ms backwards; }
+  .tool-card { animation: m-rise 600ms var(--ease-out) 170ms backwards; }
+  .upload-card .btn-upload { animation: m-scale-in 420ms var(--ease-out) 320ms backwards; }
+  .samples-row > .sample { animation: m-rise 420ms var(--ease-out) calc(420ms + var(--i, 0) * 70ms) backwards; }
 
-  /* ---- hover / press feedback ---- */
-  .btn, .link-btn, .tab, .dropzone, .rule, .rec-item, .finding, .stat, .stat-card, .step-flow-item, .faq-item, .val-count {
-    transition: transform var(--omx-fast) var(--omx-ease), box-shadow var(--omx-fast) var(--omx-ease),
-                background-color var(--omx-fast) ease, border-color var(--omx-fast) ease, color var(--omx-fast) ease, opacity var(--omx-fast) ease;
-  }
-  .btn:not(:disabled):hover { transform: translateY(-1px) scale(1.015); }
-  .btn:not(:disabled):active { transform: translateY(0) scale(.985); }
-  .rule:hover, .rec-item:hover, .stat:hover, .stat-card:hover, .step-flow-item:hover, .finding:hover {
-    transform: translateY(-2px); box-shadow: 0 8px 20px rgba(40, 25, 90, .10);
-  }
-  .dropzone:hover { transform: translateY(-1px); }
-  .dropzone.drag { transform: scale(1.012); }
-  .val-count:hover { transform: scale(1.08); }
+  /* ---- Page entrance (every other page) ---- */
+  .app-main > .container, .app-main > .container-narrow { animation: m-fade 380ms var(--ease-out) backwards; }
+  .auth-card { animation: m-scale-in 420ms var(--ease-out) backwards; }
+  .dash-header { animation: m-rise 420ms var(--ease-out) backwards; }
+  .stat-grid > *, .pricing-grid > * { animation: m-rise 460ms var(--ease-out) calc(80ms + var(--i, 0) * 70ms) backwards; }
+  .card > table tbody tr { animation: m-fade 320ms var(--ease-out) backwards; }
 
-  /* ---- progress: stepper + indeterminate bar while a file is uploading / analysed / cleaned ---- */
-  .step .dot { transition: background-color .25s ease, color .25s ease, transform .25s var(--omx-ease); }
-  .step.done .dot { animation: omx-pop .3s var(--omx-ease); }
-  .step.active .dot { transform: scale(1.1); }
-  .omx-progress > span { animation: omx-bar 1.25s cubic-bezier(.45, .05, .55, .95) infinite; }
-  .work-card .stage:not(:empty) { animation: omx-fade-in .2s ease backwards; }
+  /* ---- Workspace: sections appear when clean.js un-hides them ---- */
+  .work-card:not(.hidden) { animation: m-rise 420ms var(--ease-out) backwards; }
+  #reportCard:not(.hidden), #results:not(.hidden), #recommendationsCard:not(.hidden), #proPanel:not(.hidden),
+  #validationGroup:not(.hidden) { animation: m-rise 400ms var(--ease-out) backwards; }
+  .file-row { animation: m-slide-in 380ms var(--ease-out) 60ms backwards; }
+  .file-icon { animation: m-pop 420ms var(--ease-out) 160ms backwards; }
+  .work-card .stage.error, .alert:not(.hidden) { animation: m-drop 300ms var(--ease-out) backwards; }
+  .finding, .rec-item { animation: m-fade 320ms var(--ease-out) backwards; }
 
-  /* ---- feedback: upload ok, cleaning finished, error ---- */
-  [data-phase="review"] .file-chip { animation: omx-ok-ring .8s ease-out 1; border-radius: 12px; }
-  #results:not(.hidden) #resultsHeading::before {
-    content: "\2713"; display: inline-flex; align-items: center; justify-content: center; width: 1.25em; height: 1.25em;
-    margin-right: .45em; border-radius: 50%; background: var(--success, #1f9d57); color: #fff; font-size: .8em;
-    animation: omx-check .45s var(--omx-ease) .1s backwards;
-  }
-  .work-card .stage.error, .alert-error, .alert.error { animation: omx-shake .4s ease 1; }
-  .alert { animation: omx-slide-down .28s var(--omx-ease) backwards; }
+  /* Results: check draws itself, the receipt rows arrive one after another */
+  .done-check { animation: m-pop 460ms var(--ease-out) backwards; }
+  .done-check svg path { stroke-dasharray: 1; stroke-dashoffset: 0; animation: m-draw 480ms var(--ease-out) 220ms backwards; }
+  .work-card .stats > * { animation: m-rise 380ms var(--ease-out) calc(120ms + var(--i, 0) * 60ms) backwards; }
+  #results .main-actions > * { animation: m-rise 380ms var(--ease-out) calc(60ms + var(--i, 0) * 80ms) backwards; }
+  .score-badge { animation: m-pop 460ms var(--ease-out) 80ms backwards; }
 
-  /* ---- dropdowns, menus and pop-ups: smooth open AND close ---- */
-  .user-dropdown {
-    display: block; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-6px) scale(.98);
-    transform-origin: top right;
-    transition: opacity var(--omx-fast) ease, transform var(--omx-fast) var(--omx-ease), visibility 0s linear var(--omx-fast);
-  }
-  .user-dropdown.open { opacity: 1; visibility: visible; pointer-events: auto; transform: none; transition-delay: 0s; }
+  /* Step tracker: the dot that just became active/done pops once */
+  .step.active .dot, .step.done .dot { animation: m-pop 360ms var(--ease-out) backwards; }
 
+  /* Disclosure content fades in as the block opens (also covers browsers without ::details-content) */
+  details[open] > :not(summary) { animation: m-fade 280ms var(--ease-out) backwards; }
+
+  /* ---- Before/after demonstration (landing). JS adds .is-animating; values are labelled example data ---- */
+  .ba-card.is-animating .ba-before li { animation: m-rise 340ms var(--ease-out) calc(var(--i, 0) * 70ms) backwards; }
+  .ba-card.is-animating .ba-after li { animation: m-slide-in 380ms var(--ease-out) calc(420ms + var(--i, 0) * 110ms) backwards; }
+  .ba-card.is-animating .ba-after li.changed { animation: m-slide-in 380ms var(--ease-out) calc(420ms + var(--i, 0) * 110ms) backwards,
+    m-highlight 900ms var(--ease) calc(420ms + var(--i, 0) * 110ms) backwards; }
+
+  /* ---- Reveal on scroll (motion.js sets html.motion and the [data-reveal] attributes) ---- */
+  html.motion [data-reveal] { transition: opacity var(--dur-reveal) var(--ease-out), transform var(--dur-reveal) var(--ease-out); transition-delay: var(--d, 0ms); }
+  html.motion [data-reveal]:not(.in) { opacity: 0; transform: translateY(18px); }
+
+  /* ---- Mobile navigation: slides down, slides back up ---- */
   @media (max-width: 860px) {
-    .topnav-links {
-      display: flex; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-8px);
-      transition: opacity var(--omx-fast) ease, transform var(--omx-fast) var(--omx-ease), visibility 0s linear var(--omx-fast);
-    }
-    .topnav-links.open { opacity: 1; visibility: visible; pointer-events: auto; transform: none; transition-delay: 0s; }
+    .topnav-links { transform: translateY(-10px); transition: opacity var(--dur-fast) var(--ease-in), transform var(--dur-fast) var(--ease-in), visibility 0s linear var(--dur-fast); }
+    .topnav-links.open { transform: none; transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out), visibility 0s; }
+    .topnav-links.open a { animation: m-rise 320ms var(--ease-out) backwards; }
+    .topnav-links.open a:nth-child(2) { animation-delay: 30ms; }
+    .topnav-links.open a:nth-child(3) { animation-delay: 60ms; }
+    .topnav-links.open a:nth-child(4) { animation-delay: 90ms; }
+    .topnav-links.open a:nth-child(5) { animation-delay: 120ms; }
+    .topnav-links.open a:nth-child(6) { animation-delay: 150ms; }
   }
 
-  .qc-panel:not(.hidden) { animation: omx-slide-up-panel .22s var(--omx-ease) backwards; transform-origin: bottom right; }
-  .qc-panel.is-closing { animation: omx-closing .16s ease forwards; pointer-events: none; }
-  .qc-fab:not(.hidden) { animation: omx-pop .3s var(--omx-ease) backwards; }
+  /* ---- Quality control center ---- */
+  .qc-fab:not(.hidden) { animation: m-pop 420ms var(--ease-out) backwards; }
+  .qc-panel:not(.hidden) { animation: m-panel-in var(--dur-enter) var(--ease-out) backwards; }
+  .qc-panel.closing { animation: m-panel-out 200ms var(--ease-in) forwards; }
+  .qc-action { animation: m-fade 300ms var(--ease-out) backwards; }
 
-  details[open] > :not(summary) { animation: omx-fade-in .22s ease backwards; }
+  /* ---- Toasts + dialog ---- */
+  .toast { animation: m-slide-in-right var(--dur-enter) var(--ease-out) backwards; }
+  .toast.leaving { animation: m-toast-out 220ms var(--ease-in) forwards; }
+  @media (max-width: 640px) {
+    @keyframes m-toast-in-top { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+    @keyframes m-toast-out-top { to { opacity: 0; transform: translateY(-12px); } }
+    .toast { animation-name: m-toast-in-top; }
+    .toast.leaving { animation-name: m-toast-out-top; }
+  }
+  .m-dialog[open] { animation: m-scale-in var(--dur-enter) var(--ease-out) backwards; }
+  .m-dialog[open]::backdrop { animation: m-fade var(--dur-enter) var(--ease-out) backwards; }
+  .m-dialog.closing { animation: m-dialog-out 180ms var(--ease-in) forwards; }
+  .m-dialog.closing::backdrop { animation: m-backdrop-out 180ms var(--ease-in) forwards; }
+
+  /* ---- Cross-document page transitions (Chrome/Edge; ignored elsewhere). Short, header stays put. ---- */
+  @view-transition { navigation: auto; }
+  .topnav { view-transition-name: topnav; }
+  ::view-transition-old(root) { animation: m-fade-out 120ms var(--ease-in) both; }
+  ::view-transition-new(root) { animation: m-fade 220ms var(--ease-out) both; }
+}
+
+/* ============================================================
+   Reduced motion: no movement. Content is already visible (no [data-reveal] hiding, no keyframes).
+   Spinners are the one thing kept: an indeterminate "working" signal is information, so it
+   turns slowly instead of freezing (site.css would otherwise freeze it after one frame).
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .spinner, .work-card .stage.active::before, .btn[aria-busy="true"]::after, .btn-main[aria-busy="true"]::after {
+    animation-name: spin !important; animation-duration: 1.6s !important; animation-iteration-count: infinite !important;
+  }
+  .topnav-links.open a, .topnav-links a::after { transition-duration: 0.01ms !important; }
+  .toast.leaving, .qc-panel.closing, .m-dialog.closing { opacity: 0; }
 }
