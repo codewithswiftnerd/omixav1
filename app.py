@@ -210,16 +210,18 @@ def create_app():
         nonce = getattr(g, "csp_nonce", "")
         # Firebase Auth's web SDK is only allowed on the sign-in page.
         on_login = request.path == "/login"
-        fb_script = " https://www.gstatic.com" if on_login else ""
+        # apis.google.com: Firebase's popup sign-in (Google button) loads its helper script from there.
+        fb_script = " https://www.gstatic.com https://apis.google.com" if on_login else ""
         fb_connect = (" https://identitytoolkit.googleapis.com https://securetoken.googleapis.com"
-                      " https://www.googleapis.com https://*.firebaseapp.com") if on_login else ""
-        fb_frame = "frame-src https://*.firebaseapp.com https://accounts.google.com; " if on_login else ""
+                      " https://*.googleapis.com https://*.firebaseapp.com") if on_login else ""
+        fb_frame = "frame-src https://*.firebaseapp.com https://accounts.google.com https://apis.google.com; " if on_login else ""
+        fb_img = " https://*.googleusercontent.com" if on_login else ""
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             f"script-src 'self' 'nonce-{nonce}'{fb_script}; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
-            "img-src 'self' data:; "
+            f"img-src 'self' data:{fb_img}; "
             f"connect-src 'self'{fb_connect}; "
             f"{fb_frame}"
             "object-src 'none'; "

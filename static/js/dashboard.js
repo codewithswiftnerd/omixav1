@@ -39,6 +39,7 @@
   }
 
   if (!u.is_pro) {
+    $('proUpsell').classList.remove('hidden');
     $('profiles').innerHTML = '<p class="hint">This feature is available with Omixa Pro. Save a standard like "Research Dataset Standard" and check every file against it. <a href="/pricing">See pricing</a></p>';
     $('history').innerHTML = '<p class="hint">Processing history, quality reports and change logs are available with Omixa Pro. <a href="/pricing">See pricing</a></p>';
     $('usage').innerHTML = '<div class="stat-card"><div class="stat-value">' + esc((document.getElementById('planCard') || {dataset: {}}).dataset.freeMb || '') + ' MB</div><div class="stat-label">Free upload limit</div></div>';
@@ -54,8 +55,8 @@
   $('usage').innerHTML = [[thisMonth, 'Files this month'], [sessions.length, 'Saved sessions'], [profiles.length, 'Quality Profiles'], [avg, 'Avg score after']]
     .map(([v, l]) => `<div class="stat-card"><div class="stat-value">${esc(v)}</div><div class="stat-label">${esc(l)}</div></div>`).join('');
 
-  $('profiles').innerHTML = profiles.length ? `<table><thead><tr><th>Name</th><th>Updated</th><th></th></tr></thead><tbody>${profiles.map(p =>
-    `<tr><td><a href="/profiles/${esc(p.id)}">${esc(p.name)}</a><div class="hint">${esc(p.description || '')}</div></td><td>${fmtDay(p.updated_at)}</td>
+  $('profiles').innerHTML = profiles.length ? `<table class="table-stack"><thead><tr><th>Name</th><th>Updated</th><th></th></tr></thead><tbody>${profiles.map(p =>
+    `<tr><td data-label="Name"><a href="/profiles/${esc(p.id)}">${esc(p.name)}</a><div class="hint">${esc(p.description || '')}</div></td><td data-label="Updated">${fmtDay(p.updated_at)}</td>
      <td class="cell-actions"><a class="btn btn-ghost btn-sm" href="/profiles/${esc(p.id)}">Edit</a>
      <button class="btn btn-ghost btn-sm" data-dup="${esc(p.id)}" type="button">Duplicate</button>
      <button class="btn btn-ghost btn-sm" data-del="${esc(p.id)}" type="button">Delete</button></td></tr>`).join('')}</tbody></table>`
@@ -64,9 +65,9 @@
   document.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => { const q = 'Delete this profile? Past reports that used it are kept.'; if (await (Omixa.confirm ? Omixa.confirm(q, { title: 'Delete profile', confirmLabel: 'Delete' }) : Promise.resolve(confirm(q)))) { await api('/api/profiles/' + b.dataset.del, { method: 'DELETE' }); location.reload(); } }));
 
   const cls = s => s >= 85 ? 'badge-success' : s >= 60 ? 'badge-warning' : 'badge-danger';
-  $('history').innerHTML = sessions.length ? `<table><thead><tr><th>Dataset</th><th>Date</th><th>Score</th><th>Profile</th><th>Issues</th><th>Status</th></tr></thead><tbody>${sessions.map(s =>
-    `<tr><td><a href="/sessions/${esc(s.id)}">${esc(s.dataset_name)}</a></td><td>${fmtDate(s.created_at)}</td>
-     <td><span class="badge ${cls(s.score_after)}">${esc(s.score_before)} → ${esc(s.score_after)}</span></td>
-     <td>${esc(s.profile_name || '–')}${s.compliance != null ? ' (' + esc(s.compliance) + '%)' : ''}</td><td>${esc(s.issue_count)}</td><td>${esc(s.status)}</td></tr>`).join('')}</tbody></table>`
+  $('history').innerHTML = sessions.length ? `<table class="table-stack"><thead><tr><th>Dataset</th><th>Date</th><th>Score</th><th>Profile</th><th>Issues</th><th>Status</th></tr></thead><tbody>${sessions.map(s =>
+    `<tr><td data-label="Dataset"><a href="/sessions/${esc(s.id)}">${esc(s.dataset_name)}</a></td><td data-label="Date">${fmtDate(s.created_at)}</td>
+     <td data-label="Score"><span class="badge ${cls(s.score_after)}">${esc(s.score_before)} → ${esc(s.score_after)}</span></td>
+     <td data-label="Profile">${esc(s.profile_name || '–')}${s.compliance != null ? ' (' + esc(s.compliance) + '%)' : ''}</td><td data-label="Issues">${esc(s.issue_count)}</td><td data-label="Status">${esc(s.status)}</td></tr>`).join('')}</tbody></table>`
     : '<p class="empty-state">No sessions yet. Clean a file while signed in and it appears here.</p>';
 })();

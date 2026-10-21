@@ -412,3 +412,59 @@ th { text-align: left; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* ---- login messages ---- */
+.login-msg { min-height: 1.4em; margin-top: 12px; }
+.login-msg.error { color: var(--danger, #b42318); font-weight: 600; }
+.login-msg.ok { color: var(--success, #067647); font-weight: 600; }
+#googleBtn { margin-bottom: 4px; }
+#googleBtn[aria-busy="true"], #submitBtn[aria-busy="true"] { opacity: .6; pointer-events: none; }
+
+/* ---- dashboard: Pro upgrade card + stacked tables on phones ---- */
+.pro-upsell { background: var(--omixa-tint, #f4eefd); border: 1px solid var(--omixa-violet-light, #ebddfd); }
+.pro-upsell h2 { margin-top: 0; }
+.pro-upsell-list { list-style: none; margin: 12px 0 16px; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; }
+.pro-upsell-list li { padding-left: 24px; position: relative; font-size: .92rem; }
+.pro-upsell-list li::before { content: "\2713"; position: absolute; left: 0; color: var(--omixa-glow, #6834d6); font-weight: 800; }
+.pro-upsell-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.locked-note { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.dash-header > div { min-width: 0; }
+#who { overflow-wrap: anywhere; }
+/* tablets and below: any table inside a card scrolls inside it instead of widening the page */
+@media (max-width: 1024px) {
+  .card > table, .work-card > table, .panel > table, .card table.table-stack, .card div > table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+@media (max-width: 640px) {
+  .pro-upsell-list { grid-template-columns: 1fr; }
+  .pro-upsell-actions .btn { width: 100%; justify-content: center; }
+  .card > table.table-stack, .table-stack { display: block; overflow: visible; white-space: normal; }
+  .table-stack thead { display: none; }
+  .table-stack tbody, .table-stack tr, .table-stack td { display: block; width: 100%; }
+  .table-stack tr { border: 1px solid var(--border); border-radius: 12px; padding: 8px 4px; margin-bottom: 10px; background: var(--white); }
+  .table-stack td { border: 0; padding: 6px 12px; display: flex; justify-content: space-between; gap: 12px; text-align: right; overflow-wrap: anywhere; }
+  .table-stack td::before { content: attr(data-label); font-weight: 700; color: var(--text-secondary); text-align: left; flex: 0 0 auto; }
+  .table-stack td:first-child { font-weight: 700; }
+  .table-stack td.cell-actions { justify-content: flex-end; flex-wrap: wrap; }
+  .table-stack td.cell-actions::before { display: none; }
+}
+
+/* ---- responsive hardening (all screens) ---- */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+.app-shell { overflow-x: clip; }
+img, svg, video, canvas { max-width: 100%; height: auto; }
+.finding > *, .rec-item > *, .stat-card, .card, .price-card { min-width: 0; }
+.finding-body, .rec-item, .card, .alert, .file-chip, td, th { overflow-wrap: anywhere; word-break: normal; }
+pre, code { max-width: 100%; overflow-x: auto; }
+@media (max-width: 640px) {
+  .link-btn { min-height: 44px; padding: 10px 10px; }
+  .topnav-links a { min-height: 44px; display: flex; align-items: center; }
+  h1 { overflow-wrap: anywhere; }
+}
+/* short landscape phones: keep the sticky nav and floating buttons from eating the screen */
+@media (max-height: 480px) and (orientation: landscape) {
+  .topnav-links { max-height: calc(100dvh - 70px); overflow-y: auto; }
+  .qc-panel { max-height: 80dvh; }
+  .app-main { padding-top: 16px; }
+}
+/* very large screens: keep line lengths readable, centre content */
+@media (min-width: 1600px) { .container { max-width: 1240px; } html { font-size: 17px; } }

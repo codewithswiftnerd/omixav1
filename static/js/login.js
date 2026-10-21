@@ -8,10 +8,11 @@ import {
 
 const $ = id => document.getElementById(id);
 const msg = $('loginMsg');
+function say(text, kind) { msg.textContent = text; msg.className = 'hint login-msg' + (kind ? ' ' + kind : ''); }
 let cfg = null;
 try { cfg = JSON.parse(document.getElementById('fb-config').textContent); } catch (e) { cfg = null; }
 if (!cfg || !cfg.apiKey) {
-  msg.textContent = 'Sign-in is not configured on this server yet.';
+  say('Sign-in is not set up on this server yet (missing Firebase web config).', 'error');
   document.querySelectorAll('#authForm input, #authForm button, #googleBtn').forEach(el => el.disabled = true);
 } else {
   const auth = getAuth(initializeApp(cfg));
@@ -22,17 +23,26 @@ if (!cfg || !cfg.apiKey) {
   async function finish(user) {
     const token = await user.getIdToken();
     const r = await Omixa.api('/api/auth/session', { method: 'POST', body: { idToken: token } });
-    if (!r.ok) { msg.textContent = r.json.error || 'Could not sign you in.'; return; }
+    if (!r.ok) { say(r.json.error || (r.status >= 500 ? 'Signed in with Google, but our server could not start your session. Please try again shortly.' : 'We could not verify your sign-in. Please try again.'), 'error'); return; }
     window.location.href = next;
   }
   function friendly(e) {
     const c = (e && e.code) || '';
-    if (c.includes('wrong-password') || c.includes('invalid-credential') || c.includes('user-not-found')) return 'Email or password is incorrect.';
-    if (c.includes('email-already-in-use')) return 'An account with this email already exists. Try signing in.';
+    if (c.includes('wrong-password') || c.includes('invalid-credential') || c.includes('user-not-found')) return 'That email and password do not match. Check them and try again, or use "Forgot password?".';
+    if (c.includes('invalid-email')) return 'That email address does not look right. Check for typos.';
+    if (c.includes('missing-password')) return 'Enter your password.';
+    if (c.includes('email-already-in-use')) return 'An account with this email already exists. Sign in instead, or use "Forgot password?".';
     if (c.includes('weak-password')) return 'Choose a password of at least 6 characters.';
-    if (c.includes('popup-closed')) return 'Sign-in was cancelled.';
-    if (c.includes('too-many-requests')) return 'Too many attempts. Please wait a moment.';
-    return 'Could not sign you in. Please try again.';
+    if (c.includes('user-disabled')) return 'This account has been disabled. Contact support if you think this is a mistake.';
+    if (c.includes('account-exists-with-different-credential')) return 'This email is already registered with a different sign-in method. Sign in with your email and password instead.';
+    if (c.includes('popup-closed') || c.includes('cancelled-popup-request')) return 'The Google window was closed before sign-in finished. Tap the button to try again.';
+    if (c.includes('popup-blocked')) return 'Your browser blocked the Google sign-in window. Allow pop-ups for this site, then try again.';
+    if (c.includes('unauthorized-domain')) return 'Google sign-in is not enabled for this website address yet. Add this domain under Firebase > Authentication > Settings > Authorized domains.';
+    if (c.includes('operation-not-allowed')) return 'This sign-in method is not turned on yet. Enable it under Firebase > Authentication > Sign-in method.';
+    if (c.includes('network-request-failed')) return 'Network problem. Check your connection and try again.';
+    if (c.includes('too-many-requests')) return 'Too many attempts. Please wait a few minutes and try again.';
+    if (c.includes('internal-error') || c.includes('web-storage-unsupported')) return 'Your browser is blocking something sign-in needs (cookies or storage). Turn off private mode or content blockers for this site, or sign in with email.';
+    return 'Could not sign you in' + (c ? ' (' + c.replace('auth/', '') + ')' : '') + '. Please try again.';
   }
   function setMode(m) {
     mode = m;
@@ -43,7 +53,7 @@ if (!cfg || !cfg.apiKey) {
   }
   $('switchLink').addEventListener('click', e => { e.preventDefault(); setMode(mode === 'signin' ? 'signup' : 'signin'); });
   $('authForm').addEventListener('submit', async e => {
-    e.preventDefault(); msg.textContent = '';
+    e.preventDefault(); say('');
     const email = $('email').value.trim(), pw = $('password').value;
     const submitBtn = $('submitBtn');
     if (submitBtn.getAttribute('aria-busy') === 'true') return;
@@ -57,19 +67,27 @@ if (!cfg || !cfg.apiKey) {
         if (name) await updateProfile(cred.user, { displayName: name });
       }
       await finish(cred.user);
-    } catch (err) { msg.textContent = friendly(err); }
+    } catch (err) { say(friendly(err), 'error'); }
     finally { submitBtn.removeAttribute('aria-busy'); }
   });
   $('googleBtn').addEventListener('click', async () => {
-    msg.textContent = '';
-    try { const cred = await signInWithPopup(auth, new GoogleAuthProvider()); await finish(cred.user); }
-    catch (err) { msg.textContent = friendly(err); }
+    say('');
+    const gb = $('googleBtn');
+    if (gb.getAttribute('aria-busy') === 'true') return;
+    gb.setAttribute('aria-busy', 'true');
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const cred = await signInWithPopup(auth, provider);
+      await finish(cred.user);
+    } catch (err) { say(friendly(err), 'error'); }
+    finally { gb.removeAttribute('aria-busy'); }
   });
   $('resetLink').addEventListener('click', async e => {
     e.preventDefault();
     const email = $('email').value.trim();
-    if (!email) { msg.textContent = 'Enter your email above first.'; return; }
+    if (!email) { say('Enter your email above first, then tap "Forgot password?".', 'error'); return; }
     try { await sendPasswordResetEmail(auth, email); } catch (err) { /* same message either way */ }
-    msg.textContent = 'If that email has an account, a reset link is on its way.';
+    say('If that email has an account, a reset link is on its way. Check spam too.', 'ok');
   });
 }

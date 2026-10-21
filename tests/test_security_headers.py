@@ -74,3 +74,15 @@ def test_wildcard_cors_never_sets_allow_credentials(client, monkeypatch):
     r = client.get("/api/health", headers={"Origin": "https://anything.example.com"})
     assert r.headers.get("Access-Control-Allow-Origin") == "*"
     assert "Access-Control-Allow-Credentials" not in r.headers
+
+
+def test_login_csp_allows_firebase_google_popup_only_on_login(client):
+    login = client.get("/login").headers["Content-Security-Policy"]
+    assert "https://apis.google.com" in login and "https://www.gstatic.com" in login
+    home = client.get("/").headers["Content-Security-Policy"]
+    assert "apis.google.com" not in home and "gstatic.com" not in home.split("font-src")[0]
+
+
+def test_dashboard_page_has_pro_upsell_and_login_has_google_button(client):
+    assert b'id="proUpsell"' in client.get("/dashboard").data
+    assert b'id="googleBtn"' in client.get("/login").data
