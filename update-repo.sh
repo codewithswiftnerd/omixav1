@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run from Git Bash INSIDE this extracted omixa-backend folder:
+# Run from Git Bash INSIDE this extracted omixa-backend 
 #   bash update-repo.sh ~/Desktop/omixa-backend
 # Copies thee files over your repo, commits and pushes.
 set -e
