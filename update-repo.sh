@@ -1,7 +1,7 @@
 #!/bin/bash
-# Run from Git Bash INSIDE this extracted omixa-backend folder:
+# Run from Git Bash INSIDE this extracted omixa-backend 
 #   bash update-repo.sh ~/Desktop/omixa-backend
-# Copies these files over your repo, commits and pushes.
+# Copies thee files over your repo, commits and pushes.....
 set -e
 TARGET="${1:-$HOME/Desktop/omixa-backend}"
 [ -d "$TARGET/.git" ] || { echo "No git repo at $TARGET (pass your repo path as the argument)"; exit 1; }
