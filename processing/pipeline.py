@@ -566,6 +566,14 @@ def run_pipeline(
     if engine_report is not None:
         result["cleaning_engine"] = engine_report
     result["column_options"] = column_options
+    # Proposed (never applied) mappings for review, e.g. "done" -> "Completed". The user approves or rejects each one
+    # by re-submitting with options.value_mappings; a rejected pair stays visible as rejected, a distinct category.
+    from cleaning.review_options import suggest_value_mappings
+    _rejected = {(col, str(r).strip().casefold()) for col, m in (options.get("value_mappings") or {}).items()
+                 for r in (m.get("reject") or [])}
+    result["value_mapping_suggestions"] = [
+        {**sg, "status": "rejected" if (sg["column"], sg["from"].strip().casefold()) in _rejected else sg["status"]}
+        for sg in suggest_value_mappings(cleaned_df, cleaned_labels)]
     result["validation_before"] = validation_before
     result["validation_after"] = validation_after
     change_log_out = audit.change_log()
@@ -617,6 +625,17 @@ def run_pipeline(
             {"code": "unexplained_row_count_change", "rows_in": rows_in, "rows_out": rows_out,
              "audited_removed": removed_audited, "unexplained": unexplained}]
     cleaning_summary["integrity"] = {"status": ir["status"], "fully_clean": ir["fully_clean"], "export_verified": ir["export_verified"]}
+    # The result screen may only say "Your data is clean" when BOTH the quality findings and the integrity report agree.
+    _review = (cleaning_summary.get("quality_comparison") or {}).get("review")
+    if _review is not None and _review["clean"] and not ir["fully_clean"]:
+        _notes = [str(w) for w in (ir.get("warnings") or [])] or ["The integrity report found something to confirm."]
+        _review["clean"] = False
+        _review["count"] = len(_notes)
+        _review["items"] = [{"title": "Needs confirmation", "column": None, "count": 1, "unit": "file", "level": "medium",
+                             "severity": "warning", "detail": w, "suggestion": "", "remediation": "requires_review",
+                             "optional": False} for w in _notes]
+        _review["headline"] = (f"Cleaned, {len(_notes)} item still needs your review" if len(_notes) == 1
+                               else f"Cleaned, {len(_notes)} items still need your review")
     if isinstance(cleaning_summary.get("text"), str):
         label = {"successfully_cleaned": "Successfully cleaned", "partially_cleaned": "Partially cleaned",
                  "requires_manual_review": "Requires manual review"}[ir["status"]]

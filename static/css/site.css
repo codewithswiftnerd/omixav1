@@ -468,3 +468,39 @@ pre, code { max-width: 100%; overflow-x: auto; }
 }
 /* very large screens: keep line lengths readable, centre content */
 @media (min-width: 1600px) { .container { max-width: 1240px; } html { font-size: 17px; } }
+
+/* ---- finding / recommendation cards: mobile fix ----
+   The severity badge was a stretched flex item (full card height) and, because of the
+   `min-width: 0` rule above, it could shrink narrower than its own text, so "WARNING"
+   spilled over the description. Keep it a compact, non-shrinking pill. */
+.finding > .badge, .rec-item > .badge { flex: none; align-self: flex-start; white-space: nowrap; line-height: 1.2; }
+.finding-body, .rec-item-body { flex: 1 1 auto; min-width: 0; }
+.resolve-select { max-width: 100%; width: 100%; }
+@media (max-width: 640px) {
+  .finding, .rec-item { flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 14px; }
+  .finding-body, .rec-item-body { width: 100%; }
+  .finding-body p, .rec-item-body p { font-size: 0.86rem; line-height: 1.45; }
+  .resolve-select { min-height: 44px; font-size: 16px; } /* 16px stops iOS zoom-on-focus */
+}
+
+/* ---- review pop-up (flagged values) ---- */
+.review-dialog { width: min(640px, calc(100vw - 24px)); max-height: min(86dvh, 760px); padding: 0; overflow: hidden; }
+.review-dialog[open] { display: flex; flex-direction: column; }
+.review-dialog .rv-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 0 24px; flex: 1 1 auto; }
+.rv-col h3 { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .98rem; margin: 14px 0 8px; }
+.rv-item { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 12px; margin-bottom: 8px; border-radius: 12px; background: var(--gray-50); }
+.rv-what { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.rv-val { align-self: flex-start; max-width: 100%; overflow-wrap: anywhere; padding: 2px 8px; border-radius: 8px; font-weight: 700; background: var(--warning-bg); color: var(--warning); }
+.rv-meta, .rv-why { font-size: .78rem; color: var(--text-secondary); }
+.rv-choice { flex: none; width: 230px; max-width: 45%; }
+@media (max-width: 640px) {
+  .review-dialog { max-height: 92dvh; }
+  .review-dialog .rv-body { padding: 0 14px; }
+  .review-dialog .m-dialog-body { padding: 18px 14px 6px; }
+  .review-dialog .m-dialog-actions { padding: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px)); }
+  .review-dialog .m-dialog-actions .btn { flex: 1 1 100%; min-height: 44px; }
+  .rv-item { flex-direction: column; align-items: stretch; }
+  .rv-choice { width: 100%; max-width: 100%; min-height: 44px; font-size: 16px; }
+}
+.review-dialog .rv-body:focus { outline: none; }
+.review-dialog .rv-body:focus-visible { outline: 2px solid var(--omixa-violet, #6d3cf0); outline-offset: -2px; border-radius: 8px; }

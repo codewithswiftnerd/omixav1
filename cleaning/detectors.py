@@ -401,7 +401,18 @@ def unambiguous_date_parse(values: pd.Series) -> Optional[pd.Series]:
     return resolved.reindex(values.index)
 
 
-def unambiguous_date_cells(values: pd.Series) -> tuple[Optional[pd.Series], dict]:
+# A date whose year has only two digits ("01/10/26", "3 Oct 26"): the century is a guess, so such a cell is
+# never rewritten on its own authority. Judged per cell: the rest of the column is still standardised.
+_TWO_DIGIT_YEAR_RE = re.compile(
+    r"^\s*(?:\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2}|\d{1,2}[ \-/][A-Za-z]{3,9}\.?,?[ \-/]\d{2})\s*$")
+
+
+def two_digit_year_mask(values: pd.Series) -> pd.Series:
+    """True for text cells written with a two-digit year (see _TWO_DIGIT_YEAR_RE)."""
+    return values.map(lambda v: isinstance(v, str) and bool(_TWO_DIGIT_YEAR_RE.match(v))).astype(bool)
+
+
+def unambiguous_date_cells(values: pd.Series, dayfirst: Optional[bool] = None) -> tuple[Optional[pd.Series], dict]:
     """Cell-by-cell variant of `unambiguous_date_parse` for a column that contains ambiguous values.
 
     A date is converted only when it can be read ONE way: day-first and month-first agree (ISO dates),
@@ -420,7 +431,15 @@ def unambiguous_date_cells(values: pd.Series) -> tuple[Optional[pd.Series], dict
     month_first = parse_dates(non_null, dayfirst=False)
     day_ok, month_ok = day_first.notna(), month_first.notna()
     ambiguous = day_ok & month_ok & (day_first != month_first)
-    resolved = day_first.where(day_ok, month_first).where(~ambiguous)
+    if dayfirst is None:
+        resolved = day_first.where(day_ok, month_first).where(~ambiguous)
+    else:
+        # The USER chose the convention for this column: an ambiguous cell is read that way (and counted as
+        # `resolved_by_choice`). A cell that is impossible under both readings is still never converted.
+        chosen = day_first if dayfirst else month_first
+        resolved = chosen.where(ambiguous, day_first.where(day_ok, month_first))
+        stats["resolved_by_choice"] = int(ambiguous.sum())
+        ambiguous = ambiguous & False
     stats.update(converted_candidates=int(resolved.notna().sum()), ambiguous=int(ambiguous.sum()),
                  unparseable=int((~day_ok & ~month_ok).sum()))
     if not stats["converted_candidates"]:

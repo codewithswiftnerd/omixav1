@@ -25,7 +25,7 @@ from typing import Optional, List, Tuple
 import re
 import pandas as pd
 
-from cleaning import casing, currencies, detectors, profiling
+from cleaning import casing, currencies, detectors, profiling, review_options
 from cleaning import model as M
 from cleaning.audit import AuditLog
 from cleaning.rule_registry import spec_for_fixer
@@ -81,7 +81,11 @@ HIGH_MISSING_THRESHOLD = 70
 # (the UI's checkbox order, API callers and batch jobs all get identical results). Header names first, then
 # the default rules in their documented order, and the estimate-based fill LAST so a filled cell can
 # never be mistaken for a duplicate or be normalized as if it were original data.
-RULE_ORDER = ["column_names"] + DEFAULT_RULES + ["missing_values"]
+# The two option-driven rules run only when the request's `options` configures them (see apply_rules).
+OPTION_RULES = ["approved_value_mappings", "missing_value_handling", "approved_value_actions"]
+# approved_value_actions runs right after column_names: the user's decisions about flagged values (clear / remove
+# rows) were made against the values AS UPLOADED, so they must apply before any rule rewrites those values.
+RULE_ORDER = ["column_names", "approved_value_actions"] + DEFAULT_RULES + ["missing_values", "approved_value_mappings", "missing_value_handling"]
 
 
 def canonical_rule_order(rules) -> list:
@@ -100,7 +104,15 @@ def _mostly_numeric(series: pd.Series) -> bool:
     present = series.dropna()
     if present.empty:
         return False
-    parsed = present.map(lambda v: detectors.try_parse_float(v) if isinstance(v, str) else (float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None))
+    from cleaning import currencies as _cur
+
+    def _num(v):
+        if isinstance(v, str):
+            # "₦25.50" / "€300.00" are numbers with a symbol on them, not text.
+            return detectors.try_parse_float(v) if detectors.try_parse_float(v) is not None \
+                else detectors.try_parse_float(_cur.strip_currency(v))
+        return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+    parsed = present.map(_num)
     return float(parsed.notna().mean()) > NUMERIC_BY_CONTENT_SHARE
 
 
@@ -817,6 +829,8 @@ def handle_phone_cleaning(df: pd.DataFrame, details: dict) -> tuple[pd.DataFrame
                     flagged_samples.append(s)
                 continue
 
+            if review_options.phone_country_for(details, col):
+                continue   # a country was chosen: the country step below decides, and leaves unverified values as uploaded
             cleaned = detectors.normalize_phone_punctuation(s)
             if cleaned is not None:
                 new_values.at[idx] = cleaned
@@ -828,6 +842,10 @@ def handle_phone_cleaning(df: pd.DataFrame, details: dict) -> tuple[pd.DataFrame
             per_column[col] = {"changed": col_changed, "scientific_notation_recovered": col_recovered}
         if flagged_samples:
             unrecoverable[col] = flagged_samples
+
+    if (details.get("_options") or {}).get("phone_country"):
+        # The user told us which country the numbers belong to: standardise only those that carry evidence of it.
+        changed += review_options.apply_phone_country(df, details, per_column)
 
     details["phone_cleaning"] = {"per_column": per_column, "scientific_notation_unrecoverable": unrecoverable}
     return df, changed
@@ -941,6 +959,7 @@ def handle_date_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.Dat
     per_column = {}
     skipped = []
     skipped_time = []
+    two_digit_left: dict = {}
     text_columns = df.select_dtypes(include=["object", "string"]).columns
 
     for col in text_columns:
@@ -954,23 +973,39 @@ def handle_date_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.Dat
         if detectors.has_time_component(series):
             skipped_time.append(col)
             continue
-        if detectors.date_parse_stats(series)["two_digit_year"]:
-            skipped.append(col)
-            continue
+        # Two-digit years are judged PER CELL: those cells stay exactly as uploaded (the century would be a guess)
+        # and the column stays flagged, but the cells that carry a four-digit year are still standardised.
+        two_digit = detectors.two_digit_year_mask(series)
+        if two_digit.any():
+            if col not in skipped:
+                skipped.append(col)
+            two_digit_left[col] = int(two_digit.sum())
+            series = series.mask(two_digit)
+            if series.dropna().empty:
+                continue
 
-        parsed = detectors.unambiguous_date_parse(series)
+        order = _date_order_for(details, col)
+        parsed = None if order is not None else detectors.unambiguous_date_parse(series)
         left_over = None
-        if parsed is None:
+        if order is not None:
+            # The user chose day-first or month-first for this column up front: ambiguous cells follow that
+            # choice (recorded as user_selected); impossible cells and placeholders are still never converted.
+            parsed, left_over = detectors.unambiguous_date_cells(series, dayfirst=(order == "day_first"))
+            if parsed is None:
+                continue
+        elif parsed is None:
             # The column has at least one genuinely ambiguous value, so its convention is unknown and is NOT
             # guessed. Cells that can only be read one way (2024-01-15, 15/02/2024) are still safe to
             # standardise on their own; ambiguous, impossible (32/13/2025) and placeholder cells stay exactly
             # as uploaded and the column stays flagged for review.
-            skipped.append(col)
+            if col not in skipped:
+                skipped.append(col)
             parsed, left_over = detectors.unambiguous_date_cells(series)
             if parsed is None:
                 continue
 
         formatted = parsed.dt.strftime("%Y-%m-%d")
+        series = df[col]                    # the uploaded text again: two-digit-year cells were masked above
         original = series.astype("string")
         new_values = pd.Series(pd.NA, index=series.index, dtype="string")
         has_value = parsed.notna()
@@ -987,11 +1022,27 @@ def handle_date_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.Dat
             per_column[col] = {"changed": count, "format": "YYYY-MM-DD"}
             if left_over:
                 per_column[col].update(left_ambiguous=left_over["ambiguous"], left_unparseable=left_over["unparseable"])
+                if left_over.get("resolved_by_choice"):
+                    per_column[col].update(resolved_by_choice=left_over["resolved_by_choice"], date_order=order)
+            if two_digit_left.get(col):
+                per_column[col]["left_two_digit_year"] = two_digit_left[col]
 
     details["date_standardization"] = {
         "per_column": per_column, "skipped_ambiguous": skipped, "skipped_has_time_component": skipped_time,
+        "left_two_digit_year": two_digit_left,
     }
     return df, changed
+
+
+def _date_order_for(details: dict, col) -> str | None:
+    """The day/month convention the user chose for this column (None = not chosen, judge each cell on its own).
+    options.date_order is "auto" | "day_first" | "month_first"; options.date_orders overrides it per column
+    (keyed by the column's name in the uploaded file)."""
+    opts = details.get("_options") or {}
+    label = (details.get("_column_labels") or {}).get(col, col)
+    per_col = (opts.get("date_orders") or {}).get(str(label))
+    order = per_col or opts.get("date_order")
+    return order if order in ("day_first", "month_first") else None
 
 
 RULE_DISPATCH = {
@@ -1010,6 +1061,9 @@ RULE_DISPATCH = {
     "email_cleaning": handle_email_cleaning,
     "phone_cleaning": handle_phone_cleaning,
     "date_standardization": handle_date_standardization,
+    "approved_value_mappings": review_options.handle_approved_value_mappings,
+    "missing_value_handling": review_options.handle_missing_value_handling,
+    "approved_value_actions": review_options.handle_approved_value_actions,
 }
 
 
@@ -1073,6 +1127,13 @@ def apply_rules(
     """
     explicit = rules is not None
     selected = DEFAULT_RULES if rules is None else canonical_rule_order(rules)
+    # Option-driven steps: configuring them in `options` IS the user's request to run them (rules=[] still means
+    # "no built-in cleaning"; it does not cancel something the user configured explicitly).
+    wanted = [r for r, key in (("approved_value_mappings", "value_mappings"), ("missing_value_handling", "missing_values"),
+                         ("approved_value_actions", "value_actions"))
+              if (options or {}).get(key) and r not in selected]
+    if wanted:
+        selected = canonical_rule_order(list(selected) + wanted)
     # "Leave as is": columns the user locked keep every value exactly as uploaded. A locked column is
     # parked away from EVERY value-changing rule (cleaning, formatting, imputation, case...), whichever
     # rule is selected and whether or not it is a default. The only rules that still see it are
@@ -1104,6 +1165,10 @@ def apply_rules(
         step_approval = approval
         if rule_name == "numeric_text_cleaning" and (options or {}).get("number_words"):
             step_approval = M.APPROVAL_USER_SELECTED   # the user switched number-word reading on
+        if rule_name in review_options.USER_DIRECTED_RULES or (
+                rule_name == "date_standardization" and ((options or {}).get("date_orders") or (options or {}).get("date_order") in ("day_first", "month_first"))) or (
+                rule_name == "phone_cleaning" and (options or {}).get("phone_country")):
+            step_approval = M.APPROVAL_USER_SELECTED   # the user chose the convention / country / mapping / action
         details["_column_labels"] = labels
         held = _split_held(df, labels, held_out, rule_name)
         if held is not None:

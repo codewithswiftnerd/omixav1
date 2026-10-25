@@ -169,9 +169,10 @@
     // The score is held down by an unresolved critical/high issue even when the underlying
     // dimensions improve. Say so, otherwise "89 -> 89" looks like the cleaning did nothing.
     const capped = report.score_capped_by && report.score_before_cap != null && report.score_before_cap > report.score;
-    const capNoteHTML = capped
-      ? `<p class="qc-score-cap" role="note">Held at ${esc(report.score)} by an unresolved ${esc(report.score_capped_by)}-priority issue. It would be ${esc(report.score_before_cap)} without it.</p>`
-      : '';
+    // The number is never capped any more; only the grade LABEL can be held (report.grade_note says why).
+    const capNoteHTML = report.grade_note
+      ? `<p class="qc-score-cap" role="note">${esc(report.grade_note)}</p>`
+      : (capped ? `<p class="qc-score-cap" role="note">Held at ${esc(report.score)} by an unresolved ${esc(report.score_capped_by)}-priority issue. It would be ${esc(report.score_before_cap)} without it.</p>` : '');
 
     const groupsHTML = CATEGORY_ORDER.map((cat) => {
       const items = groups[cat];

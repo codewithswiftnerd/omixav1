@@ -253,4 +253,6 @@ def never_impute(profile: ColumnProfile) -> bool:
     """Columns where inventing a value is never acceptable: a made-up phone number,
     email, identifier or date is worse than a gap. Even a modest-confidence label is
     enough to hold back here, because the cost of being wrong is asymmetric."""
-    return profile.semantic_type in (IDENTIFIER, EMAIL, PHONE, DATE, DATETIME) and profile.confidence >= 0.6
+    # CURRENCY: money is never imputed. The text label "Unknown" is not an amount, and a median of
+    # values that may be in different currencies (EUR, NGN, USD ...) is a number nobody ever paid.
+    return profile.semantic_type in (IDENTIFIER, EMAIL, PHONE, DATE, DATETIME, CURRENCY) and profile.confidence >= 0.6

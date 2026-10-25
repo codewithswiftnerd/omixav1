@@ -381,6 +381,14 @@ _fixer("date_standardization", "OMX-FIX-011", M.NORMALIZATION, 0.95,
 _fixer("missing_values", "OMX-FIX-012", M.IMPUTATION, 0.55,
        "Gaps filled with a column median (numbers), the most common value (flags) or the literal 'Unknown' (text). "
        "These are estimates, not recovered values.", remediation=M.REQUIRES_REVIEW)
+_fixer("approved_value_mappings", "OMX-FIX-016", M.CORRECTION, 0.99,
+       "Values replaced using a mapping the user approved (e.g. PH -> Port Harcourt). Every original stays in the change log.")
+_fixer("missing_value_handling", "OMX-FIX-017", M.IMPUTATION, 0.99,
+       "Empty cells handled as the user chose for that column: left, filled with the user's own value, flagged, or "
+       "(only on request) their rows removed.", remediation=M.REQUIRES_REVIEW)
+_fixer("approved_value_actions", "OMX-FIX-018", M.DELETION, 0.99,
+       "Flagged values cleared (emptied) or their rows removed, exactly as you chose in the review pop-up. "
+       "Every original stays in the change log.", remediation=M.REQUIRES_REVIEW)
 _fixer("duplicates", "OMX-FIX-013", M.DELETION, 0.95,
        "Exact duplicate rows removed, first occurrence kept.")
 

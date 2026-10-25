@@ -165,6 +165,7 @@ async function setFile(f){
     renderRecommendations(repJson.recommendations);
     validationConfig = { column_types: {} };
     renderValidation(repJson.validation);
+    prepareReview(repJson.validation);
     setStage('');
     setPhase('review');
     runBtn.disabled = false;
@@ -192,6 +193,37 @@ function escHtml(v){
   return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+
+// ---- score explanation (shared by the pre-clean report and the result screen) ----------------------------
+function scoreClass(n){ return n >= 85 ? 'good' : n >= 60 ? 'warn' : 'bad'; }
+
+// "How is this scored?": the one-sentence formula, the arithmetic for THIS file, and the per-column table.
+function howScoredHtml(report){
+  const m = report && report.score_model;
+  if(!m) return '';
+  const cols = (m.columns || []).slice().sort((a,b) => a.score - b.score);
+  const rows = cols.map(c => `<tr>
+      <td data-label="Column">${escHtml(c.column)}${c.key ? ' <span class="key-tag">key</span>' : ''}</td>
+      <td data-label="Valid">${escHtml(c.valid_pct)}%</td>
+      <td data-label="Main problem">${escHtml(c.main_problem)}</td></tr>`).join('');
+  let math = `Average column score ${escHtml(Math.round(m.cell_score))}`;
+  if(m.key_column) math += `, reduced by ${escHtml(Math.round(m.key_column.penalty_pct))}% because ${escHtml(m.key_column.column)} is ${escHtml(m.key_column.bad_pct)}% missing or invalid`;
+  if(m.duplicates && m.duplicates.rows) math += `, then by ${escHtml(m.duplicates.share_pct)}% for ${escHtml(m.duplicates.rows)} duplicate row${m.duplicates.rows === 1 ? '' : 's'}`;
+  math += ` = <strong>${escHtml(report.score)}</strong>.`;
+  return `<details class="how-scored">
+    <summary>How is this scored?</summary>
+    <p>${escHtml(m.formula)}</p>
+    <p class="hint">${math}</p>
+    ${rows ? `<table class="how-table"><thead><tr><th>Column</th><th>Valid</th><th>Main problem</th></tr></thead><tbody>${rows}</tbody></table>` : ''}
+  </details>`;
+}
+
+function reasonsHtml(reasons, title){
+  if(!reasons || !reasons.length) return '';
+  return `<div class="reasons"><h3>${escHtml(title)}</h3><ol>${reasons.map(r =>
+    `<li><span>${escHtml(r.label)}</span>${r.key_column ? ' <span class="key-tag">key column</span>' : ''}</li>`).join('')}</ol></div>`;
+}
+
 const SEVERITY_ORDER = { critical: 0, warning: 1, info: 2 };
 
 function renderReport(report){
@@ -207,7 +239,11 @@ function renderReport(report){
   reportSub.textContent = `${Number(report.row_count).toLocaleString()} rows · ${report.column_count} columns`
     + (c.critical ? ` · ${c.critical} critical` : '');
 
-  const findings = (report.findings || []).slice().sort((a,b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
+  const preWhy = $('preScoreWhy');
+  if(preWhy) preWhy.innerHTML = (report.grade_note ? `<p class="hint" role="note">${escHtml(report.grade_note)}</p>` : '')
+    + reasonsHtml(report.score_model && report.score_model.top_reasons, 'What is holding the score down') + howScoredHtml(report);
+
+  const findings = (report.findings || []).filter(f => !f.advisory).slice().sort((a,b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
   findingsEl.innerHTML = '';
   noFindings.style.display = findings.length ? 'none' : 'block';
 
@@ -428,7 +464,7 @@ runBtn.addEventListener('click', async () => {
       method:'POST',
       credentials:'include',
       headers: apiHeaders({'Content-Type':'application/json'}),
-      body: JSON.stringify({ rules, resolutions: selectedResolutions(), leave_as_is: selectedLeaveAsIs(), has_header: hasHeader(), profile_id: (window.OmixaPro && OmixaPro.profileId()) || undefined })
+      body: JSON.stringify({ rules, resolutions: selectedResolutions(), leave_as_is: selectedLeaveAsIs(), has_header: hasHeader(), options: reviewOptions(), profile_id: (window.OmixaPro && OmixaPro.profileId()) || undefined })
     });
     let procJson = await procRes.json();
     if(!procRes.ok) throw upgradeAwareError(procRes, procJson, 'processing failed');
@@ -458,6 +494,17 @@ runBtn.addEventListener('click', async () => {
 function renderResults(summary){
   results.classList.remove('hidden');
   const c = summary.changes || {};
+  const cmp = summary.quality_comparison || (summary.cleaning_summary && summary.cleaning_summary.quality_comparison) || null;
+  const review = cmp && cmp.review;
+  // Honest heading: "Your data is clean" only when nothing is left to review.
+  const heading = $('resultsHeading'), sub = $('resultsSub');
+  if(heading){
+    heading.textContent = review ? review.headline : 'Cleaning finished';
+    results.classList.toggle('needs-review', !!(review && !review.clean));
+  }
+  if(sub) sub.textContent = !review ? "Here's what changed. Your file is ready."
+    : review.clean ? "Here's what changed. Your file is ready."
+    : "Your file is ready. Here's what changed, and what is left for you to check.";
 
   const post = summary.quality_report;
   const beforeGrade = summary.quality_report_before ? summary.quality_report_before.grade : null;
@@ -468,6 +515,7 @@ function renderResults(summary){
     const delta = post.score - before;
     const deltaText = delta > 0 ? `+${delta}` : delta === 0 ? 'no change' : `${delta}`;
     const badge = (score, grade) => escHtml(score) + (grade ? '<small>' + escHtml(grade) + '</small>' : '');
+    const why = cmp && cmp.overall ? cmp.overall.why_unchanged : null;
     const beforeLabel = badge(before, beforeGrade);
     const afterLabel = badge(post.score, post.grade);
     scoreHtml = `
@@ -481,7 +529,8 @@ function renderResults(summary){
           <div class="score-badge small ${cls}">${afterLabel}</div>
           <div class="l">after (${deltaText})</div>
         </div>
-      </div>`;
+      </div>
+      ${why ? `<p class="hint score-why" role="note">${escHtml(why)}</p>` : ''}`;
   }
 
   stats.innerHTML = scoreHtml + `
@@ -518,6 +567,26 @@ function renderResults(summary){
     const label = STAT_LABELS[key] || key.replace(/_changed$/, '').replace(/_/g, ' ');
     stats.innerHTML += `<div class="stat"><div class="n">${val}</div><div class="l">${label}</div></div>`;
   });
+
+  const whyEl = $('scoreWhy');
+  if(whyEl){
+    let html = '';
+    if(review && !review.clean){
+      html += `<div class="review-list"><h3>${escHtml(review.headline)}</h3>` + review.items.map(it => `
+        <div class="finding finding-${escHtml(it.severity)}">
+          <span class="badge ${escHtml(it.severity)}">${it.optional ? 'optional' : escHtml(it.severity)}</span>
+          <div class="finding-body">
+            <strong>${it.column ? escHtml(it.column) : 'Whole file'} · ${escHtml(it.title)} (${escHtml(it.count)})</strong>
+            <p>${escHtml(it.detail)}</p>
+            ${it.suggestion ? `<p class="suggestion">${escHtml(it.suggestion)}</p>` : ''}
+          </div>
+        </div>`).join('') + '</div>';
+    }
+    if(post && post.grade_note) html += `<p class="hint" role="note">${escHtml(post.grade_note)}</p>`;
+    html += reasonsHtml(post && post.score_model && post.score_model.top_reasons, 'What is holding the score down');
+    html += howScoredHtml(post);
+    whyEl.innerHTML = html;
+  }
 
   detailBlocks.innerHTML = '';
   const d = summary.details || {};
@@ -608,7 +677,7 @@ function renderResults(summary){
     detailBlocks.appendChild(block);
   });
 
-  if(post && post.findings && post.findings.length){
+  if(post && post.findings && post.findings.some(f => !f.advisory)){
     const block = document.createElement('div');
     block.innerHTML = `<h3>Still worth a look</h3>`;
     const list = document.createElement('div');
@@ -736,6 +805,7 @@ async function doDownload(){
 
 function resetAll(){
   selectedFile = null; lastJobId = null; preCleanScore = null;
+  resetReview();
   fileNameEl.textContent = ''; fileInput.value = '';
   runBtn.disabled = true;
   results.classList.add('hidden');
@@ -759,3 +829,144 @@ document.querySelectorAll('.sample').forEach(btn => {
     setFile(new File([sample.csv], sample.filename, { type: 'text/csv' }));
   });
 });
+
+
+// ---- Review pop-up: flagged values (phone = "call me", amount = "abc", ...) ----
+// Lists every distinct value the validation report flagged as invalid / suspicious / unresolved, in ANY column,
+// and lets the user choose per value: keep it, clear the cell (leave it empty) or delete the whole row.
+// Nothing changes unless a choice is made; choices go to the server as options.value_actions.
+const REVIEW_CATS = ['invalid', 'suspicious', 'unresolved'];
+const reviewBtn = $('reviewBtn'), reviewDialog = $('reviewDialog');
+let reviewItems = [];        // [{column, value, count, reason, rowsShown:[...], truncated}]
+let reviewChoices = {};      // key -> 'keep' | 'clear' | 'remove_rows'
+let reviewValidation = null;
+let reviewAutoShown = false;
+
+const reviewKey = (col, val) => JSON.stringify([col, val]);
+
+function resetReview(){
+  reviewItems = []; reviewChoices = {}; reviewValidation = null; reviewAutoShown = false;
+  if(reviewBtn) reviewBtn.classList.add('hidden');
+}
+
+function flaggedTotal(v){
+  if(!v || !v.columns) return 0;
+  return v.columns.reduce((n, c) => n + REVIEW_CATS.reduce((m, k) => m + (c.counts[k] || 0), 0), 0);
+}
+
+function updateReviewButton(){
+  if(!reviewBtn) return;
+  // Only shown once the list is loaded, so the number on it is the number of values the pop-up will show.
+  const total = reviewItems.reduce((n, i) => n + i.count, 0);
+  const chosen = Object.values(reviewChoices).filter(c => c !== 'keep').length;
+  reviewBtn.classList.toggle('hidden', !reviewItems.length);
+  reviewBtn.textContent = chosen
+    ? `Review flagged values (${chosen} choice${chosen === 1 ? '' : 's'} saved)`
+    : `Review ${total} flagged value${total === 1 ? '' : 's'}`;
+}
+
+async function prepareReview(v){
+  reviewItems = []; reviewChoices = {}; reviewValidation = v; reviewAutoShown = false;
+  updateReviewButton();
+  if(!flaggedTotal(v) || !reviewDialog) return;
+  // Pre-load the list in the background so the pop-up opens instantly; open it once, automatically.
+  try{
+    await loadReviewItems(v);
+    updateReviewButton();
+    if(reviewItems.length && !reviewAutoShown){ reviewAutoShown = true; openReview(); }
+  }catch(_){ /* the button still works and retries */ }
+}
+
+async function loadReviewItems(v){
+  const jobs = [];
+  v.columns.forEach(c => REVIEW_CATS.forEach(cat => { if(c.counts[cat]) jobs.push({ column: c.column, category: cat }); }));
+  const results = await Promise.all(jobs.map(async j => {
+    const res = await fetch(base() + '/api/validate/' + lastJobId + '/rows', { method:'POST', credentials:'include',
+      headers: apiHeaders({'Content-Type':'application/json'}),
+      body: JSON.stringify({ column: j.column, category: j.category, column_types: validationConfig.column_types, has_header: hasHeader(), limit: 1000 }) });
+    const json = await res.json();
+    if(!res.ok) throw new Error(json.error || 'Could not load flagged values');
+    return { ...j, json };
+  }));
+  const byKey = new Map();
+  results.forEach(({ column, json }) => json.rows.forEach(r => {
+    if(r.value === null || r.value === undefined) return;          // empty cells are "missing", handled elsewhere
+    if(r.code === 'needs_country') return;                          // a plausible number with no country: not an error
+    const value = String(r.value), k = reviewKey(column, value);
+    if(!byKey.has(k)) byKey.set(k, { column, value, count: 0, reason: r.reason, rows: [] });
+    const it = byKey.get(k); it.count += 1; it.rows.push(r.sheet_row);
+  }));
+  reviewItems = Array.from(byKey.values());
+  reviewItems.forEach(it => { it.truncated = false; });
+  results.forEach(({ column, json }) => { if(json.total > json.rows.length) reviewItems.forEach(it => { if(it.column === column) it.truncated = true; }); });
+}
+
+function renderReview(){
+  const body = $('reviewBody');
+  if(!reviewItems.length){ body.innerHTML = '<p class="hint">Nothing needs a decision. Empty cells are handled separately.</p>'; return; }
+  const cols = [...new Set(reviewItems.map(i => i.column))];
+  body.innerHTML = cols.map(col => {
+    const items = reviewItems.filter(i => i.column === col);
+    const rowsHtml = items.map(it => {
+      const k = reviewKey(it.column, it.value), cur = reviewChoices[k] || 'keep';
+      const where = it.rows.slice(0, 4).join(', ') + (it.rows.length > 4 ? ', …' : '');
+      const opt = (v, label) => `<option value="${v}"${cur === v ? ' selected' : ''}>${label}</option>`;
+      return `<div class="rv-item">
+        <div class="rv-what"><mark class="rv-val">${escHtml(it.value)}</mark>
+          <span class="rv-meta">${it.count} cell${it.count === 1 ? '' : 's'} · row${it.rows.length === 1 ? '' : 's'} ${escHtml(where)}</span>
+          <span class="rv-why">${escHtml(it.reason)}</span></div>
+        <select class="rv-choice" data-key="${escHtml(k)}" aria-label="What to do with ${escHtml(it.value)} in ${escHtml(col)}">
+          ${opt('keep', 'Keep as is')}${opt('clear', 'Clear it (leave cell empty)')}${opt('remove_rows', 'Delete the whole row')}
+        </select></div>`;
+    }).join('');
+    return `<section class="rv-col"><h3>${escHtml(col)}<button type="button" class="link-btn rv-clear-col" data-col="${escHtml(col)}">Clear all in this column</button></h3>${rowsHtml}</section>`;
+  }).join('') + (reviewItems.some(i => i.truncated) ? '<p class="hint">Very large list: only the first 1,000 flagged rows per column are shown.</p>' : '');
+}
+
+async function openReview(){
+  if(!reviewDialog || !lastJobId) return;
+  if(!reviewItems.length && flaggedTotal(reviewValidation)){
+    try{ await loadReviewItems(reviewValidation); }catch(err){ setStage(err.message, 'error'); return; }
+  }
+  renderReview();
+  if(typeof reviewDialog.showModal === 'function'){ if(!reviewDialog.open) reviewDialog.showModal(); }
+  else reviewDialog.setAttribute('open', '');
+}
+function closeReview(){
+  if(reviewDialog.open) reviewDialog.close(); else reviewDialog.removeAttribute('open');
+  updateReviewButton();
+}
+
+if(reviewBtn) reviewBtn.addEventListener('click', openReview);
+if(reviewDialog){
+  reviewDialog.addEventListener('change', e => {
+    const sel = e.target.closest && e.target.closest('.rv-choice');
+    if(!sel) return;
+    if(sel.value === 'keep') delete reviewChoices[sel.dataset.key]; else reviewChoices[sel.dataset.key] = sel.value;
+  });
+  reviewDialog.addEventListener('click', e => {
+    const all = e.target.closest && e.target.closest('.rv-clear-col');
+    if(all){
+      reviewItems.filter(i => i.column === all.dataset.col).forEach(i => { reviewChoices[reviewKey(i.column, i.value)] = 'clear'; });
+      renderReview(); return;
+    }
+    if(e.target.closest && e.target.closest('#reviewKeepAll')){ reviewChoices = {}; renderReview(); return; }
+    if(e.target.closest && e.target.closest('#reviewDone')) closeReview();
+    if(e.target.closest && e.target.closest('#reviewClose')) closeReview();
+  });
+  reviewDialog.addEventListener('close', updateReviewButton);
+}
+
+// {column: {clear: [...], remove_rows: [...]}} for the server; undefined when nothing was chosen.
+function reviewOptions(){
+  const out = {};
+  reviewItems.forEach(it => {
+    const c = reviewChoices[reviewKey(it.column, it.value)];
+    if(c === 'clear' || c === 'remove_rows'){
+      if(!out[it.column]) out[it.column] = {};
+      if(!out[it.column][c]) out[it.column][c] = [];
+      out[it.column][c].push(it.value);
+    }
+  });
+  return Object.keys(out).length ? { value_actions: out } : undefined;
+}

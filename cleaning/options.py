@@ -12,7 +12,11 @@ from typing import Any, Optional
 
 NUMBER_FORMATS = ("auto", "thousands_comma", "decimal_comma")
 MAX_MARKERS, MAX_MARKER_LEN, MAX_KEYS = 50, 40, 10
-_ALLOWED = {"number_format", "number_words", "missing_markers", "duplicate_keys", "validation"}
+DATE_ORDERS = ("auto", "day_first", "month_first")
+MISSING_ACTIONS = ("leave", "fill", "flag", "remove_rows")
+MAX_COLUMNS, MAX_MAPPINGS, MAX_VALUE_LEN = 100, 200, 100
+_ALLOWED = {"number_format", "number_words", "missing_markers", "duplicate_keys", "validation",
+            "date_order", "date_orders", "phone_country", "missing_values", "value_mappings", "value_actions"}
 
 
 class OptionsError(ValueError):
@@ -47,6 +51,21 @@ def parse_options(raw: Any) -> dict:
         if not (isinstance(k, list) and 0 < len(k) <= MAX_KEYS and all(isinstance(x, str) and x for x in k)):
             raise OptionsError(f"'duplicate_keys' must be a list of 1-{MAX_KEYS} column names")
         out["duplicate_keys"] = list(k)
+    if "date_order" in raw:
+        if raw["date_order"] not in DATE_ORDERS:
+            raise OptionsError(f"'date_order' must be one of: {', '.join(DATE_ORDERS)}")
+        out["date_order"] = raw["date_order"]
+    if "date_orders" in raw:
+        out["date_orders"] = _column_map(raw["date_orders"], "date_orders",
+                                         lambda v, c: _choice(v, DATE_ORDERS, f"'date_orders' for '{c}'"))
+    if "phone_country" in raw:
+        out["phone_country"] = _phone_country(raw["phone_country"])
+    if "missing_values" in raw:
+        out["missing_values"] = _missing_values(raw["missing_values"])
+    if "value_mappings" in raw:
+        out["value_mappings"] = _value_mappings(raw["value_mappings"])
+    if "value_actions" in raw:
+        out["value_actions"] = _value_actions(raw["value_actions"])
     if "validation" in raw:
         v = raw["validation"]
         if not isinstance(v, dict):
@@ -59,3 +78,103 @@ def parse_options(raw: Any) -> dict:
 
 def validation_config(options: Optional[dict]) -> Optional[dict]:
     return (options or {}).get("validation")
+
+
+# --------------------------------------------------------------------------- helpers for the structured options
+def _choice(v, choices, what):
+    if v not in choices:
+        raise OptionsError(f"{what} must be one of: {', '.join(choices)}")
+    return v
+
+
+def _column_map(raw, name, check):
+    if not isinstance(raw, dict) or len(raw) > MAX_COLUMNS:
+        raise OptionsError(f"'{name}' must be an object keyed by column name (up to {MAX_COLUMNS} columns)")
+    out = {}
+    for col, v in raw.items():
+        if not isinstance(col, str) or not col:
+            raise OptionsError(f"'{name}' has an invalid column name")
+        out[col] = check(v, col)
+    return out
+
+
+def _phone_country(raw):
+    """\"NG\" (applies to every phone column) or {column: \"NG\"}. Never assumed: no option, no country."""
+    from cleaning.phone_formats import COUNTRIES
+
+    def one(v, _c=None):
+        code = v.strip().upper() if isinstance(v, str) else v
+        if code not in COUNTRIES:
+            raise OptionsError("'phone_country' must be a supported ISO country code such as NG")
+        return code
+    if isinstance(raw, dict):
+        return _column_map(raw, "phone_country", one)
+    return one(raw)
+
+
+def _missing_rule(v, where):
+    if not isinstance(v, dict) or set(v) - {"action", "value"}:
+        raise OptionsError(f"{where} must be {{action, value?}}")
+    action = _choice(v.get("action"), MISSING_ACTIONS, f"{where} action")
+    out = {"action": action}
+    if action == "fill":
+        val = v.get("value")
+        if isinstance(val, bool) or not isinstance(val, (str, int, float)) or (isinstance(val, str) and not val.strip()):
+            raise OptionsError(f"{where}: 'fill' needs a non-empty 'value' you choose")
+        if isinstance(val, str) and len(val) > MAX_VALUE_LEN:
+            raise OptionsError(f"{where}: 'value' is too long")
+        out["value"] = val
+    elif "value" in v:
+        raise OptionsError(f"{where}: 'value' only applies to action 'fill'")
+    return out
+
+
+def _missing_values(raw):
+    """{default?: {action, value?}, columns?: {column: {action, value?}}}. Nothing here is on by default:
+    without this option empty cells are left as they are (and counted as missing in the report)."""
+    if not isinstance(raw, dict) or set(raw) - {"default", "columns"}:
+        raise OptionsError("'missing_values' must be {default?, columns?}")
+    out = {}
+    if "default" in raw:
+        out["default"] = _missing_rule(raw["default"], "'missing_values.default'")
+    if "columns" in raw:
+        out["columns"] = _column_map(raw["columns"], "missing_values.columns",
+                                     lambda v, c: _missing_rule(v, f"'missing_values' for '{c}'"))
+    return out
+
+
+def _value_mappings(raw):
+    """{column: {approve: {from: to}, reject: [from, ...]}}: mappings the USER approved or rejected."""
+    def one(v, col):
+        if not isinstance(v, dict) or set(v) - {"approve", "reject"}:
+            raise OptionsError(f"'value_mappings' for '{col}' must be {{approve?, reject?}}")
+        ap, rj = v.get("approve") or {}, v.get("reject") or []
+        if not isinstance(ap, dict) or len(ap) > MAX_MAPPINGS or not all(
+                isinstance(a, str) and a.strip() and isinstance(b, str) and len(a) <= MAX_VALUE_LEN
+                and len(b) <= MAX_VALUE_LEN for a, b in ap.items()):
+            raise OptionsError(f"'approve' for '{col}' must map text to text (up to {MAX_MAPPINGS} pairs)")
+        if not isinstance(rj, list) or len(rj) > MAX_MAPPINGS or not all(isinstance(a, str) for a in rj):
+            raise OptionsError(f"'reject' for '{col}' must be a list of text values")
+        return {"approve": dict(ap), "reject": list(rj)}
+    return _column_map(raw, "value_mappings", one)
+
+
+def _value_actions(raw):
+    """{column: {clear?: [value, ...], remove_rows?: [value, ...]}}: what the USER decided to do with specific flagged
+    values from the review pop-up. "Keep" is simply the absence of an entry. Values are matched as text (ignoring
+    case and extra spaces) in that column only."""
+    def one(v, col):
+        if not isinstance(v, dict) or set(v) - {"clear", "remove_rows"}:
+            raise OptionsError(f"'value_actions' for '{col}' must be {{clear?, remove_rows?}}")
+        out = {}
+        for k in ("clear", "remove_rows"):
+            vals = v.get(k) or []
+            if not isinstance(vals, list) or len(vals) > MAX_MAPPINGS or not all(
+                    isinstance(a, str) and a.strip() and len(a) <= MAX_VALUE_LEN for a in vals):
+                raise OptionsError(f"'{k}' for '{col}' must be a list of up to {MAX_MAPPINGS} short, non-empty text values")
+            out[k] = list(vals)
+        both = {a.strip().casefold() for a in out["clear"]} & {a.strip().casefold() for a in out["remove_rows"]}
+        if both:
+            raise OptionsError(f"'{col}': a value cannot be both cleared and have its rows removed")
+        return out
+    return _column_map(raw, "value_actions", one)

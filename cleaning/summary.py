@@ -88,7 +88,46 @@ def _finding_keys(report: dict) -> dict:
     return {(f["issue"], f.get("column")): f for f in report.get("findings", [])}
 
 
-def build_quality_comparison(before: dict, after: dict, imputed: dict | None = None) -> dict:
+def _top_reasons(report: dict) -> list[dict]:
+    return list(((report.get("score_model") or {}).get("top_reasons")) or [])
+
+
+def _remaining_findings(report: dict) -> list[dict]:
+    return [f for f in report.get("findings", []) if not f.get("advisory")]
+
+
+def review_block(after: dict) -> dict:
+    """What is still unresolved in the CLEANED data. `clean` is true only when no finding remains: the result screen
+    may say "Your data is clean" only then, and otherwise says "Cleaned, N items still need your review"."""
+    rem = sorted(_remaining_findings(after), key=lambda f: (-M.severity_rank(f["level"]), -f.get("impact", 0), f["issue"], str(f.get("column"))))
+    items = [{"title": f["title"], "column": f.get("column"), "count": f["affected_count"], "unit": f.get("affected_unit"),
+              "level": f["level"], "severity": f["severity"], "detail": f.get("detail", ""),
+              "suggestion": f.get("suggestion", ""), "remediation": f["remediation"],
+              "optional": f["remediation"] == M.SAFE_AUTO_FIX and f["level"] == M.LOW} for f in rem]
+    n = len(items)
+    return {
+        "clean": n == 0, "count": n, "items": items,
+        "headline": "Your data is clean" if n == 0 else
+                    (f"Cleaned, {n} item still needs your review" if n == 1 else f"Cleaned, {n} items still need your review"),
+    }
+
+
+def _why_unchanged(verdict: str, cells_changed, after: dict) -> str | None:
+    """When the score did not move, say why, so "no change" never reads as "nothing happened"."""
+    if verdict != "unchanged":
+        return None
+    left = len(_remaining_findings(after))
+    tail = f" {left} item(s) still need your decision." if left else ""
+    if not cells_changed:
+        if not left:
+            return "Nothing needed fixing, so the score is the same."
+        return "Nothing in this file could be fixed automatically, so the score is the same." + tail
+    return (f"{cells_changed} cell(s) were tidied, but none of them was an invalid or missing value that became valid "
+            f"(for example a placeholder such as N/A turned into a blank), so the score did not move." + tail)
+
+
+def build_quality_comparison(before: dict, after: dict, imputed: dict | None = None,
+                             cells_changed: int | None = None) -> dict:
     """Did the data actually improve? Compares dimension scores and issues, and says what
     was resolved, what remains (and who must decide), and what is new.
 
@@ -117,17 +156,13 @@ def build_quality_comparison(before: dict, after: dict, imputed: dict | None = N
 
     sb, sa = before.get("score"), after.get("score")
     delta = (sa - sb) if (sb is not None and sa is not None) else None
-    ub, ua = before.get("score_before_cap"), after.get("score_before_cap")
+    # The number is never capped, so "no change" means the data did not move (see why_unchanged below).
     if delta is None:
         verdict = "unknown"
     elif delta > 0:
         verdict = "improved"
     elif delta < 0:
         verdict = "worse"
-    elif after.get("score_capped_by") and ub is not None and ua is not None and ua != ub:
-        # The headline is pinned by an unresolved critical/high issue. Say so, and use the score
-        # before the cap to tell whether the data moved at all, instead of reporting "no change".
-        verdict = "improved_but_capped" if ua > ub else "worse_but_capped"
     else:
         verdict = "unchanged"
 
@@ -137,12 +172,8 @@ def build_quality_comparison(before: dict, after: dict, imputed: dict | None = N
             f"{imputed_total} value(s) were filled in by imputation. They make the data complete but they "
             f"are estimates, so accuracy is not credited for them."
         )
-    if after.get("score_capped_by"):
-        cap_level = after["score_capped_by"]
-        notes.append(
-            f"The overall score is held down by an unresolved {cap_level} issue. "
-            f"Without that cap it would be {ua} (was {ub} before cleaning)."
-        )
+    if after.get("grade_note"):
+        notes.append(after["grade_note"])
     still_review = [brief(ak[k]) for k in remaining + introduced if ak[k]["remediation"] == M.REQUIRES_REVIEW]
     still_protected = [brief(ak[k]) for k in remaining + introduced if ak[k]["remediation"] == M.DO_NOT_MODIFY]
     if still_review:
@@ -151,9 +182,13 @@ def build_quality_comparison(before: dict, after: dict, imputed: dict | None = N
         notes.append(f"{len(still_protected)} issue(s) were deliberately not modified.")
 
     return {
-        "overall": {"before": sb, "after": sa, "delta": delta, "before_without_cap": ub, "after_without_cap": ua,
-                    "capped_by": after.get("score_capped_by"),
-                    "grade_before": before.get("grade"), "grade_after": after.get("grade"), "verdict": verdict},
+        "overall": {"before": sb, "after": sa, "delta": delta, "before_without_cap": sb, "after_without_cap": sa,
+                    "capped_by": None, "grade_limited_by": after.get("grade_limited_by"),
+                    "grade_before": before.get("grade"), "grade_after": after.get("grade"), "verdict": verdict,
+                    "why_unchanged": _why_unchanged(verdict, cells_changed, after)},
+        "review": review_block(after),
+        "holding_back": {"before": _top_reasons(before), "after": _top_reasons(after)},
+        "score_basis": (after.get("score_model") or {}).get("formula"),
         "dimensions": dims,
         "severity_counts": {"before": before.get("severity_counts"), "after": after.get("severity_counts")},
         "issues_resolved": [brief(bk[k]) for k in resolved],
@@ -243,7 +278,8 @@ def build_cleaning_summary(
         after_label = f"{score_after}% ({grade_after})" if grade_after else f"{score_after}%"
         lines += ["", f"Quality score: {before_label} -> {after_label} ({sign}{delta})"]
 
-    comparison = build_quality_comparison(quality_before, quality_after, imputed)
+    _cells = (audit.summary().get("cells_changed") if audit is not None else None)
+    comparison = build_quality_comparison(quality_before, quality_after, imputed, cells_changed=_cells)
     ov = comparison["overall"]
     lines += ["", f"Verdict: {ov['verdict']}"]
     if comparison["dimensions"]:

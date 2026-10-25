@@ -201,13 +201,17 @@ def test_iso_dates_are_not_mistaken_for_ambiguous_and_are_not_swapped_by_day_fir
     assert out["signup_date"].tolist() == ["2024-03-04", "2025-03-04", "2022-08-28"]
 
 
-def test_verdict_says_when_the_headline_is_pinned_by_an_unfixable_critical_issue():
-    df = pd.DataFrame({"phone_num": ["1.343E+12"] + ["0803317157"] * 11, "name": ["  a "] * 12})
+def test_verdict_improves_while_an_unfixable_critical_issue_only_limits_the_label():
+    """Tidying the names lifts the NUMBER; the critical phone cell cannot be fixed, so the LABEL is held and said so."""
+    n = 400
+    df = pd.DataFrame({"phone_num": ["1.343E+12"] + ["08033171570"] * (n - 1),
+                       "name": [f"  Person {i} " for i in range(n)]})
     *_, cmp_, _ = full_run(df)
-    assert cmp_["overall"]["capped_by"] == M.CRITICAL
-    assert cmp_["overall"]["verdict"] == "improved_but_capped"
-    assert cmp_["overall"]["after_without_cap"] > cmp_["overall"]["before_without_cap"]
-    assert any("held down" in n for n in cmp_["notes"])
+    ov = cmp_["overall"]
+    assert ov["capped_by"] is None and ov["verdict"] == "improved" and ov["after"] > ov["before"]
+    assert ov["grade_limited_by"] == M.CRITICAL and ov["grade_after"] == "C"
+    assert any("critical" in note and "unresolved" in note for note in cmp_["notes"])
+    assert cmp_["review"]["clean"] is False and cmp_["review"]["count"] >= 1
 
 
 def test_comparison_calls_out_imputation_as_estimates():
@@ -322,4 +326,5 @@ def test_dimension_scores_are_persisted_per_job(client):
     with db._cursor() as cur:
         row = cur.execute("SELECT dimension_scores_before, dimension_scores_after, quality_model_version "
                           "FROM jobs WHERE job_id=?", (job,)).fetchone()
-    assert json.loads(row[0])["completeness"] is not None and row[2] == 2
+    from cleaning.quality_report import QUALITY_MODEL_VERSION
+    assert json.loads(row[0])["completeness"] is not None and row[2] == QUALITY_MODEL_VERSION == 3

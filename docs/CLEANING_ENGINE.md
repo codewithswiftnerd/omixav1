@@ -143,3 +143,25 @@ skip the per-cell checks and say so.
   removed (`removed_with_duplicate_rows`); new `issue_summary` separates detected / automatically_corrected / remaining /
   requires_review / cannot_be_corrected_automatically / introduced_by_cleaning.
 - A bare `-` or `+` is no longer prefixed with an apostrophe on export.
+
+
+## User-directed options (day/month order, phone country, missing values, approved mappings)
+
+All are keys of `options` on `POST /api/process/<job>`; every one is validated against a whitelist
+(`cleaning/options.py`), is OFF unless sent, and is recorded in the audit as `user_selected`. Implementation:
+`cleaning/review_options.py`; the new rules `approved_value_mappings` and `missing_value_handling` run only when
+their option is present.
+
+| Option | Shape | Effect |
+|---|---|---|
+| `date_order` / `date_orders` | `"auto"\|"day_first"\|"month_first"`; `{column: order}` | An ambiguous date (03/04/2026) is read the way the user chose. Without it, ambiguous cells stay as uploaded. Impossible dates (32/10/2026, 2026/13/04), placeholders and relative words (`yesterday`) are never converted. |
+| `phone_country` | `"NG"` or `{column: "NG"}` | Numbers carrying evidence of that country (dial code, trunk 0, explicit `+`) become `+<dial><number>`. Anything else (letters, wrong length, too short) stays byte-for-byte as uploaded and is reported invalid. No option, no country is assumed. |
+| `missing_values` | `{default?, columns?: {col: {action, value?}}}` | Per column: `leave`, `fill` (the user's own `value`), `flag`, `remove_rows` (only on request, every row audited). Only genuinely empty cells are touched; `N/A`, `None`, `Unknown` are text unless the placeholder rule / `missing_markers` treats them as missing. |
+| `value_mappings` | `{column: {approve: {from: to}, reject: [from]}}` | Applies the user's approved mappings (matched ignoring case/extra spaces) to the whole column. Rejected sources are never changed. |
+
+`result["value_mapping_suggestions"]` lists PROPOSED mappings (`done -> Completed`) with a reason and a status
+(`suggested` / `rejected`). They are never applied; re-submit with `value_mappings` to approve or reject them.
+Abbreviations such as `PH` or `Abj` are never guessed.
+
+Dates are also judged per cell for two-digit years: `01/10/26` stays as uploaded (the century is a guess) but no
+longer blocks `15/02/2026` or `Oct 3, 2026` in the same column (`details.date_standardization.left_two_digit_year`).

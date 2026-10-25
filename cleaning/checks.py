@@ -37,10 +37,22 @@ class CheckContext:
     now: pd.Timestamp
     provenance: dict = field(default_factory=dict)  # e.g. {"imputed": {"age": 3}}
     evaluated: set = field(default_factory=set)     # dimensions that had something to check
+    # {column: bool numpy array}: cells a SAFE formatting fix would change (filled in by quality_report's dry runs)
+    untidy: dict = field(default_factory=dict)
+    _classified: dict = field(default_factory=dict, repr=False)
 
     @property
     def total_rows(self) -> int:
         return len(self.df)
+
+    def classified(self, col) -> dict:
+        """validation.classify_column for one column, computed once per report. The validity checks and the
+        cell-level score all read the same classification, so they can never disagree about a cell."""
+        key = str(col)
+        if key not in self._classified:
+            from cleaning import validation
+            self._classified[key] = validation.classify_column(key, self.df[col], None)
+        return self._classified[key]
 
     def text_columns(self):
         return self.df.select_dtypes(include=["object", "string"]).columns
@@ -277,7 +289,7 @@ def _validation_findings(ctx: CheckContext, category: str, issue: str, what: str
     from cleaning import validation
     out = []
     for col in ctx.df.columns:
-        res = validation.classify_column(str(col), ctx.df[col], None)
+        res = ctx.classified(col)
         hits, samples = 0, []
         for v, k in res["counts"].items():
             cat, code, _ = res["by_value"][v]
@@ -321,7 +333,7 @@ def _codes_findings(ctx: CheckContext, codes, issue: str, what: str, suggestion,
     from cleaning import validation
     out = []
     for col in ctx.df.columns:
-        res = validation.classify_column(str(col), ctx.df[col], None)
+        res = ctx.classified(col)
         hits, samples, sugg = 0, [], {}
         for v, k in res["counts"].items():
             cat, code, why = res["by_value"][v]

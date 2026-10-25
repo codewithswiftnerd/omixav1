@@ -291,6 +291,27 @@ def mixed_currency_markers(values) -> Optional[list]:
     return sorted(markers) if common is not None and not common else None
 
 
+def minority_currency_values(counts: dict) -> set:
+    """Values (keys of `counts`: {value: how many cells}) that carry a currency marker which cannot be the same
+    currency as the column's most common marker. ('$' and 'USD' agree; '$' and '₦' do not.) Values with no marker
+    ('4500') are never counted: a bare number in a column of naira amounts is normal. Deterministic: ties go to the
+    alphabetically first marker. Returns an empty set when the column uses one currency only."""
+    tally: dict = {}
+    marker_of: dict = {}
+    for v, k in counts.items():
+        if not isinstance(v, str):
+            continue
+        mk = currency_marker(v)
+        if mk:
+            marker_of[v] = mk
+            tally[mk] = tally.get(mk, 0) + k
+    if len(tally) < 2:
+        return set()
+    dominant = min(tally, key=lambda m: (-tally[m], m))
+    dom_codes = _token_codes().get(dominant, frozenset({dominant}))
+    return {v for v, mk in marker_of.items() if not (_token_codes().get(mk, frozenset({mk})) & dom_codes)}
+
+
 def has_currency(value: str) -> bool:
     return bool(CURRENCY_HINT_RE.search(value))
 

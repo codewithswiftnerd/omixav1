@@ -75,10 +75,24 @@
             </div>
           </div>
           <p class="hint" id="noFindings" style="display:none;">No issues found. This file looks clean already.</p>
+          <div id="preScoreWhy"></div>
 
           <div class="main-actions">
             <button id="runBtn" class="btn-main" disabled>Clean my data</button>
+            <button id="reviewBtn" type="button" class="btn btn-secondary hidden">Review flagged values</button>
           </div>
+
+          <dialog id="reviewDialog" class="m-dialog review-dialog" aria-labelledby="reviewTitle">
+            <div class="m-dialog-body">
+              <h2 id="reviewTitle">Some values look wrong</h2>
+              <p>These values don’t fit their column (for example, words in a phone number column). Nothing is changed unless you choose. Your original file is never touched.</p>
+            </div>
+            <div class="rv-body" id="reviewBody"></div>
+            <div class="m-dialog-actions">
+              <button type="button" class="btn btn-secondary" id="reviewKeepAll">Keep everything</button>
+              <button type="button" class="btn btn-primary" id="reviewDone">Save choices</button>
+            </div>
+          </dialog>
 
           <div class="card hidden" id="proPanel" >
             <label for="profileSelect"><strong>Quality Profile</strong> <span class="badge badge-plan-pro">Pro</span></label>
@@ -151,14 +165,15 @@
         <section class="hidden" id="results" aria-labelledby="resultsHeading">
           <div class="done-head">
             <div class="done-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" pathLength="1"/></svg></div>
-            <h2 id="resultsHeading">Your data is clean</h2>
-            <p>Here's what changed. Your file is ready.</p>
+            <h2 id="resultsHeading">Cleaning finished</h2>
+            <p id="resultsSub">Here's what changed. Your file is ready.</p>
           </div>
           <div class="main-actions">
             <button class="btn-main hidden" id="downloadBtn">Download cleaned file</button>
             <button class="btn-ghost hidden" id="resetBtn">Clean another file</button>
           </div>
           <div class="stats" id="stats"></div>
+          <div id="scoreWhy" aria-live="polite"></div>
           <div id="proResults"></div>
           <details class="fold">
             <summary>See full details</summary>

@@ -30,7 +30,7 @@ from cleaning.audit import changed_cells_mask
 from cleaning.checks import CheckContext, HIGH_MISSING_THRESHOLD  # noqa: F401  (re-exported)
 from cleaning.rule_registry import detector_specs, get_spec
 
-QUALITY_MODEL_VERSION = 2
+QUALITY_MODEL_VERSION = 3
 DRY_RUN_MAX_CELLS = 3_000_000  # skip the "would a fixer change this?" probes on very large frames
 
 # Issues whose detection depends on a semantic guess about the column, so the finding's
@@ -55,6 +55,17 @@ _FORMAT_PROBES = [
 ]
 
 
+def _record_whitespace_cells(ctx: CheckContext) -> None:
+    """Cells with leading/trailing/doubled whitespace are untidy (a fix would change them)."""
+    for col in ctx.text_columns():
+        original = ctx.df[col].astype("string")
+        tidy = original.str.strip().str.replace(r"\s+", " ", regex=True)
+        mask = ((original != tidy) & original.notna()).to_numpy(dtype=bool, na_value=False)
+        if mask.any():
+            prev = ctx.untidy.get(str(col))
+            ctx.untidy[str(col)] = mask if prev is None else (prev | mask)
+
+
 def check_fixable_formats(ctx: CheckContext) -> list[dict]:
     """Finds formatting inconsistencies by *dry-running* the corresponding cleaning rule
     on a copy and counting what it would change. The finding and the fix therefore can
@@ -65,6 +76,7 @@ def check_fixable_formats(ctx: CheckContext) -> list[dict]:
     out: list[dict] = []
     if df.empty and not len(df.columns):
         return out
+    _record_whitespace_cells(ctx)
     if df.size > DRY_RUN_MAX_CELLS:
         return out
 
@@ -80,9 +92,14 @@ def check_fixable_formats(ctx: CheckContext) -> list[dict]:
         for col in base.columns:
             if col not in after.columns:
                 continue
-            n = int(changed_cells_mask(base[col], after[col]).sum())
+            changed = changed_cells_mask(base[col], after[col])
+            n = int(changed.sum())
             if not n:
                 continue
+            # exact cells a safe fix would change: the cell score gives them half credit (see cleaning/scoring.py)
+            prev = ctx.untidy.get(str(col))
+            cur = changed.to_numpy(dtype=bool)
+            ctx.untidy[str(col)] = cur if prev is None else (prev | cur)
             population = int(base[col].notna().sum()) or len(base)
             out.append({
                 "column": col, "issue": issue, "affected": n, "population": population,
@@ -253,6 +270,7 @@ def _build_scorecard(findings: list[dict], scored: dict, total_rows: int, n_cols
         "overall_score": scored["overall"],
         "score_before_cap": scored["uncapped"],
         "grade": scored["grade"],
+        "grade_limited_by": scored["grade_limited_by"],
         "score_capped_by": scored["capped_by"],
         "dimension_scores": {d: v["score"] for d, v in scored["dimensions"].items() if v["applicable"]},
         "dimensions_not_applicable": [d for d, v in scored["dimensions"].items() if not v["applicable"]],
@@ -328,7 +346,7 @@ def generate_report(
     findings = [enrich_finding(r, ctx) for r in raw]
     findings.sort(key=lambda f: (-M.severity_rank(f["level"]), -f["impact"], f["issue"], str(f["column"])))
 
-    scored = scoring.score_dataset(findings, ctx.profile, total_rows=total_rows, evaluated=ctx.evaluated)
+    scored = scoring.score_dataset(findings, ctx.profile, total_rows=total_rows, evaluated=ctx.evaluated, ctx=ctx)
 
     counts = {"critical": 0, "warning": 0, "info": 0}
     for f in findings:
@@ -342,9 +360,13 @@ def generate_report(
         "quality_model_version": QUALITY_MODEL_VERSION,
         "score": scored["overall"],
         "overall_score": scored["overall"],
-        "score_before_cap": scored["uncapped"],
-        "score_capped_by": scored["capped_by"],
+        "score_before_cap": scored["uncapped"],      # kept for older clients: equals `score` (the number is never capped)
+        "score_capped_by": scored["capped_by"],      # kept for older clients: always None
         "grade": scored["grade"],
+        "grade_by_score": scored["grade_by_score"],
+        "grade_limited_by": scored["grade_limited_by"],
+        "grade_note": scored["grade_note"],
+        "score_model": scored["model"],
         "row_count": total_rows,
         "column_count": len(df.columns),
         "counts": counts,

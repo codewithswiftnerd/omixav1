@@ -132,15 +132,26 @@ def test_legacy_severity_is_derived_from_level():
     assert sum(r["severity_counts"].values()) == len(r["findings"])
 
 
-def test_critical_issue_caps_the_overall_score_even_in_a_big_clean_dataset():
+def test_critical_issue_limits_the_grade_label_but_never_pins_the_number():
+    """Old model: one critical cell pinned a 5,000-row file at 79. Now the NUMBER follows the data; only the
+    grade LABEL is held (it cannot read better than C) and the report says why."""
     n = 5000
-    phones = ["0803317157"] * (n - 1) + ["1.343E+12"]
+    phones = ["08033171570"] * (n - 1) + ["1.343E+12"]
     df = pd.DataFrame({"phone_num": phones, "v": range(n)})
     r = generate_report(df)
     f = finding(r, "unrecoverable_scientific_notation")
     assert f["level"] == M.CRITICAL
-    assert r["score"] <= M.SCORE_CAPS[M.CRITICAL]
-    assert r["score_capped_by"] == M.CRITICAL and r["score_before_cap"] > r["score"]
+    assert 97 <= r["score"] < 100                      # one bad cell in 5,000: not pinned; 100 is reserved for "nothing flagged"
+    assert r["grade_by_score"] == "A" and r["grade"] == "C" and r["grade_limited_by"] == M.CRITICAL
+    assert "critical" in r["grade_note"] and "unresolved" in r["grade_note"]
+    assert r["score_capped_by"] is None and r["score_before_cap"] == r["score"]   # legacy keys: the number is never capped
+
+
+def test_a_high_issue_no_longer_pins_a_messy_file_at_89():
+    assert not hasattr(M, "SCORE_CAPS")
+    r = generate_report(pd.DataFrame({"email": _emails(40, 100), "n": range(100)}))
+    assert any(f["level"] in (M.HIGH, M.CRITICAL) for f in r["findings"])
+    assert r["score"] != 89 and r["score"] < 80
 
 
 # -------------------------------------------------------------------- findings
