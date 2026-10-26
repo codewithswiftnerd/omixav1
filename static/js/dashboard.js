@@ -8,6 +8,19 @@
   $('who').textContent = (u.name ? u.name + ' · ' : '') + (u.email || '');
   $('signOutBtn').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST', body: {} }); window.location.href = '/'; });
 
+  async function loadBatches() {
+    const r = await api('/api/batches/');
+    const list = (r.ok && r.json.batches) || [];
+    if (!list.length) return;
+    $('batchesCard').classList.remove('hidden');
+    const tone = st => st === 'completed' ? 'badge-success' : st === 'failed' ? 'badge-danger' : st === 'completed_with_errors' ? 'badge-warning' : 'badge-plan-free';
+    $('batches').innerHTML = `<table class="table-stack"><thead><tr><th>Started</th><th>Files</th><th>Status</th><th></th></tr></thead><tbody>${list.slice(0, 6).map(b =>
+      `<tr><td data-label="Started">${fmtDate(b.created_at)}</td><td data-label="Files">${esc(b.counts.completed)} of ${esc(b.counts.total)} cleaned</td>
+       <td data-label="Status"><span class="badge ${tone(b.status)}">${esc(String(b.status).replace(/_/g, ' '))}</span></td>
+       <td class="cell-actions">${b.download_all_url ? `<a class="btn btn-ghost btn-sm" href="${esc(b.download_all_url)}">Download ZIP</a>` : ''}</td></tr>`).join('')}</tbody></table>
+       <p class="hint">Results are kept for ${esc(list[0].retention_hours)} hours, then deleted.</p>`;
+  }
+
   const pay = new URLSearchParams(window.location.search).get('payment');
   const banners = {
     success: ['alert-success', 'Payment received. Omixa Pro is now active on your account.'],
@@ -39,6 +52,7 @@
   }
 
   if (!u.is_pro) {
+    $('quickProfile').setAttribute('href', '/pricing');
     $('proUpsell').classList.remove('hidden');
     $('profiles').innerHTML = '<p class="hint">This feature is available with Omixa Pro. Save a standard like "Research Dataset Standard" and check every file against it. <a href="/pricing">See pricing</a></p>';
     $('history').innerHTML = '<p class="hint">Processing history, quality reports and change logs are available with Omixa Pro. <a href="/pricing">See pricing</a></p>';
@@ -47,6 +61,7 @@
   }
 
   $('newProfileBtn').classList.remove('hidden');
+  loadBatches();
   const [pr, hr] = await Promise.all([api('/api/profiles/'), api('/api/sessions/')]);
   const profiles = (pr.json.profiles || []), sessions = (hr.json.sessions || []);
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);

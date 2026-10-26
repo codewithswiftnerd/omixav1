@@ -40,7 +40,9 @@ def batch():
         state = "unavailable"
     else:
         state = "pro"
-    return render_template("batch.html", state=state, limits=limits(), **facts)
+    from cleaning.phone_formats import COUNTRIES   # the one canonical list (all supported phone countries)
+    countries = sorted(((code, c["name"]) for code, c in COUNTRIES.items()), key=lambda x: x[1])
+    return render_template("batch.html", state=state, limits=limits(), countries=countries, **facts)
 
 
 @pages_bp.get("/pricing")

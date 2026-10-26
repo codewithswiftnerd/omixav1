@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Omixa – Clean messy CSV &amp; Excel data instantly{% endblock %}
-{% block description %}Upload a messy CSV or Excel file and Omixa finds and fixes duplicates, missing values and inconsistent formatting in seconds, then gives you a clean file and a quality report.{% endblock %}
+{% block title %}Omixa: Clean CSV and Excel Files, Check Data Quality{% endblock %}
+{% block description %}Clean messy CSV and Excel files. Omixa finds duplicates and inconsistent formats, fixes what is safe, flags the rest, and reports data quality. Free, no account needed.{% endblock %}
 
 {% block page %}
 <div class="tool-page" id="tool">
@@ -8,8 +8,8 @@
   {# ---------- Hero + upload ---------- #}
   <section class="hero-wrap">
     <div class="hero-copy">
-      <h1><span class="w">Clean</span> <span class="w">your</span> <span class="w">data</span> <span class="w grad-text">instantly</span></h1>
-      <p class="lead">Easily clean messy CSV and Excel files, just in seconds.</p>
+      <h1><span class="w">Clean</span> <span class="w">messy</span> <span class="w">CSV</span> <span class="w">and</span> <span class="w">Excel</span> <span class="w">files</span> <span class="w grad-text">you</span> <span class="w grad-text">can</span> <span class="w grad-text">trust</span></h1>
+      <p class="lead">Omixa finds duplicates, stray spaces and inconsistent formats, fixes what is safe, flags what is not, and gives you a cleaned copy with a data-quality report.</p>
     </div>
 
     {# Decorative preview: a small example sheet that cleans itself (built by js/interactive.js; example data, not the visitor's) #}
@@ -240,6 +240,13 @@
         <div class="trust-item"><strong>Temporary by design</strong><p>Uploaded files are deleted automatically, at most {{ ttl_minutes }} minutes after upload.</p></div>
         <div class="trust-item"><strong>You stay in control</strong><p>Risky changes are never made silently. Anything unclear is left for you to decide.</p></div>
       </div>
+    </section>
+
+    <section class="m-section guides" id="guides">
+      <h2 class="m-title" data-reveal>Guides for common data problems</h2>
+      <ul class="guide-grid">
+        {% for path, label in guide_nav %}<li><a href="{{ path }}"><strong>{{ label }}</strong></a></li>{% endfor %}
+      </ul>
     </section>
 
     <section class="m-section faq" id="faq">

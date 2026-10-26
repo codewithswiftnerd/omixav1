@@ -230,8 +230,42 @@ def _analyze_body(job_id: str, spec: dict):
     # computed for everyone (it is sampled and cheap) so the cached analysis is plan-independent;
     # the API decides who may SEE it (Pro), see routes/report.py
     from cleaning.validation import validate_dataframe
-    return {"has_header": has_header, "report": report, "recommendations": generate_recommendations(report),
-            "engine_recommendations": recommend_dataset(df), "validation": validate_dataframe(df)}
+    val = validate_dataframe(df)
+    out = {"has_header": has_header, "report": report, "recommendations": generate_recommendations(report),
+           "engine_recommendations": recommend_dataset(df), "validation": val}
+    if spec.get("flagged"):          # batch review: the distinct flagged values, so no extra request is needed
+        out["flagged_values"] = _flagged_values(df, val, has_header)
+    return out
+
+
+def _flagged_values(df, val: dict, has_header: bool, max_items: int = 300) -> dict:
+    """Distinct invalid/suspicious/unresolved values per column (same rule the single-file review uses)."""
+    from cleaning import validation
+    items, seen, truncated = [], {}, False
+    for c in (val or {}).get("columns", []):
+        for cat in ("invalid", "suspicious", "unresolved"):
+            if not (c.get("counts") or {}).get(cat):
+                continue
+            res = validation.rows_for(df, c["column"], cat, None, offset=0, limit=500,
+                                      header_offset=2 if has_header else 1)
+            if res.get("total", 0) > len(res.get("rows", [])):
+                truncated = True
+            for r in res.get("rows", []):
+                if r.get("value") is None or r.get("code") == "needs_country":
+                    continue
+                k = (c["column"], str(r["value"]))
+                if k not in seen:
+                    if len(items) >= max_items:
+                        truncated = True
+                        continue
+                    seen[k] = {"column": c["column"], "value": str(r["value"]), "count": 0,
+                               "reason": r.get("reason"), "rows": []}
+                    items.append(seen[k])
+                seen[k]["count"] += 1
+                seen[k]["rows"].append(r.get("sheet_row"))
+    for it in items:
+        it["rows"] = it["rows"][:4]
+    return {"items": items, "truncated": truncated}
 
 
 def _content_type(ext: str) -> str:

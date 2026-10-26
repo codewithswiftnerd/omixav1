@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ g.title }}{% endblock %}
+{% block description %}{{ g.description }}{% endblock %}
+{% block content %}
+<article class="guide-page">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('pages.landing') }}">Omixa</a> <span aria-hidden="true">/</span> <span>{{ g.nav }}</span></nav>
+  <h1>{{ g.h1 }}</h1>
+  <p class="guide-lead">{{ g.lead }}</p>
+  <p class="guide-cta-row"><a class="btn-upload" href="{{ url_for('workspace.index') }}">Clean a file free</a><span class="hint">CSV, XLSX or XLS &middot; no account needed</span></p>
+
+  {% for heading, paras in g.sections %}
+  <section>
+    <h2>{{ heading }}</h2>
+    {% for p in paras %}<p>{{ p }}</p>{% endfor %}
+  </section>
+  {% endfor %}
+
+  <section>
+    <h2>Steps</h2>
+    <ol class="guide-steps">{% for s in g.steps %}<li>{{ s }}</li>{% endfor %}</ol>
+  </section>
+
+  <aside class="guide-note" aria-label="Limits">
+    <strong>Good to know.</strong> {{ g.limits }}
+  </aside>
+
+  <section class="guide-faq">
+    <h2>Common questions</h2>
+    {% for q, a in g.faq %}<details class="faq-item"><summary>{{ q }}</summary><p>{{ a }}</p></details>{% endfor %}
+  </section>
+
+  <section>
+    <h2>Related guides</h2>
+    <ul class="guide-grid">
+      {% for r in related %}<li><a href="{{ r.path }}"><strong>{{ r.label }}</strong><span>{{ r.blurb }}</span></a></li>{% endfor %}
+    </ul>
+  </section>
+
+  <p class="guide-cta-row"><a class="btn-upload" href="{{ url_for('workspace.index') }}">Try Omixa on your file</a><a class="link-btn" href="/pricing">See Free and Pro plans</a></p>
+</article>
+{% endblock %}

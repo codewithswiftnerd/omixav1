@@ -918,6 +918,12 @@ def set_batch_totals(batch_id: str, file_count: int, total_bytes: int) -> None:
                     (file_count, total_bytes, time.time(), batch_id))
 
 
+def set_batch_options(batch_id: str, options: dict) -> None:
+    with _cursor() as cur:
+        cur.execute("UPDATE batches SET options_json=?, updated_at=? WHERE batch_id=?",
+                    (json.dumps(options), time.time(), batch_id))
+
+
 def get_batch(batch_id: str) -> Optional[dict]:
     with _cursor() as cur:
         cur.execute("SELECT * FROM batches WHERE batch_id=?", (batch_id,))
@@ -954,6 +960,13 @@ def cancel_batch_pending(batch_id: str) -> int:
     with _cursor() as cur:
         cur.execute("UPDATE jobs SET status='cancelled', updated_at=?, lease_owner=NULL, lease_expires_at=NULL "
                     "WHERE batch_id=? AND status IN ('uploaded','queued')", (time.time(), batch_id))
+        return cur.rowcount
+
+
+def cancel_job_in_batch(batch_id: str, job_id: str) -> int:
+    with _cursor() as cur:
+        cur.execute("UPDATE jobs SET status='cancelled', updated_at=? WHERE job_id=? AND batch_id=? "
+                    "AND status IN ('uploaded','failed')", (time.time(), job_id, batch_id))
         return cur.rowcount
 
 

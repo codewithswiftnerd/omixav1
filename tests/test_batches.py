@@ -413,3 +413,97 @@ def test_retention_keeps_batch_outputs_longer_than_single_jobs(app, env, monkeyp
         cur.execute("UPDATE jobs SET created_at=? WHERE batch_id=?", (time.time() - Config.BATCH_RETENTION_SECONDS - 60, bid))
     assert len(db.purge_candidates(Config.JOB_TTL_SECONDS)) == 1
 
+
+
+# ------------------------------------------------------------------ options + draft flow (parity with the free tool)
+
+CSV_D = b"Name,Phone,Joined\nAda,0803 123 4567,03/04/2024\nKofi,call me,05/06/2024\nAma,0803 123 4568,07/08/2024\n"
+
+
+def test_batch_options_reach_every_file(app, env):
+    pro = make_client(app, env, "o1")
+    r = post_batch(pro, [("a.csv", CSV_D)], options={"options": {"date_order": "day_first", "phone_country": "NG"},
+                                                      "rules": ["formatting", "date_standardization", "phone_cleaning"]})
+    assert r.status_code == 202, r.get_json()
+    spec = json.loads(db.get_job(r.get_json()["files"][0]["job_id"])["spec_json"])
+    assert spec["options"]["date_order"] == "day_first" and spec["options"]["phone_country"] == "NG"
+    b = run_all(pro, r.get_json()["batch_id"])
+    assert b["counts"]["completed"] == 1
+
+
+def test_bad_batch_options_are_rejected(app, env):
+    pro = make_client(app, env, "o2")
+    assert post_batch(pro, [("a.csv", CSV_A)], options={"options": {"date_order": "sideways"}}).status_code == 400
+    assert post_batch(pro, [("a.csv", CSV_A)], options={"options": {"nope": 1}}).status_code == 400
+    assert post_batch(pro, [("a.csv", CSV_A)], options={"resolutions": "x"}).status_code == 400
+
+
+def test_draft_batch_is_analysed_then_started_with_per_file_choices(app, env):
+    pro = make_client(app, env, "d1")
+    r = post_batch(pro, [("a.csv", CSV_A), ("d.csv", CSV_D)], start="false")
+    assert r.status_code == 202
+    b = r.get_json(); bid = b["batch_id"]
+    assert b["draft"] is True and b["status"] == "draft"
+    for _ in range(6):                       # nothing is cleaned while it is a draft
+        worker.run_one("w-test")
+    assert all(db.get_job(f["job_id"])["status"] == "uploaded" for f in b["files"])
+
+    b = pro.post(f"/api/batches/{bid}/analyze", json={}).get_json()
+    assert b["analyzing"] is True
+    for _ in range(40):
+        worker.run_one("w-test"); svc.reap_once()
+        b = pro.get(f"/api/batches/{bid}").get_json()
+        if all(f["stage"] == "ready" for f in b["files"]):
+            break
+    assert all(f["stage"] == "ready" and f["analysis"]["score"] is not None for f in b["files"])
+    d = next(f for f in b["files"] if f["filename"] == "d.csv")
+    an = pro.get(f"/api/batches/{bid}/files/{d['job_id']}/analysis").get_json()
+    assert any(i["value"] == "call me" for i in an["flagged_values"]["items"])
+
+    a_id = next(f["job_id"] for f in b["files"] if f["filename"] == "a.csv")
+    r = pro.post(f"/api/batches/{bid}/start", json={
+        "rules": ["formatting", "phone_cleaning"],
+        "options": {"phone_country": "NG"},
+        "per_file": {d["job_id"]: {"options": {"value_actions": {"Phone": {"clear": ["call me"]}}}}, a_id: {"skip": True}}})
+    assert r.status_code == 202, r.get_json()
+    b = run_all(pro, bid)
+    assert b["draft"] is False
+    assert b["counts"]["completed"] == 1 and b["counts"]["cancelled"] == 1
+    done = next(f for f in b["files"] if f["status"] == "completed")
+    text = pro.get(done["download_url"]).get_data(as_text=True)
+    assert "call me" not in text and "Ada" in text          # the per-file choice was applied
+    assert pro.post(f"/api/batches/{bid}/start", json={}).status_code == 409
+
+
+def test_draft_files_not_cleaned_by_reaper_and_can_be_discarded(app, env):
+    pro = make_client(app, env, "d2")
+    bid = post_batch(pro, [("a.csv", CSV_A)], start="false").get_json()["batch_id"]
+    for _ in range(5):
+        svc.reap_once(); worker.run_one("w-test")
+    assert pro.get(f"/api/batches/{bid}").get_json()["draft"] is True
+    b = pro.post(f"/api/batches/{bid}/cancel", json={}).get_json()
+    assert b["finished"] is True
+
+
+def test_other_users_cannot_start_or_read_a_draft(app, env):
+    pro = make_client(app, env, "d3"); other = make_client(app, env, "d4")
+    bid = post_batch(pro, [("a.csv", CSV_A)], start="false").get_json()["batch_id"]
+    assert other.post(f"/api/batches/{bid}/start", json={}).status_code == 404
+    assert other.post(f"/api/batches/{bid}/analyze", json={}).status_code == 404
+
+
+def test_pro_batch_page_renders_the_new_workflow(app, env):
+    pro = make_client(app, env, "pg1")
+    html = pro.get("/batch").get_data(as_text=True)
+    for needle in ('id="goBatch"', 'id="optDate"', 'id="fileDialog"', 'js/batch.js'):
+        assert needle in html
+
+
+def test_batch_page_offers_every_supported_phone_country(app, env):
+    from cleaning.phone_formats import COUNTRIES
+    pro = make_client(app, env, "pg2")
+    html = pro.get("/batch").get_data(as_text=True)
+    seg = html[html.index('id="optPhone"'):]
+    seg = seg[:seg.index("</select>")]
+    assert seg.count("<option") == len(COUNTRIES) + 1 == 155
+    assert 'value="NG">Nigeria' in seg and 'value="MY">Malaysia' in seg

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}About Omixa: Spreadsheet Cleaning and Data Quality{% endblock %}
+{% block description %}Omixa cleans CSV and Excel files and reports on data quality. See who it is for, what it does today, how to try it free, and how to contact the team.{% endblock %}
+{% block content %}
+<article class="guide-page">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('pages.landing') }}">Omixa</a> <span aria-hidden="true">/</span> <span>About</span></nav>
+  <h1>About Omixa</h1>
+  <p class="guide-lead">Omixa is a data-cleaning and data-quality tool for spreadsheets. You upload a CSV or Excel file, Omixa shows what is wrong with it, fixes what is safe to fix, flags what is not, and gives you a cleaned copy with a quality report. It is built around trust in your data, so it explains every change and leaves ambiguous decisions to you.</p>
+
+  <section>
+    <h2>Who it is for</h2>
+    <p>Data analysts, researchers, university students, NGOs and research organisations, and anyone who works with CSV and Excel files and needs consistent, trustworthy data.</p>
+  </section>
+
+  <section>
+    <h2>What it does today</h2>
+    <ul>
+      <li>Accepts CSV, XLSX and XLS files, up to {{ free_mb }} MB on Free and {{ pro_mb }} MB with Pro.</li>
+      <li>Trims stray spaces, standardises dates, phones, emails, countries and categories, and fixes inconsistent capitalisation.</li>
+      <li>Finds exact duplicate rows and flags near-duplicates for review.</li>
+      <li>Recognises missing-value placeholders, and fills gaps with estimates only if you choose.</li>
+      <li>Flags values that do not fit their column, and scores data quality with a before and after report.</li>
+      <li>Never changes your original file. Uploads are deleted automatically, at most {{ ttl_minutes }} minutes after upload.</li>
+    </ul>
+    <p>Learn more in the guides: <a href="/clean-csv-files">clean CSV files</a>, <a href="/clean-excel-files">clean Excel files</a>, <a href="/data-quality-assessment">data quality assessment</a>.</p>
+  </section>
+
+  <section>
+    <h2>How to try it</h2>
+    <p>Cleaning one file at a time is free and needs no account. <a href="{{ url_for('workspace.index') }}">Clean a file</a> or start with a sample. Omixa Pro adds batch processing, Quality Profiles, saved history and PDF quality reports; see <a href="/pricing">pricing</a>.</p>
+  </section>
+
+  <section id="contact">
+    <h2>Contact</h2>
+    <p>Email <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>.</p>
+    <p>Follow Omixa on <a href="{{ social_x }}" rel="noopener me">X (@omixahq)</a>, <a href="{{ social_tiktok }}" rel="noopener me">TikTok (@omixahq)</a> and <a href="{{ social_facebook }}" rel="noopener me">Facebook (OMIXA)</a>.</p>
+  </section>
+</article>
+{% endblock %}

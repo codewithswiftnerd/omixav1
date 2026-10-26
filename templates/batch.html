@@ -1,35 +1,119 @@
 {% extends "base.html" %}
 {% block title %}Batch processing – Omixa{% endblock %}
 {% block content %}
-<div class="dash-header"><h1>Batch processing</h1>
-  <p class="hint">Clean several CSV, XLSX or XLS files in one go. Every file is cleaned and reported on its own.</p></div>
+{% if state != 'pro' %}<div class="dash-header"><h1>Batch processing</h1>
+  <p class="hint">Clean several CSV, XLSX or XLS files in one go. Every file is cleaned and reported on its own.</p></div>{% endif %}
 
 {% if state == 'pro' %}
-<section class="card" id="batchApp" data-max-files="{{ limits.max_files }}" data-max-file-mb="{{ limits.max_file_mb }}" data-max-total-mb="{{ limits.max_total_mb }}">
-  <div id="batchSetup">
-    <label class="btn btn-secondary" for="batchFiles">Choose files</label>
-    <input id="batchFiles" type="file" multiple accept=".csv,.xlsx,.xls" class="hidden">
-    <p class="hint">Up to {{ limits.max_files }} files · {{ limits.max_file_mb }} MB each · {{ limits.max_total_mb }} MB in total. Same safe cleaning rules as a single file.</p>
-    <ul id="batchList" class="plain-list"></ul>
-    <label class="rule"><input type="checkbox" id="optHeader" checked><span><strong>First row is a header</strong></span></label>
-    <label class="rule"><input type="checkbox" id="optColumnNames"><span><strong>Standardize column names</strong><em>Off by default: "Customer Name" → customer_name</em></span></label>
-    <p class="hint">Anything ambiguous is reported, not guessed. Files are kept for {{ limits.retention_hours }} hours so you can download them, then deleted.</p>
-    <button class="btn btn-primary" id="startBatch" type="button" disabled>Start batch</button>
-    <p class="hint" id="batchMsg" role="status"></p>
-  </div>
-  <div id="batchProgress" class="hidden">
-    <h2 id="batchHeadline"></h2>
-    <p class="hint" id="batchSub"></p>
-    <ul id="batchFiles2" class="plain-list"></ul>
-    <p class="hint" id="batchSkipped"></p>
-    <div class="cta-row">
-      <a class="btn btn-primary hidden" id="dlAll" href="#">Download all (ZIP)</a>
-      <button class="btn btn-secondary hidden" id="retryBtn" type="button">Retry failed files</button>
-      <button class="btn btn-ghost" id="cancelBtn" type="button">Cancel waiting files</button>
-      <button class="btn btn-ghost hidden" id="newBatch" type="button">Start another batch</button>
+<div class="tool-page batch-page" id="batchApp" data-max-files="{{ limits.max_files }}" data-max-file-mb="{{ limits.max_file_mb }}" data-max-total-mb="{{ limits.max_total_mb }}">
+  <section class="hero-wrap batch-hero">
+    <div class="hero-copy" data-stagger>
+      <span class="badge badge-plan-pro">Pro</span>
+      <h1><span class="w">Clean</span> <span class="w">many</span> <span class="w">files,</span> <span class="w grad-text">your way</span></h1>
+      <p class="lead">Check every file first, choose exactly what happens to it, then clean the lot in one go.</p>
     </div>
-  </div>
-</section>
+
+    <div class="tool-card">
+      <div class="stepper" id="bSteps" aria-label="Progress">
+        <div class="step active" data-step="pick"><span class="dot">1</span>Choose</div>
+        <div class="step" data-step="review"><span class="dot">2</span>Review</div>
+        <div class="step" data-step="clean"><span class="dot">3</span>Clean</div>
+        <div class="step" data-step="download"><span class="dot">4</span>Download</div>
+      </div>
+      <div class="stage" id="bStage" role="status" aria-live="polite"></div>
+
+      {# 1. choose files #}
+      <div id="batchSetup">
+        <div class="drop dropzone" id="drop" role="button" tabindex="0" aria-label="Choose CSV or Excel files">
+          <span class="btn-upload">Choose files</span>
+          <p class="drop-or">or drop them here</p>
+          <p class="drop-sub">Up to {{ limits.max_files }} files · {{ limits.max_file_mb }} MB each · {{ limits.max_total_mb }} MB in total</p>
+        </div>
+        <input id="batchFiles" type="file" multiple accept=".csv,.xlsx,.xls" class="hidden" aria-label="Choose files to clean">
+        <ul id="batchList" class="bfiles"></ul>
+        <label class="rule"><input type="checkbox" id="optHeader" checked><span><strong>My first row is a header</strong><em>Untick if row 1 is already data.</em></span></label>
+        <div class="main-actions"><button class="btn-main" id="startBatch" type="button" disabled>Check my files</button></div>
+        <p class="hint" id="batchMsg" role="status"></p>
+      </div>
+
+      {# 2. review + choose #}
+      <div id="batchReview" class="hidden">
+        <div class="bsummary" id="bSummary"></div>
+        <ul class="bcards" id="bCards" data-stagger></ul>
+
+        <details class="fold" open>
+          <summary>What should Omixa do?</summary>
+          <div class="fold-body">
+            <div class="presets" id="presets" role="group" aria-label="Quick choices">
+              <button type="button" class="tab active" data-preset="recommended">Recommended</button>
+              <button type="button" class="tab" data-preset="all">Everything safe</button>
+              <button type="button" class="tab" data-preset="minimal">Just tidy up</button>
+              <button type="button" class="tab" data-preset="none">Nothing automatic</button>
+            </div>
+            <fieldset class="rules"><legend class="group-label">Cleaning rules</legend>
+              <div class="rules-grid" id="ruleGrid"></div>
+            </fieldset>
+
+            <p class="group-label review">How to read your data</p>
+            <div class="opt-grid">
+              <label class="opt"><span>Dates like 03/04/2024 mean</span>
+                <select id="optDate"><option value="auto">Decide per column (skip if unclear)</option><option value="day_first">Day first (3 April)</option><option value="month_first">Month first (March 4)</option></select></label>
+              <label class="opt"><span>Numbers are written</span>
+                <select id="optNumber"><option value="auto">Detect automatically</option><option value="thousands_comma">1,234.50</option><option value="decimal_comma">1.234,50</option></select></label>
+              <label class="opt"><span>Phone numbers without a country are from</span>
+                <select id="optPhone"><option value="">Don't assume a country</option>{% for code, name in countries %}<option value="{{ code }}">{{ name }}</option>{% endfor %}</select></label>
+              <label class="opt"><span>Treat these as blank (comma separated)</span>
+                <input id="optMarkers" type="text" placeholder="e.g. tbd, not given, ?" maxlength="300"></label>
+              <label class="opt"><span>Duplicates are rows sharing (columns, comma separated)</span>
+                <input id="optDupKeys" type="text" placeholder="e.g. email (blank = exact copies only)" maxlength="300"></label>
+            </div>
+
+            <p class="group-label review">Empty cells</p>
+            <div class="opt-grid">
+              <label class="opt"><span>When a cell is empty</span>
+                <select id="optMissing"><option value="leave">Leave it empty</option><option value="flag">Leave it, flag it in the report</option><option value="fill">Fill with a value I choose</option><option value="remove_rows">Delete the row</option></select></label>
+              <label class="opt hidden" id="optFillWrap"><span>Fill with</span><input id="optFill" type="text" placeholder="e.g. Unknown or 0" maxlength="90"></label>
+            </div>
+            <label class="rule"><input type="checkbox" id="optColumnNames"><span><strong>Standardize column names</strong><em>"Customer Name" → customer_name</em></span></label>
+            <div class="opt-grid hidden" id="profileWrap"><label class="opt"><span>Quality Profile <span class="badge badge-plan-pro">Pro</span></span>
+              <select id="profileSelect"><option value="">None: general analysis</option></select></label></div>
+            <p class="hint">Anything unclear is reported, never guessed. Use <strong>Customize</strong> on a file to decide about single values or leave a file out.</p>
+          </div>
+        </details>
+
+        <div class="main-actions">
+          <button class="btn-main" id="goBatch" type="button">Clean <span id="goCount">0</span> files</button>
+          <button class="btn btn-ghost" id="discardBtn" type="button">Start over</button>
+        </div>
+      </div>
+
+      {# 3 + 4. progress and downloads #}
+      <div id="batchProgress" class="hidden">
+        <h2 id="batchHeadline"></h2>
+        <div class="bbar" aria-hidden="true"><i id="bBar"></i></div>
+        <p class="hint" id="batchSub"></p>
+        <ul id="batchFiles2" class="bcards"></ul>
+        <p class="hint" id="batchSkipped"></p>
+        <div class="cta-row">
+          <a class="btn-main hidden" id="dlAll" href="#">Download all (ZIP)</a>
+          <button class="btn btn-secondary hidden" id="retryBtn" type="button">Retry failed files</button>
+          <button class="btn btn-ghost" id="cancelBtn" type="button">Cancel waiting files</button>
+          <button class="btn btn-ghost hidden" id="newBatch" type="button">Start another batch</button>
+        </div>
+        <p class="hint">Files are kept for {{ limits.retention_hours }} hours so you can download them, then deleted.</p>
+      </div>
+    </div>
+  </section>
+
+  <dialog id="fileDialog" class="m-dialog review-dialog" aria-labelledby="fdTitle">
+    <div class="m-dialog-body"><h2 id="fdTitle">Customize file</h2><p id="fdSub"></p></div>
+    <div class="rv-body" id="fdBody"></div>
+    <div class="m-dialog-actions">
+      <button type="button" class="btn btn-secondary" id="fdReset">Use the batch choices</button>
+      <button type="button" class="btn btn-primary" id="fdDone">Save for this file</button>
+    </div>
+  </dialog>
+</div>
 {% elif state == 'unavailable' %}
 <section class="card"><h2>Temporarily unavailable</h2><p>Batch processing is not enabled on this server right now. You can still clean files one at a time.</p><a class="btn btn-secondary" href="/clean">Clean a file</a></section>
 {% else %}

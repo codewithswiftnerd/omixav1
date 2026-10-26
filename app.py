@@ -33,6 +33,8 @@ from routes.admin import admin_bp
 from routes.jobs import jobs_bp
 from routes.cleaning import cleaning_bp
 from routes.batches import batches_bp
+from routes.guides import guides_bp
+from routes.seo import seo_bp, seo_context, is_indexable_path
 from utils.security import check_rate_limit
 from utils import observability, redis_client
 from utils.session import ensure_session
@@ -107,6 +109,8 @@ def create_app():
     # Page blueprints (server-rendered HTML)
     app.register_blueprint(pages_bp)
     app.register_blueprint(workspace_bp)
+    app.register_blueprint(guides_bp)   # /<guide-slug>, /about
+    app.register_blueprint(seo_bp)   # /robots.txt, /sitemap.xml
 
     # Admin command center (its own session-gated auth, see routes/admin.py)
     app.register_blueprint(admin_bp, url_prefix="/admin")
@@ -123,8 +127,8 @@ def create_app():
     # Assign an anonymous session cookie before anything else runs.
     @app.before_request
     def _assign_session():
-        if request.path.startswith("/static/"):
-            return None
+        if request.path.startswith("/static/") or request.path in ("/robots.txt", "/sitemap.xml"):
+            return None   # crawlers and assets never need (or should receive) a session cookie
         ensure_session()
         return None
 
@@ -197,9 +201,24 @@ def create_app():
     def _inject_csp_nonce():
         return {"csp_nonce": getattr(g, "csp_nonce", "")}
 
+    @app.context_processor
+    def _inject_seo():
+        return seo_context()
+
     @app.after_request
     def _security_headers(response):
         response = _apply_cors(response)
+
+        # Indexing directives: only the registered public pages (routes/seo.py) may be indexed, and only when
+        # they answer 200. Everything else (app pages, /api, /admin, errors, non-production hosts) is noindex.
+        path = request.path
+        if not (path.startswith("/static/") or path in ("/robots.txt", "/sitemap.xml")):
+            if not is_indexable_path(path) or response.status_code >= 400:
+                response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        # Brand images/icons change rarely: let browsers reuse them for a day (css/js keep revalidating).
+        if path.startswith("/static/") and path.rsplit(".", 1)[-1].lower() in ("png", "jpg", "ico", "webp", "svg") \
+                and response.status_code == 200:
+            response.headers["Cache-Control"] = "public, max-age=86400"
 
         response.headers["X-Request-ID"] = getattr(g, "request_id", "-")
         response.headers["X-Content-Type-Options"] = "nosniff"

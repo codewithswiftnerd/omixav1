@@ -63,10 +63,29 @@ def aggregate_status(c: dict) -> str:
     return "failed"
 
 
-def _spec_for(opts: dict, batch_id: str) -> dict:
+def _spec_for(opts: dict, batch_id: str, job_id: Optional[str] = None) -> dict:
     spec = dict(opts.get("spec") or {})
     spec["batch_id"] = batch_id
+    over = (opts.get("per_file") or {}).get(job_id or "") or {}
+    for k in ("rules", "resolutions", "leave_as_is", "options"):   # this file's own choices win
+        if k in over:
+            spec[k] = over[k]
     return spec
+
+
+def analysis_of(job: dict) -> Optional[dict]:
+    """The cached analysis of a file (draft batches), or None."""
+    if not job.get("report_json"):
+        return None
+    try:
+        return json.loads(job["report_json"])
+    except ValueError:
+        return None
+
+
+def _needs_analysis(job: dict, has_header: bool) -> bool:
+    a = analysis_of(job)
+    return a is None or a.get("has_header") != has_header
 
 
 def advance(batch_id: str) -> Optional[str]:
@@ -90,12 +109,22 @@ def advance(batch_id: str) -> Optional[str]:
     else:
         active = sum(1 for j in jobs if j["status"] in ("queued", "running"))
         cap = max(1, Config.BATCH_MAX_CONCURRENT_FILES)
+        draft = bool(opts.get("draft"))
+        has_header = (opts.get("spec") or {}).get("has_header", True)
         for j in jobs:
             if active >= cap:
                 break
-            if j["status"] == "uploaded":
-                if service.submit(j["job_id"], _spec_for(opts, batch_id), True, batch.get("request_id")):
-                    active += 1
+            if j["status"] != "uploaded":
+                continue
+            if draft:
+                # A draft is never cleaned. While the user asked for analysis, files are analysed a few at a time.
+                if not opts.get("analyzing") or not _needs_analysis(j, has_header):
+                    continue
+                spec = {"kind": "analyze", "has_header": has_header, "flagged": True}
+            else:
+                spec = _spec_for(opts, batch_id, j["job_id"])
+            if service.submit(j["job_id"], spec, True, batch.get("request_id")):
+                active += 1
         jobs = metadata_db.batch_jobs(batch_id)
 
     if any(j["status"] in ("uploaded", "queued", "running") for j in jobs):
@@ -125,7 +154,27 @@ def _rules(job: dict) -> list:
         return []
 
 
-def file_view(batch_id: str, job: dict) -> dict:
+def _brief(a: Optional[dict]) -> Optional[dict]:
+    if not a:
+        return None
+    rep = a.get("report") or {}
+    rec = a.get("recommendations") or {}
+    return {"score": rep.get("score"), "grade": rep.get("grade"), "rows": rep.get("row_count"),
+            "columns": rep.get("column_count"), "counts": rep.get("counts") or {},
+            "safe": len(rec.get("safe") or []), "ambiguous": len(rec.get("ambiguous") or []),
+            "flagged": sum(i.get("count", 0) for i in ((a.get("flagged_values") or {}).get("items") or []))}
+
+
+def draft_stage(job: dict, has_header: bool) -> str:
+    st = job.get("status")
+    if st in ("queued", "running"):
+        return "analyzing"
+    if st == "uploaded":
+        return "pending" if _needs_analysis(job, has_header) else "ready"
+    return FILE_STATUS.get(st, "failed")
+
+
+def file_view(batch_id: str, job: dict, draft_header: Optional[bool] = None) -> dict:
     st = file_status(job)
     out = {
         "job_id": job["job_id"],
@@ -133,6 +182,9 @@ def file_view(batch_id: str, job: dict) -> dict:
         "size_bytes": job.get("file_size_bytes"),
         "status": st,
     }
+    if draft_header is not None:
+        out["stage"] = draft_stage(job, draft_header)
+        out["analysis"] = _brief(analysis_of(job)) if out["stage"] == "ready" else None
     if st == "failed":
         out["error"] = job.get("error_public") or "Could not process this file."
     if st == "completed":
@@ -149,7 +201,15 @@ def batch_view(batch: dict, jobs: list[dict]) -> dict:
     skipped = json.loads(batch.get("skipped_json") or "[]")
     c = counts(jobs, skipped)
     status = batch["status"] if batch["finalized"] else aggregate_status(c)
+    opts = json.loads(batch.get("options_json") or "{}")
+    draft = bool(opts.get("draft")) and not batch["finalized"]
+    hh = (opts.get("spec") or {}).get("has_header", True) if draft else None
+    if draft:
+        status = "draft"
     return {
+        "draft": draft,
+        "analyzing": bool(draft and opts.get("analyzing")),
+        "has_header": (opts.get("spec") or {}).get("has_header", True),
         "batch_id": batch["batch_id"],
         "status": status,
         "finished": bool(batch["finalized"]),
@@ -158,7 +218,7 @@ def batch_view(batch: dict, jobs: list[dict]) -> dict:
         "total_bytes": batch.get("total_bytes"),
         "counts": c,
         "progress": {"done": c["completed"] + c["failed"] + c["cancelled"] + c["expired"], "total": c["total"]},
-        "files": [file_view(batch["batch_id"], j) for j in jobs],
+        "files": [file_view(batch["batch_id"], j, hh) for j in jobs],
         "skipped": skipped,
         "retention_hours": round(Config.BATCH_RETENTION_SECONDS / 3600, 1),
         "download_all_url": f"/api/batches/{batch['batch_id']}/download" if c["completed"] else None,

@@ -1,12 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Pricing – Omixa{% endblock %}
+{% block title %}Pricing: Free and Pro Plans | Omixa{% endblock %}
+{% block description %}Omixa is free for cleaning one CSV or Excel file at a time. Omixa Pro adds batch processing, Quality Profiles and PDF quality reports.{% endblock %}
 {% block content %}
 <div class="dash-header center">
   <h1>Clean for free. <span class="grad-text">Prove it with Pro.</span></h1>
   <p>Free cleans your file. Pro helps you set a data-quality standard, check every dataset against it, and prove the result.</p>
 </div>
 
-<div class="pricing-grid pricing-3">
+<div class="pricing-grid pricing-3" data-stagger>
   <article class="card price-card">
     <h2>Free</h2>
     <p class="price">$0</p>
@@ -52,6 +53,34 @@
     <button class="btn btn-primary btn-block" data-plan="pro_annual" type="button">Get Pro Annual</button>
   </article>
 </div>
+<section class="spotlight" data-reveal>
+  <span class="badge badge-plan-pro">Pro</span>
+  <h2>Batch processing, <span class="grad-text">your way</span></h2>
+  <p>Drop up to {{ batch_files }} files. Omixa checks each one, shows what it found, and lets you decide what happens before anything is cleaned.</p>
+  <ol class="flow4">
+    <li><strong>Choose</strong><span>Drop your files</span></li>
+    <li><strong>Review</strong><span>Scores, findings, flagged values</span></li>
+    <li><strong>Decide</strong><span>Rules, dates, phones, empty cells, per file</span></li>
+    <li><strong>Download</strong><span>One by one or as a ZIP</span></li>
+  </ol>
+</section>
+
+<section class="compare" data-reveal>
+  <h2 class="center">Free and Pro side by side</h2>
+  <div class="compare-scroll"><table>
+    <thead><tr><th></th><th>Free</th><th>Pro</th></tr></thead>
+    <tbody>
+      <tr><th>Files at a time</th><td>1</td><td>Up to {{ batch_files }}</td></tr>
+      <tr><th>Largest file</th><td>{{ free_mb }} MB</td><td>{{ pro_mb }} MB</td></tr>
+      <tr><th>Cleaning rules and options</th><td>Full engine</td><td>Full engine, per batch and per file</td></tr>
+      <tr><th>Review flagged values</th><td>Yes</td><td>Yes, for every file</td></tr>
+      <tr><th>Quality Profiles and PASS / WARNING / FAIL</th><td>–</td><td>Yes</td></tr>
+      <tr><th>PDF quality report and saved history</th><td>–</td><td>Yes</td></tr>
+      <tr><th>Account needed</th><td>No</td><td>Yes</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
 <p class="hint center" id="priceMsg" role="status"></p>
 {% if not payments_available %}<p class="hint center">Online payments are being set up. Check back soon.</p>{% endif %}
 <p class="hint center">Cancel any time from your dashboard. Uploaded files are deleted automatically (within {{ ttl_minutes }} minutes; Pro batch results after {{ batch_hours }} hours). Pro history keeps quality figures and change summaries, never your rows.</p>

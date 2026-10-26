@@ -4,7 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{% block title %}Omixa{% endblock %}</title>
-<meta name="description" content="{% block description %}Omixa cleans messy CSV and Excel files in seconds. Upload a file, get clean data and a quality report.{% endblock %}">
+<meta name="description" content="{% block description %}Omixa cleans messy CSV and Excel files and reports on data quality. Upload a file, review what was found, and download a cleaned copy.{% endblock %}">
+<meta name="robots" content="{{ seo_robots }}">
+{% if seo_canonical %}<link rel="canonical" href="{{ seo_canonical }}">
+<meta property="og:site_name" content="Omixa">
+<meta property="og:type" content="website">
+<meta property="og:title" content="{% block og_title %}{{ self.title() }}{% endblock %}">
+<meta property="og:description" content="{{ self.description() }}">
+<meta property="og:url" content="{{ seo_canonical }}">
+<meta property="og:image" content="{{ seo_origin }}{{ url_for('static', filename='brand/omixa-logo-square.jpg') }}">
+<meta name="twitter:card" content="summary">
+{% endif %}
+{% if seo_jsonld %}{% for block in seo_jsonld %}<script type="application/ld+json">{{ block | tojson }}</script>
+{% endfor %}{% endif %}
 <meta name="theme-color" content="#381593">
 <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
@@ -63,6 +75,18 @@
         <span>Omixa</span>
       </a>
       <p class="footer-tag">Trustworthy · Innovative · Professional</p>
+      <nav class="footer-cols" aria-label="Footer">
+        <div><h2>Product</h2><ul>
+          <li><a href="{{ url_for('workspace.index') }}">Clean a file</a></li>
+          <li><a href="/pricing">Pricing</a></li>
+          <li><a href="/about">About Omixa</a></li></ul></div>
+        <div><h2>Guides</h2><ul>{% for path, label in guide_nav %}<li><a href="{{ path }}">{{ label }}</a></li>{% endfor %}</ul></div>
+        <div><h2>Contact</h2><ul>
+          <li><a href="mailto:{{ contact_email }}">{{ contact_email }}</a></li>
+          <li><a href="{{ social_x }}" rel="noopener me">X: @omixahq</a></li>
+          <li><a href="{{ social_tiktok }}" rel="noopener me">TikTok: @omixahq</a></li>
+          <li><a href="{{ social_facebook }}" rel="noopener me">Facebook: OMIXA</a></li></ul></div>
+      </nav>
       <p class="footer-copy">&copy; 2026 Omixa. Let's work messy data.</p>
     </div>
   </footer>

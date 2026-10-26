@@ -28,6 +28,7 @@ import storage as object_storage
 from accounts import auth
 from accounts.entitlements import max_upload_bytes, pro_required
 from accounts.store import get_store
+from cleaning.options import OptionsError, parse_options
 from cleaning.rules import DEFAULT_RULES, RULE_DISPATCH
 from config import Config
 from jobs import batches
@@ -117,31 +118,77 @@ def _file_job(batch, job_id):
     return job
 
 
+def _check_choices(opts: dict, where: str = ""):
+    """Validates one set of cleaning choices (rules, resolutions, leave_as_is, options). Returns (clean, error)."""
+    out = {}
+    rules = opts.get("rules")
+    if rules is not None:
+        if not isinstance(rules, list) or not all(isinstance(r, str) for r in rules):
+            return None, f"{where}'rules' must be a list of rule names"
+        unknown = [r for r in rules if r not in RULE_DISPATCH]
+        if unknown:
+            return None, f"{where}Unknown rule(s): {', '.join(unknown)}"
+        out["rules"] = rules
+    res = opts.get("resolutions")
+    if res is not None:
+        if not (isinstance(res, list) and len(res) <= 500 and all(isinstance(r, dict) for r in res)):
+            return None, f"{where}'resolutions' must be a list of objects"
+        out["resolutions"] = res
+    las = opts.get("leave_as_is")
+    if las is not None:
+        if not (isinstance(las, list) and len(las) <= 1000 and all(isinstance(c, str) for c in las)):
+            return None, f"{where}'leave_as_is' must be a list of column name strings"
+        out["leave_as_is"] = las
+    if opts.get("options") is not None:
+        try:
+            out["options"] = parse_options(opts["options"])
+        except OptionsError as exc:
+            return None, f"{where}{exc}"
+    return out, None
+
+
+def _validate_opts(opts):
+    """Batch-wide choices, same vocabulary as /api/process. Returns (opts, error)."""
+    if not isinstance(opts, dict):
+        return None, "'options' must be an object"
+    clean, err = _check_choices(opts)
+    if err:
+        return None, err
+    if opts.get("standardize_column_names") is True and clean.get("rules") is None:
+        # Opt-in header renaming: the default rule set plus column_names (which must run first).
+        clean["rules"] = ["column_names"] + [r for r in DEFAULT_RULES if r != "column_names"]
+    if not isinstance(opts.get("has_header", True), bool):
+        return None, "'has_header' must be true or false"
+    clean["has_header"] = opts.get("has_header", True)
+    if opts.get("profile_id") is not None and not isinstance(opts["profile_id"], str):
+        return None, "'profile_id' must be text"
+    clean["profile_id"] = opts.get("profile_id")
+    return clean, None
+
+
 def _parse_options():
     raw = request.form.get("options")
     if not raw:
-        return {}, None
+        return {"has_header": True}, None
     try:
         opts = json.loads(raw)
     except ValueError:
         return None, "'options' must be valid JSON"
-    if not isinstance(opts, dict):
-        return None, "'options' must be an object"
-    rules = opts.get("rules")
-    if rules is not None:
-        if not isinstance(rules, list) or not all(isinstance(r, str) for r in rules):
-            return None, "'rules' must be a list of rule names"
-        unknown = [r for r in rules if r not in RULE_DISPATCH]
-        if unknown:
-            return None, f"Unknown rule(s): {', '.join(unknown)}"
-    if opts.get("standardize_column_names") is True and rules is None:
-        # Opt-in header renaming: the default rule set plus column_names (which must run first).
-        opts["rules"] = ["column_names"] + [r for r in DEFAULT_RULES if r != "column_names"]
-    if not isinstance(opts.get("has_header", True), bool):
-        return None, "'has_header' must be true or false"
-    if opts.get("profile_id") is not None and not isinstance(opts["profile_id"], str):
-        return None, "'profile_id' must be text"
-    return opts, None
+    return _validate_opts(opts)
+
+
+def _build_spec(uid, opts, max_cells):
+    """(spec, error_response). The spec is what every file's worker runs; Pro is decided server-side."""
+    profile = None
+    if opts.get("profile_id"):
+        store = get_store()
+        profile = store.get_profile(uid, opts["profile_id"]) if store is not None else None
+        if not profile:
+            return None, (jsonify({"error": "Quality Profile not found"}), 404)
+    return {"kind": "clean", "rules": opts.get("rules"), "resolutions": opts.get("resolutions"),
+            "has_header": opts.get("has_header", True), "pro": True, "uid": uid, "profile": profile,
+            "cleaning_profile": None, "leave_as_is": opts.get("leave_as_is"),
+            "options": opts.get("options") or {}, "max_cells": max_cells}, None
 
 
 # --------------------------------------------------------------------------- create
@@ -163,12 +210,10 @@ def create_batch():
     opts, err = _parse_options()
     if err:
         return jsonify({"error": err}), 400
-    profile = None
-    if opts.get("profile_id"):
-        store = get_store()
-        profile = store.get_profile(uid, opts["profile_id"]) if store is not None else None
-        if not profile:
-            return jsonify({"error": "Quality Profile not found"}), 404
+    spec, bad = _build_spec(uid, opts, lim["max_cells_per_file"])
+    if bad:
+        return bad
+    draft = request.form.get("start", "true").strip().lower() == "false"
 
     if metadata_db.count_active_batches(uid) >= Config.BATCH_MAX_ACTIVE_PER_USER:
         resp = jsonify({"error": f"You already have {Config.BATCH_MAX_ACTIVE_PER_USER} unfinished batch(es). "
@@ -232,10 +277,7 @@ def create_batch():
             return jsonify({"error": "None of the files could be accepted.", "skipped": skipped}), 400
 
         batch_id = str(uuid.uuid4())
-        spec = {"kind": "clean", "rules": opts.get("rules"), "resolutions": None,
-                "has_header": opts.get("has_header", True), "pro": True, "uid": uid, "profile": profile,
-                "cleaning_profile": None, "max_cells": lim["max_cells_per_file"]}
-        if not metadata_db.create_batch(batch_id, uid, session_hash, {"spec": spec}, skipped, get_request_id()):
+        if not metadata_db.create_batch(batch_id, uid, session_hash, {"spec": spec, "draft": draft}, skipped, get_request_id()):
             return jsonify({"error": "Omixa is temporarily unavailable. Please try again."}), 503
 
         storage = object_storage.get_storage()
@@ -375,3 +417,95 @@ def retry(batch_id):
         metadata_db.audit(auth.current_uid(), "batch.retried", batch_id, meta={"files": n})
         batches.advance(batch_id)
     return jsonify(batches.batch_view(metadata_db.get_batch(batch_id), metadata_db.batch_jobs(batch_id)))
+
+
+# --------------------------------------------------------------------------- draft flow: analyse -> choose -> start
+
+def _draft_batch(batch_id):
+    batch, err = _owned_batch(batch_id)
+    if err:
+        return None, None, err
+    opts = json.loads(batch.get("options_json") or "{}")
+    if batch["finalized"] or not opts.get("draft"):
+        return None, None, (jsonify({"error": "This batch has already started."}), 409)
+    return batch, opts, None
+
+
+@batches_bp.post("/<batch_id>/analyze")
+@pro_required
+def analyze(batch_id):
+    """Checks every file (quality score, findings, flagged values) without changing anything."""
+    batch, opts, err = _draft_batch(batch_id)
+    if err:
+        return err
+    body = request.get_json(silent=True) or {}
+    hh = body.get("has_header", (opts.get("spec") or {}).get("has_header", True))
+    if not isinstance(hh, bool):
+        return jsonify({"error": "'has_header' must be true or false"}), 400
+    opts.setdefault("spec", {})["has_header"] = hh
+    opts["analyzing"] = True
+    metadata_db.set_batch_options(batch_id, opts)
+    metadata_db.reset_batch_failed(batch_id)
+    batches.advance(batch_id)
+    return jsonify(batches.batch_view(metadata_db.get_batch(batch_id), metadata_db.batch_jobs(batch_id)))
+
+
+@batches_bp.get("/<batch_id>/files/<job_id>/analysis")
+def file_analysis(batch_id, job_id):
+    batch, err = _owned_batch(batch_id)
+    if err:
+        return err
+    job = _file_job(batch, job_id)
+    a = batches.analysis_of(job) if job else None
+    if not a:
+        return jsonify({"error": "This file has not been analysed yet."}), 404
+    return jsonify({"job_id": job_id, "filename": job.get("original_filename"), "has_header": a.get("has_header"),
+                    "report": a.get("report"), "recommendations": a.get("recommendations"),
+                    "validation": a.get("validation"), "flagged_values": a.get("flagged_values")})
+
+
+@batches_bp.post("/<batch_id>/start")
+@pro_required
+def start(batch_id):
+    """Starts a draft batch with the user's choices: batch-wide, plus optional per-file overrides
+    {per_file: {job_id: {rules, resolutions, leave_as_is, options, skip}}}."""
+    batch, old, err = _draft_batch(batch_id)
+    if err:
+        return err
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "Send the cleaning choices as a JSON object."}), 400
+    uid = auth.current_uid()
+    opts, e = _validate_opts(body)
+    if e:
+        return jsonify({"error": e}), 400
+    spec, bad = _build_spec(uid, opts, limits()["max_cells_per_file"])
+    if bad:
+        return bad
+    jobs = {j["job_id"]: j for j in metadata_db.batch_jobs(batch_id)}
+    per_file, skip = {}, []
+    raw_pf = body.get("per_file") or {}
+    if not isinstance(raw_pf, dict) or len(raw_pf) > Config.BATCH_MAX_FILES:
+        return jsonify({"error": "'per_file' must be an object keyed by file id"}), 400
+    for jid, ov in raw_pf.items():
+        if jid not in jobs:
+            return jsonify({"error": "Unknown file in 'per_file'"}), 400
+        if not isinstance(ov, dict):
+            return jsonify({"error": "Each 'per_file' entry must be an object"}), 400
+        if ov.get("skip") is True:
+            skip.append(jid)
+            continue
+        clean, e = _check_choices(ov, f"{jobs[jid].get('original_filename')}: ")
+        if e:
+            return jsonify({"error": e}), 400
+        if clean:
+            per_file[jid] = clean
+    metadata_db.reset_batch_failed(batch_id)         # files whose analysis failed are still cleaned
+    for jid in skip:
+        metadata_db.cancel_job_in_batch(batch_id, jid)
+    metadata_db.set_batch_options(batch_id, {"spec": spec, "per_file": per_file, "draft": False})
+    metadata_db.audit(uid, "batch.started", batch_id, request_id=get_request_id(),
+                      meta={"files": len(jobs) - len(skip), "skipped_by_user": len(skip),
+                            "rules": len(spec.get("rules") or DEFAULT_RULES)})
+    batches.advance(batch_id)
+    return jsonify(batches.batch_view(metadata_db.get_batch(batch_id), metadata_db.batch_jobs(batch_id))), 202

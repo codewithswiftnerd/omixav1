@@ -1,9 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Dashboard – Omixa{% endblock %}
 {% block content %}
-<div class="dash-header cta-row">
-  <div><h1>Dashboard</h1><p id="who" class="hint"></p></div>
-  <button class="btn btn-ghost btn-sm" id="signOutBtn" type="button">Sign out</button>
+<div class="dash-header dash-hero">
+  <div class="cta-row">
+    <div><h1><span class="w">Your</span> <span class="w grad-text">dashboard</span></h1><p id="who" class="hint"></p></div>
+    <button class="btn btn-ghost btn-sm" id="signOutBtn" type="button">Sign out</button>
+  </div>
+  <div class="quick-grid" data-stagger>
+    <a class="quick-tile" href="/clean"><span class="quick-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg></span><strong>Clean a file</strong><span>One file, your choices</span></a>
+    <a class="quick-tile" href="/batch"><span class="quick-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 7h10v13H8z"/><path d="M5 4h10"/></svg></span><strong>Batch processing</strong><span>Up to {{ batch_files }} files at once</span></a>
+    <a class="quick-tile" href="/profiles/new" id="quickProfile"><span class="quick-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.500-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg></span><strong>New Quality Profile</strong><span>Set your standard once</span></a>
+  </div>
 </div>
 <div id="payBanner" class="alert hidden" role="status"></div>
 
@@ -32,6 +39,11 @@
   <div class="card-title-row"><h2>Quality Profiles</h2><a class="btn btn-primary btn-sm hidden" id="newProfileBtn" href="/profiles/new">New profile</a></div>
   <p class="hint">Set your standard once. Omixa checks every dataset against it.</p>
   <div id="profiles"></div>
+</section>
+
+<section class="card hidden" id="batchesCard">
+  <div class="card-title-row"><h2>Recent batches</h2><a class="btn btn-secondary btn-sm" href="/batch">New batch</a></div>
+  <div id="batches"></div>
 </section>
 
 <section class="card" id="historyCard">

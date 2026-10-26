@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Sign in – Omixa{% endblock %}
 {% block content %}
+<div class="auth-wrap">
+<aside class="auth-side" aria-label="Why sign in">
+  <img src="{{ url_for('static', filename='brand/omixa-icon.png') }}" alt="" width="48" height="48">
+  <h2><span class="w">Messy data,</span> <span class="w">handled.</span></h2>
+  <p>Free cleaning never needs an account. Sign in to unlock Omixa Pro.</p>
+  <ul data-stagger>
+    <li><strong>Batch processing</strong><span>Check and clean many files, your way</span></li>
+    <li><strong>Quality Profiles</strong><span>Set your standard once, check every file</span></li>
+    <li><strong>Reports and history</strong><span>PDF reports and saved before/after scores</span></li>
+  </ul>
+</aside>
 <div class="auth-card">
   <h1 id="loginTitle">Sign in</h1>
   <p class="hint">An account is only needed for Omixa Pro (batch processing, Quality Profiles, history, reports). Free cleaning never requires one.</p>
@@ -13,6 +24,7 @@
   </form>
   <p class="hint" id="loginMsg" role="alert"></p>
   <p class="auth-switch"><a href="#" id="switchLink">New to Omixa? Create an account</a> · <a href="#" id="resetLink">Forgot password?</a></p>
+</div>
 </div>
 <script type="application/json" id="fb-config">{{ firebase_config | tojson }}</script>
 {% endblock %}
