@@ -187,6 +187,7 @@ def build_quality_comparison(before: dict, after: dict, imputed: dict | None = N
                     "grade_before": before.get("grade"), "grade_after": after.get("grade"), "verdict": verdict,
                     "why_unchanged": _why_unchanged(verdict, cells_changed, after)},
         "review": review_block(after),
+        "readiness": {"before": before.get("readiness"), "after": after.get("readiness")},
         "holding_back": {"before": _top_reasons(before), "after": _top_reasons(after)},
         "score_basis": (after.get("score_model") or {}).get("formula"),
         "dimensions": dims,

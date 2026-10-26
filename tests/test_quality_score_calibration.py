@@ -304,3 +304,41 @@ def test_scoring_a_large_file_stays_fast():
     t = time.perf_counter()
     generate_report(big)
     assert time.perf_counter() - t < 60                                # generous: guards against a per-cell Python loop
+
+
+# ------------------------------------------------------------------ readiness for analysis
+@pytest.mark.parametrize("make,verdict", [
+    (Q.clean_df, "ready"), (Q.slightly_messy_df, "ready"),
+    (lambda: Q.one_column_invalid_df(0.2, "email"), "caution"),
+    (lambda: Q.with_duplicates_df(0.1), "caution"),
+    (Q.orders_with_letters_df, "not_ready"), (Q.very_messy_df, "not_ready"),
+    (Q.mixed_currency_df, "not_ready"), (Q.messy_sample_df, "not_ready"),
+])
+def test_readiness_verdict_for_analysis(make, verdict):
+    r = generate_report(make())
+    assert r["readiness"]["verdict"] == verdict and r["readiness"] == r["score_model"]["readiness"]
+    rd = r["readiness"]
+    assert (verdict == "not_ready") == bool(rd["blockers"])
+    assert (verdict == "ready") == (not rd["blockers"] and not rd["cautions"])
+
+
+def test_readiness_never_says_ready_below_the_score_threshold_or_with_a_critical_issue():
+    rows = Q.clean_rows(2000)
+    rows[0]["phone"] = "1.343E+12"                         # one unrecoverable critical cell
+    r = generate_report(Q.to_df(rows))
+    assert r["score"] >= 97 and r["readiness"]["verdict"] == "not_ready"
+    assert any("critical" in b["label"].lower() for b in r["readiness"]["blockers"])
+
+
+def test_cleaning_can_move_a_file_from_caution_to_ready_and_the_comparison_reports_both():
+    df = Q.with_duplicates_df(0.1)
+    before = generate_report(df)
+    after_df, _ = _clean_after_defaults(df)
+    after = generate_report(after_df)
+    cmp_ = build_quality_comparison(before, after, cells_changed=20)
+    assert cmp_["readiness"] == {"before": before["readiness"], "after": after["readiness"]}
+    assert before["readiness"]["verdict"] == "caution" and after["readiness"]["verdict"] == "ready"
+
+
+def test_an_empty_file_is_not_ready():
+    assert generate_report(pd.DataFrame({"a": pd.Series(dtype=object)}))["readiness"] is not None

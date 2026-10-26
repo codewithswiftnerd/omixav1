@@ -367,6 +367,7 @@ def generate_report(
         "grade_limited_by": scored["grade_limited_by"],
         "grade_note": scored["grade_note"],
         "score_model": scored["model"],
+        "readiness": scored["model"]["readiness"],
         "row_count": total_rows,
         "column_count": len(df.columns),
         "counts": counts,

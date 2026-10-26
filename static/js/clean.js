@@ -218,6 +218,18 @@ function howScoredHtml(report){
   </details>`;
 }
 
+// Readiness for analysis: the plain answer to "can I analyse this?", with the blockers/cautions behind it.
+function readinessHtml(rd){
+  if(!rd) return '';
+  const li = (x) => `<li>${escHtml(x.label)}</li>`;
+  return `<div class="readiness readiness-${escHtml(rd.verdict)}">
+    <strong>${escHtml(rd.title)}</strong>
+    <p>${escHtml(rd.summary)}</p>
+    ${rd.blockers.length ? `<h4>Fix before analysing</h4><ul>${rd.blockers.map(li).join('')}</ul>` : ''}
+    ${rd.cautions.length ? `<h4>Keep in mind</h4><ul>${rd.cautions.map(li).join('')}</ul>` : ''}
+  </div>`;
+}
+
 function reasonsHtml(reasons, title){
   if(!reasons || !reasons.length) return '';
   return `<div class="reasons"><h3>${escHtml(title)}</h3><ol>${reasons.map(r =>
@@ -240,7 +252,7 @@ function renderReport(report){
     + (c.critical ? ` · ${c.critical} critical` : '');
 
   const preWhy = $('preScoreWhy');
-  if(preWhy) preWhy.innerHTML = (report.grade_note ? `<p class="hint" role="note">${escHtml(report.grade_note)}</p>` : '')
+  if(preWhy) preWhy.innerHTML = readinessHtml(report.readiness) + (report.grade_note ? `<p class="hint" role="note">${escHtml(report.grade_note)}</p>` : '')
     + reasonsHtml(report.score_model && report.score_model.top_reasons, 'What is holding the score down') + howScoredHtml(report);
 
   const findings = (report.findings || []).filter(f => !f.advisory).slice().sort((a,b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
@@ -570,7 +582,7 @@ function renderResults(summary){
 
   const whyEl = $('scoreWhy');
   if(whyEl){
-    let html = '';
+    let html = readinessHtml(post && post.readiness);
     if(review && !review.clean){
       html += `<div class="review-list"><h3>${escHtml(review.headline)}</h3>` + review.items.map(it => `
         <div class="finding finding-${escHtml(it.severity)}">

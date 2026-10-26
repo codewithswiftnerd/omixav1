@@ -255,6 +255,53 @@ def _label(cause: str, col: Optional[str], count: int) -> str:
     return f"{col}: {count} {what}" if col else f"{count} {what}"
 
 
+# --------------------------------------------------------------------------- readiness for analysis
+READY, CAUTION, NOT_READY = "ready", "caution", "not_ready"
+READINESS_TITLES = {READY: "Ready for analysis", CAUTION: "Usable with caution", NOT_READY: "Not ready for analysis"}
+READY_MIN_SCORE, NOT_READY_BELOW = 85, 60
+BLOCKER_COLUMN_BAD, CAUTION_COLUMN_BAD = 0.30, 0.10      # share of a column that is missing / invalid / mixed-currency
+
+
+def readiness_of(overall: int, ledger: list, findings: list, dup_rows: int, n: int) -> dict:
+    """Is this data fit to analyse? Deterministic rules over the same cells as the score. A verdict is
+    "not_ready" if ANY blocker exists, "caution" if any caution exists or the score is under 85, else "ready"."""
+    blockers, cautions = [], []
+
+    def add(bucket, label, column=None, count=None):
+        bucket.append({"label": label, "column": column, "count": count})
+
+    if n == 0:
+        return {"verdict": NOT_READY, "title": READINESS_TITLES[NOT_READY], "blockers": [{"label": "The file has no rows.", "column": None, "count": 0}],
+                "cautions": [], "summary": "There is no data to analyse."}
+    if overall < NOT_READY_BELOW:
+        add(blockers, f"Only {overall}/100 of the data can be trusted (needs {NOT_READY_BELOW}+).")
+    for e in ledger:
+        share = e["_hard_share"]
+        hard = sum(e["counts"].get(c, 0) for c in HARD_CAUSES)
+        if share >= BLOCKER_COLUMN_BAD and (e["key"] or share >= 0.5):
+            add(blockers, f"{e['column']} is {round(100 * share)}% missing or invalid, so results using it would be unreliable.", e["column"], hard)
+        elif share >= CAUTION_COLUMN_BAD:
+            add(cautions, f"{e['column']} is {round(100 * share)}% missing or invalid; analysis using it will be biased.", e["column"], hard)
+        if e["counts"].get("mixed_currency") and share < BLOCKER_COLUMN_BAD:
+            add(cautions, f"{e['column']} mixes currencies, so totals and averages will be wrong until it is standardised.", e["column"], e["counts"]["mixed_currency"])
+        if e["counts"].get("needs_decision"):
+            add(cautions, f"{e['column']} has {e['counts']['needs_decision']} value(s) that need your decision (for example day/month order or phone country).", e["column"], e["counts"]["needs_decision"])
+        if e["counts"].get("estimated"):
+            add(cautions, f"{e['column']} has {e['counts']['estimated']} estimated value(s) that are not real observations.", e["column"], e["counts"]["estimated"])
+    crit = [f for f in findings if f["level"] == M.CRITICAL]
+    for f in crit:
+        add(blockers, f"Unresolved critical issue: {f['title']}" + (f" in '{f['column']}'" if f.get("column") else "") + ".", f.get("column"), f["affected_count"])
+    if dup_rows:
+        add(cautions, f"{dup_rows} duplicate row(s) would be counted twice.", None, dup_rows)
+    if not blockers and overall < READY_MIN_SCORE and not any("score is" in c["label"] for c in cautions):
+        add(cautions, f"The quality score is {overall}/100 (ready needs {READY_MIN_SCORE}+).")
+    verdict = NOT_READY if blockers else CAUTION if cautions else READY
+    summary = {READY: "No blocking problems found. The data can be analysed as it is.",
+               CAUTION: "The data can be analysed, but the points below will affect the results.",
+               NOT_READY: "Fix the blockers below before analysing, or the results will not be reliable."}[verdict]
+    return {"verdict": verdict, "title": READINESS_TITLES[verdict], "blockers": blockers[:6], "cautions": cautions[:6], "summary": summary}
+
+
 def score_dataset(findings: list[dict], profile: dict, *, total_rows: int, evaluated: set, ctx=None) -> dict:
     """
     findings: enriched findings (dimension, column, affected_count, level, issue, advisory ...).
@@ -367,6 +414,7 @@ def score_dataset(findings: list[dict], profile: dict, *, total_rows: int, evalu
         "reasons": reasons[:8],
         "top_reasons": reasons[:3],
     }
+    model["readiness"] = readiness_of(overall, ledger, findings, dup_rows, n)
     return {"overall": overall, "uncapped": overall, "grade": grade, "grade_by_score": grade_by_score,
             "grade_limited_by": worst_level if limited else None, "grade_note": limit_note,
             "dimensions": dimensions, "capped_by": None, "model": model, "unrounded": round(final, 3)}

@@ -489,3 +489,12 @@ fieldset.rules { border: none; padding: 0; margin: 0 0 20px; }
   .how-table td { border: 0; padding: 2px 0; }
   .how-table td::before { content: attr(data-label) ": "; font-weight: 700; color: var(--text-secondary); }
 }
+
+.readiness { margin: 14px 0 0; padding: 12px 14px; border-radius: var(--radius-md); border: 1px solid var(--border); }
+.readiness strong { font-size: 1rem; }
+.readiness p { margin: 4px 0 0; font-size: 0.84rem; }
+.readiness h4 { margin: 10px 0 4px; font-size: 0.8rem; }
+.readiness ul { margin: 0; padding-left: 18px; font-size: 0.82rem; }
+.readiness-ready { background: var(--success-bg); border-color: var(--success); color: var(--success-ink); }
+.readiness-caution { background: var(--warning-bg); border-color: var(--warning); }
+.readiness-not_ready { background: var(--danger-bg); border-color: var(--danger); color: var(--danger-ink); }
