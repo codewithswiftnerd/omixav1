@@ -97,6 +97,15 @@ def seo_context() -> dict:
     }
 
 
+# Google Search Console ownership file, exactly as issued to the Omixa team (HTML-file verification method).
+GOOGLE_VERIFICATION_FILE = "googlef87d1a0bfb7e854c.html"
+
+
+@seo_bp.get(f"/{GOOGLE_VERIFICATION_FILE}")
+def google_verification():
+    return Response(f"google-site-verification: {GOOGLE_VERIFICATION_FILE}", mimetype="text/html")
+
+
 @seo_bp.get("/robots.txt")
 def robots():
     if indexing_allowed():
