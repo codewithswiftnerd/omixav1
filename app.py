@@ -57,9 +57,6 @@ class OmixaRequest(Request):
         return super().max_content_length
 
 
-_ROOT_FILES = ("/robots.txt", "/sitemap.xml", "/google08f46b1efc19400c.html")
-
-
 def create_app():
     _configure_logging()
     logger = logging.getLogger("omixa.app")
@@ -130,7 +127,7 @@ def create_app():
     # Assign an anonymous session cookie before anything else runs.
     @app.before_request
     def _assign_session():
-        if request.path.startswith("/static/") or request.path in _ROOT_FILES:
+        if request.path.startswith("/static/") or request.path in ("/robots.txt", "/sitemap.xml", "/googlef87d1a0bfb7e854c.html"):
             return None   # crawlers and assets never need (or should receive) a session cookie
         ensure_session()
         return None
@@ -215,7 +212,7 @@ def create_app():
         # Indexing directives: only the registered public pages (routes/seo.py) may be indexed, and only when
         # they answer 200. Everything else (app pages, /api, /admin, errors, non-production hosts) is noindex.
         path = request.path
-        if not (path.startswith("/static/") or path in _ROOT_FILES):
+        if not (path.startswith("/static/") or path in ("/robots.txt", "/sitemap.xml", "/googlef87d1a0bfb7e854c.html")):
             if not is_indexable_path(path) or response.status_code >= 400:
                 response.headers["X-Robots-Tag"] = "noindex, nofollow"
         # Brand images/icons change rarely: let browsers reuse them for a day (css/js keep revalidating).
@@ -377,11 +374,6 @@ def create_app():
         if Config.REDIS_URL:
             gauges["omixa_redis_latency_ms"] = redis_client.ping() or -1
         return app.response_class(observability.render_prometheus(gauges), mimetype="text/plain; version=0.0.4")
-
-    @app.get("/google08f46b1efc19400c.html")
-    def google_site_verification():
-        # Google Search Console ownership check; keep this file served at the site root.
-        return send_from_directory(app.static_folder, "google08f46b1efc19400c.html", mimetype="text/html")
 
     @app.get("/favicon.ico")
     def favicon():
