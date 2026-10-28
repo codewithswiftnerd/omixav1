@@ -34,9 +34,10 @@ from routes.jobs import jobs_bp
 from routes.cleaning import cleaning_bp
 from routes.batches import batches_bp
 from routes.guides import guides_bp
+from routes.contact import contact_bp
 from routes.seo import seo_bp, seo_context, is_indexable_path
 from utils.security import check_rate_limit
-from utils import observability, redis_client
+from utils import mailer, observability, redis_client
 from utils.session import ensure_session
 
 
@@ -92,6 +93,10 @@ def create_app():
             "closed) until both are configured."
         )
 
+    # One safe line about email at boot. Never fatal: the site must run without SMTP, and the message
+    # names missing variables only, never values.
+    (logger.info if mailer.is_configured() else logger.warning)(mailer.status_line())
+
     # API blueprints (JSON, session-scoped)
     app.register_blueprint(upload_bp, url_prefix="/api/upload")
     app.register_blueprint(process_bp, url_prefix="/api/process")
@@ -109,6 +114,7 @@ def create_app():
     # Page blueprints (server-rendered HTML)
     app.register_blueprint(pages_bp)
     app.register_blueprint(workspace_bp)
+    app.register_blueprint(contact_bp)   # /contact page + POST /api/contact
     app.register_blueprint(guides_bp)   # /<guide-slug>, /about
     app.register_blueprint(seo_bp)   # /robots.txt, /sitemap.xml
 

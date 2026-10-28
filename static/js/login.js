@@ -87,7 +87,14 @@ if (!cfg || !cfg.apiKey) {
     e.preventDefault();
     const email = $('email').value.trim();
     if (!email) { say('Enter your email above first, then tap "Forgot password?".', 'error'); return; }
-    try { await sendPasswordResetEmail(auth, email); } catch (err) { /* same message either way */ }
+    // Preferred path: our server sends a branded email from support@getomixa.com (Firebase still creates the
+    // single-use, expiring link). If the server cannot send email, fall back to Firebase's own reset email.
+    const r = await Omixa.api('/api/auth/password-reset', { method: 'POST', body: { email } }).catch(() => ({ ok: false, status: 0, json: {} }));
+    if (r.status === 400) { say(r.json.error || 'That email address does not look right.', 'error'); return; }
+    if (r.status === 429) { say(r.json.error || 'Too many reset requests. Please wait a while and try again.', 'error'); return; }
+    if (!r.ok) {
+      try { await sendPasswordResetEmail(auth, email); } catch (err) { /* same message either way */ }
+    }
     say('If that email has an account, a reset link is on its way. Check spam too.', 'ok');
   });
 }

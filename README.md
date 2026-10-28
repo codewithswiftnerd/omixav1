@@ -130,6 +130,14 @@ is capped by monthly credit rather than uptime, so very low traffic
 is cheap but the service can still be paused if that credit runs
 out.
 
+## Email (support@getomixa.com)
+
+The contact form (`/contact`), welcome email and branded password-reset email send through Namecheap Private
+Email over SMTP, configured only by environment variables (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`,
+`SMTP_PASSWORD`, `SMTP_USE_SSL`, `SMTP_USE_TLS`, `MAIL_DEFAULT_SENDER`). With them unset the site runs exactly as
+before and the contact page shows the `mailto:` address. See [docs/EMAIL.md](docs/EMAIL.md) for variables,
+verification steps and what is not built.
+
 ## Deploying the frontend to Netlify
 
 Netlify only runs static sites and short-lived serverless functions, it can't run this Flask/pandas backend, which keeps job state on disk

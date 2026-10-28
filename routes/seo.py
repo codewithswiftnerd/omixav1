@@ -25,7 +25,7 @@ PUBLIC_PAGES.update({f"/{slug}": f"/{slug}" for slug in GUIDE_ORDER})
 SITEMAP_PATHS = ("/", "/pricing", "/about") + tuple(f"/{slug}" for slug in GUIDE_ORDER)
 
 # Public contact details supplied by the Omixa team.
-CONTACT_EMAIL = "omixa.team@gmail.com"
+CONTACT_EMAIL = Config.SUPPORT_EMAIL   # support@getomixa.com (OMIXA_SUPPORT_EMAIL overrides)
 SOCIAL_X = "https://x.com/omixahq"
 SOCIAL_TIKTOK = "https://www.tiktok.com/@omixahq"
 SOCIAL_FACEBOOK = "https://www.facebook.com/profile.php?id=61593523481913"

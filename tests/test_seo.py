@@ -99,7 +99,7 @@ def test_structured_data_is_home_only_valid_json_and_has_no_invented_claims(clie
     for forbidden in ("aggregaterating", "review", "award", "foundingdate", "ratingvalue", "potentialaction"):
         assert forbidden not in keys
     org = blocks[0]
-    assert org["email"] == "omixa.team@gmail.com"
+    assert org["email"] == "support@getomixa.com"
     assert org["sameAs"] == ["https://x.com/omixahq", "https://www.tiktok.com/@omixahq",
                              "https://www.facebook.com/profile.php?id=61593523481913"]   # only profiles the team gave us
     app_block = blocks[2]
@@ -158,7 +158,7 @@ def test_every_public_page_is_linked_from_the_footer_and_home(client):
 
 def test_contact_details_are_shown_with_all_three_profiles(client):
     h = client.get("/about").get_data(as_text=True)
-    assert "mailto:omixa.team@gmail.com" in h and "https://x.com/omixahq" in h and "tiktok.com/@omixahq" in h
+    assert "mailto:support@getomixa.com" in h and "https://x.com/omixahq" in h and "tiktok.com/@omixahq" in h
     assert "facebook.com/profile.php?id=61593523481913" in h
 
 
@@ -169,3 +169,11 @@ def test_home_h1_names_the_product_category(client):
     low = h.lower()
     assert "instantly" not in low.split("</h1>")[0].split("<h1")[-1]   # unverifiable speed claim removed from the hero
     assert " ai " not in re.sub(r"<[^>]+>", " ", low)                  # not positioned as an AI product
+
+
+def test_google_verification_file_is_served_exactly_and_without_a_session(client):
+    r = client.get("/googlef87d1a0bfb7e854c.html")
+    assert r.status_code == 200
+    assert r.get_data(as_text=True) == "google-site-verification: googlef87d1a0bfb7e854c.html"
+    assert "Set-Cookie" not in r.headers and "X-Robots-Tag" not in r.headers
+    assert "googlef87d1a0bfb7e854c" not in client.get("/sitemap.xml").get_data(as_text=True)

@@ -7,6 +7,7 @@ server-side subscription record.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Callable, Optional
 
@@ -60,7 +61,19 @@ def sign_in(token: str):
     store.upsert_user(uid, fields)
     session["uid"] = uid
     session.permanent = True
+    if existing is None:
+        _welcome_new_account(claims)
     return store.get_user(uid), None
+
+
+def _welcome_new_account(claims: dict) -> None:
+    """Only reached right after the account record was created. Queued in the background and never raises:
+    an email problem must not affect sign-in."""
+    try:
+        from accounts import emails
+        emails.send_welcome(claims.get("email"), claims.get("name"))
+    except Exception:
+        logging.getLogger("omixa.auth").error("welcome email hook failed")
 
 
 def sign_out():

@@ -117,12 +117,15 @@ def apply_charge_success(store, data: dict, now: float | None = None) -> str:
     uid = user["uid"]
     customer = data.get("customer") or {}
 
+    renewal = {"renewed": False}
+
     def compute(current: dict) -> dict:
         # Evaluated against the user record AS READ INSIDE the transaction, so concurrent charges
         # for the same user cannot both extend from a stale expiry.
         current_exp = current.get("subscription_expires") or 0
         still_active = current.get("subscription_status") in ("active", "cancelled") and current_exp > now
         base = max(now, current_exp) if still_active else now
+        renewal["renewed"] = still_active      # re-set on every run: Firestore may re-run compute on contention
         fields = {
             "plan": plan,
             "subscription_status": "active",
@@ -142,14 +145,33 @@ def apply_charge_success(store, data: dict, now: float | None = None) -> str:
     else:  # legacy stores without atomic grant (kept for test doubles)
         if not store.claim_payment(reference):
             return "duplicate"
-        store.upsert_user(uid, compute(user))
+        granted = compute(user)
+        store.upsert_user(uid, granted)
         store.put_payment(reference, meta)
     try:  # append-only audit trail; never blocks the grant
         import db as metadata_db
         metadata_db.audit("paystack", "payment.granted", reference, meta={"plan": plan, "uid": uid})
     except Exception:
         logger.exception("audit write failed for payment %s", reference)
+    try:  # only reached for the ONE delivery that granted the payment, so retries never email twice
+        from accounts import emails
+        emails.send_pro_activated(user, plan, (granted or {}).get("subscription_expires"), renewal["renewed"],
+                                  data.get("amount"), data.get("currency"))
+    except Exception:
+        logger.exception("activation email hook failed for payment %s", reference)
     return "activated"
+
+
+FAILURE_EMAIL_COOLDOWN_SECONDS = 24 * 3600
+
+
+def _notify(send) -> None:
+    """Run an email hook; whatever happens, the webhook outcome is unaffected."""
+    try:
+        from accounts import emails
+        send(emails)
+    except Exception:
+        logger.exception("billing email hook failed")
 
 
 def handle_event(store, event: dict, now: float | None = None) -> str:
@@ -169,8 +191,15 @@ def handle_event(store, event: dict, now: float | None = None) -> str:
     if kind in ("subscription.disable", "subscription.not_renew"):
         if user.get("subscription_status") == "active":
             store.upsert_user(uid, {"subscription_status": "cancelled", "cancelled_at": now})
+            # Paystack can send both disable and not_renew: only the first one (the real transition) emails.
+            _notify(lambda e: e.send_subscription_cancelled(user, user.get("subscription_expires")))
         return "cancelled"
     if kind in ("invoice.payment_failed", "charge.failed"):
+        previous = user.get("last_payment_failed_at") or 0
         store.upsert_user(uid, {"last_payment_failed_at": now})
+        if now - previous > FAILURE_EMAIL_COOLDOWN_SECONDS:       # Paystack retries and re-sends failures
+            expires = user.get("subscription_expires") or 0
+            paid_up = user.get("subscription_status") in ("active", "cancelled") and expires > now
+            _notify(lambda e: e.send_payment_failed(user, expires if paid_up else None))
         return "payment failure recorded"
     return f"ignored: {kind}"

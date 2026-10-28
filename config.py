@@ -18,6 +18,18 @@ def _env_flag(name: str, default: bool) -> bool:
     return val.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _env_int(name: str, default: int) -> int:
+    """Integer env var. A malformed value must not stop the app booting (email is optional), so it
+    becomes 0 and utils/mailer.py reports it by name when someone tries to send."""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return 0
+
+
 # SHA-256 fingerprints (never the values) of credentials that were committed to
 # the repository in the past. They must be treated as public: the app refuses to
 # boot in production with any of them, so a forgotten Railway variable cannot
@@ -246,3 +258,33 @@ class Config:
     LOG_FORMAT = os.environ.get("OMIXA_LOG_FORMAT", "json" if _IS_PRODUCTION else "text").strip().lower()
     METRICS_TOKEN = os.environ.get("OMIXA_METRICS_TOKEN", "").strip()  # empty = /api/metrics disabled
     ENTITLEMENT_CACHE_SECONDS = int(os.environ.get("OMIXA_ENTITLEMENT_CACHE_SECONDS", "60"))
+
+    # --- Email (Namecheap Private Email over SMTP; see utils/mailer.py and docs/EMAIL.md) -------------
+    # Everything is optional: with SMTP unset the site works exactly as before, the contact form says it
+    # is unavailable, and no email is claimed to have been sent. SMTP_USERNAME / SMTP_PASSWORD /
+    # MAIL_DEFAULT_SENDER are set in Railway Variables, never in code or git.
+    # Port 465 = implicit SSL (SMTP_USE_SSL=true, SMTP_USE_TLS=false).
+    # Port 587 = STARTTLS     (SMTP_USE_SSL=false, SMTP_USE_TLS=true). Never both.
+    SUPPORT_EMAIL = os.environ.get("OMIXA_SUPPORT_EMAIL", "support@getomixa.com").strip()
+    SMTP_HOST = os.environ.get("SMTP_HOST", "mail.privateemail.com").strip()
+    SMTP_PORT = _env_int("SMTP_PORT", 465)
+    SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "").strip()
+    SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "").strip("\r\n")
+    SMTP_USE_SSL = _env_flag("SMTP_USE_SSL", True)
+    SMTP_USE_TLS = _env_flag("SMTP_USE_TLS", False)
+    MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER", "").strip()
+    SMTP_TIMEOUT_SECONDS = max(3, _env_int("SMTP_TIMEOUT_SECONDS", 10))
+    # Background emails (welcome, reset, billing) retry transient failures only: timeouts, dropped connections,
+    # 4xx server replies. Total attempts include the first; the wait doubles each time (base, 2x base, ...).
+    MAIL_RETRY_ATTEMPTS = max(1, min(6, _env_int("MAIL_RETRY_ATTEMPTS", 3)))
+    MAIL_RETRY_BASE_SECONDS = max(0, _env_int("MAIL_RETRY_BASE_SECONDS", 5))
+    # scripts/send_expiry_reminders.py: how many days before expiry the reminder goes out.
+    MAIL_EXPIRY_REMINDER_DAYS = max(1, min(30, _env_int("MAIL_EXPIRY_REMINDER_DAYS", 3)))
+    # Where contact-form messages are delivered (defaults to the support address).
+    CONTACT_FORM_RECIPIENT = os.environ.get("CONTACT_FORM_RECIPIENT", "").strip() or SUPPORT_EMAIL
+    # Contact form / reset-email abuse limits (all server-enforced; 0 disables a bucket).
+    RATE_LIMIT_CONTACT_PER_MINUTE = _env_int("RATE_LIMIT_CONTACT_PER_MINUTE", 3)
+    RATE_LIMIT_CONTACT_PER_HOUR = _env_int("RATE_LIMIT_CONTACT_PER_HOUR", 10)
+    RATE_LIMIT_CONTACT_GLOBAL_PER_HOUR = _env_int("RATE_LIMIT_CONTACT_GLOBAL_PER_HOUR", 60)  # whole site, protects the inbox
+    RATE_LIMIT_RESET_EMAIL_PER_MINUTE = _env_int("RATE_LIMIT_RESET_EMAIL_PER_MINUTE", 5)
+    RATE_LIMIT_RESET_EMAIL_PER_ADDRESS_HOUR = _env_int("RATE_LIMIT_RESET_EMAIL_PER_ADDRESS_HOUR", 3)

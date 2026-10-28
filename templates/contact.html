@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Contact Omixa{% endblock %}
+{% block description %}Contact the Omixa team with questions about cleaning CSV and Excel files, Omixa Pro or your account.{% endblock %}
+{% block content %}
+<article class="guide-page">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('pages.landing') }}">Omixa</a> <span aria-hidden="true">/</span> <span>Contact</span></nav>
+  <h1>Contact us</h1>
+  <p class="guide-lead">Questions about cleaning a file, Omixa Pro or your account? Send us a message and we will reply by email. You can also write to <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>.</p>
+
+  {% if not mail_available %}
+  <div class="alert alert-info" role="status">The contact form is temporarily unavailable. Please email us at <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>.</div>
+  {% else %}
+  <form id="contactForm" class="card contact-card" novalidate>
+    <div class="field"><label for="cName">Your name</label><input id="cName" name="name" type="text" autocomplete="name" maxlength="80" required></div>
+    <div class="field"><label for="cEmail">Your email</label><input id="cEmail" name="email" type="email" autocomplete="email" maxlength="254" required></div>
+    <div class="field"><label for="cSubject">Subject</label><input id="cSubject" name="subject" type="text" maxlength="120" required></div>
+    <div class="field"><label for="cMessage">Message</label><textarea id="cMessage" name="message" rows="7" maxlength="{{ message_max }}" required></textarea>
+      <div class="hint"><span id="cCount">0</span> / {{ message_max }}</div></div>
+    <div class="contact-hp" aria-hidden="true"><label for="cWebsite">Leave this field empty</label><input id="cWebsite" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+    <input type="hidden" id="cToken" value="{{ form_token }}">
+    <button type="submit" class="btn btn-primary" id="cSubmit">Send message</button>
+    <div id="cStatus" class="alert hidden" role="alert" aria-live="polite"></div>
+  </form>
+  {% endif %}
+</article>
+{% endblock %}
+{% block scripts %}{% if mail_available %}<script src="{{ url_for('static', filename='js/contact.js') }}"></script>{% endif %}{% endblock %}

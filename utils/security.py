@@ -40,6 +40,7 @@ def _is_api_path(path: str) -> bool:
 
 _lock = threading.Lock()
 _hits: dict[tuple[str, str], deque] = defaultdict(deque)
+_bucket_window: dict[tuple[str, str], int] = {}   # window length of buckets that are not the default 60s
 _WINDOW_SECONDS = 60
 _last_gc = 0.0
 _MAX_KEYS = 50_000
@@ -52,53 +53,70 @@ def _gc(now: float) -> None:
     if now - _last_gc < 30 and len(_hits) < _MAX_KEYS:
         return
     _last_gc = now
-    for k in [k for k, w in _hits.items() if not w or now - w[-1] > _WINDOW_SECONDS]:
+    for k in [k for k, w in _hits.items() if not w or now - w[-1] > _bucket_window.get(k, _WINDOW_SECONDS)]:
         _hits.pop(k, None)
+        _bucket_window.pop(k, None)
     if len(_hits) > _MAX_KEYS:  # under attack: shed the oldest half rather than grow
         for k in sorted(_hits, key=lambda k: _hits[k][-1] if _hits[k] else 0)[: len(_hits) // 2]:
             _hits.pop(k, None)
+            _bucket_window.pop(k, None)
 
 
-def _check_memory(namespace: str, key: str, limit: int) -> tuple[bool, int]:
+def _check_memory(namespace: str, key: str, limit: int, seconds: int = _WINDOW_SECONDS) -> tuple[bool, int]:
     now = time.time()
     bucket = (namespace, key)
     with _lock:
         _gc(now)
+        if seconds != _WINDOW_SECONDS:
+            _bucket_window[bucket] = seconds
+        else:
+            _bucket_window.pop(bucket, None)
         window = _hits[bucket]
-        while window and now - window[0] > _WINDOW_SECONDS:
+        while window and now - window[0] > seconds:
             window.popleft()
         if len(window) >= limit:
-            return False, max(1, int(_WINDOW_SECONDS - (now - window[0])))
+            return False, max(1, int(seconds - (now - window[0])))
         window.append(now)
         return True, 0
 
 
 # ---------------------------------------------------------------- redis backend
 
-def _check_redis(r, namespace: str, key: str, limit: int) -> tuple[bool, int]:
-    window = int(time.time()) // _WINDOW_SECONDS
+def _check_redis(r, namespace: str, key: str, limit: int, seconds: int = _WINDOW_SECONDS) -> tuple[bool, int]:
+    window = int(time.time()) // seconds
     rkey = f"omx:rl:{namespace}:{key}:{window}"
     pipe = r.pipeline()
     pipe.incr(rkey)
-    pipe.expire(rkey, _WINDOW_SECONDS + 5)
+    pipe.expire(rkey, seconds + 5)
     count = int(pipe.execute()[0])
     if count > limit:
-        return False, max(1, _WINDOW_SECONDS - int(time.time()) % _WINDOW_SECONDS)
+        return False, max(1, seconds - int(time.time()) % seconds)
     return True, 0
 
 
-def _check_window(namespace: str, key: str, limit: int) -> tuple[bool, int]:
-    """Returns (allowed, retry_after_seconds). limit 0 means disabled."""
+def _check_window(namespace: str, key: str, limit: int, seconds: int = _WINDOW_SECONDS) -> tuple[bool, int]:
+    """Returns (allowed, retry_after_seconds). limit 0 means disabled. `seconds` is the window length
+    (default 60; the contact and password-reset email limits also use an hourly window)."""
     if not limit:
         return True, 0
     r = redis_client.get_redis()
     if r is not None:
         try:
-            return _check_redis(r, namespace, key, limit)
+            return _check_redis(r, namespace, key, limit, seconds)
         except Exception as exc:
             redis_client.note_failure("rate_limit", exc)
             observability.inc("omixa_ratelimit_fallback_total")
-    return _check_memory(namespace, key, limit)
+    return _check_memory(namespace, key, limit, seconds)
+
+
+def check_limit(namespace: str, key: str, limit: int, seconds: int = _WINDOW_SECONDS) -> tuple[bool, int]:
+    """Public entry point for route-specific limits: (allowed, retry_after_seconds)."""
+    return _check_window(namespace, key, limit, seconds)
+
+
+def client_key() -> str:
+    """Proxy-corrected client address (see _client_key)."""
+    return _client_key()
 
 
 # ------------------------------------------------------------------ principals

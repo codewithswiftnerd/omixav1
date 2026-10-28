@@ -53,6 +53,12 @@ class MemoryStore:
                     return copy.deepcopy(u)
         return None
 
+    def users_expiring_between(self, start, end):
+        """Users whose subscription_expires is in (start, end]. Callers filter further."""
+        with self._lock:
+            return [copy.deepcopy(u) for u in self.users.values()
+                    if start < (u.get("subscription_expires") or 0) <= end]
+
     def user_stats(self, now=None):
         now = now or time.time()
         with self._lock:
@@ -228,6 +234,11 @@ class FirestoreStore:
         for d in self.db.collection("users").where(field, "==", value).limit(1).stream():
             return d.to_dict()
         return None
+
+    def users_expiring_between(self, start, end):
+        """Single-field range query (no composite index needed); callers filter status/plan in Python."""
+        q = self.db.collection("users").where("subscription_expires", ">", start).where("subscription_expires", "<=", end)
+        return [d.to_dict() for d in q.stream()]
 
     def user_stats(self, now=None):
         now = now or time.time()

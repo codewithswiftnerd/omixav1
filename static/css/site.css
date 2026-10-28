@@ -601,3 +601,9 @@ pre, code { max-width: 100%; overflow-x: auto; }
 .footer-cols li { margin: 0 0 8px; font-size: .94rem; color: var(--white); }
 .footer-cols a { color: var(--white); text-decoration: none; }
 .footer-cols a:hover { text-decoration: underline; }
+
+/* Contact form */
+.contact-card { margin-top: 22px; }
+.contact-card textarea { resize: vertical; min-height: 140px; }
+.contact-card .alert { margin: 16px 0 0; }
+.contact-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
