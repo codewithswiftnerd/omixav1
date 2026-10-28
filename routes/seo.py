@@ -9,7 +9,7 @@ Design rules (see docs/SEO.md):
     hint, not access control; real protection stays in the auth and ownership checks.
   * Non-production environments serve `Disallow: /` and noindex everywhere so a staging copy never gets indexed.
 """
-from flask import Blueprint, Response, request
+from flask import Blueprint, Response, current_app, request, send_from_directory
 
 from config import Config
 from routes.guides import GUIDES, GUIDE_ORDER, guide_nav
@@ -125,3 +125,12 @@ def sitemap():
     xml = ('<?xml version="1.0" encoding="UTF-8"?>\n'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + urls + "</urlset>\n")
     return Response(xml, mimetype="application/xml")
+
+
+@seo_bp.get("/favicon.ico")
+def favicon():
+    """Stable root URL for the favicon (browsers and Googlebot-Image look here by default). Served directly: no
+    session cookie, no redirect, no authentication. Same file as /static/favicon.ico (16, 32 and 48 px)."""
+    resp = send_from_directory(current_app.static_folder, "favicon.ico", mimetype="image/x-icon", max_age=86400)
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp

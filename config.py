@@ -175,6 +175,13 @@ class Config:
     PRICE_NGN_MONTHLY = int(os.environ.get("OMIXA_PRICE_NGN_MONTHLY", "0"))
     PRICE_NGN_ANNUAL = int(os.environ.get("OMIXA_PRICE_NGN_ANNUAL", "0"))
     PUBLIC_BASE_URL = os.environ.get("OMIXA_PUBLIC_BASE_URL", "").strip().rstrip("/")
+    # Hostnames that serve this same app but must not be public: GET/HEAD requests to them get a permanent redirect to
+    # PUBLIC_BASE_URL (see utils/canonical_host.py). An allowlist, never derived from the request. Only active when
+    # PUBLIC_BASE_URL is set. Override with OMIXA_REDIRECT_HOSTS (comma-separated hostnames, no scheme).
+    REDIRECT_HOSTS = tuple(h.strip().lower() for h in os.environ.get(
+        "OMIXA_REDIRECT_HOSTS",
+        "omixaa.up.railway.app,web-production-888aa.up.railway.app,web-production-01c985.up.railway.app",
+    ).split(",") if h.strip())
 
 
     # ===================================================================

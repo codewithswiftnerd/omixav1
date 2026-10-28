@@ -18,7 +18,10 @@
 {% if seo_jsonld %}{% for block in seo_jsonld %}<script type="application/ld+json">{{ block | tojson }}</script>
 {% endfor %}{% endif %}
 <meta name="theme-color" content="#381593">
-<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="any">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='android-chrome-192x192.png') }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
+<link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
 <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">

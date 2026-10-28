@@ -121,6 +121,9 @@ def create_app():
     # Admin command center (its own session-gated auth, see routes/admin.py)
     app.register_blueprint(admin_bp, url_prefix="/admin")
 
+    from utils import canonical_host
+    canonical_host.init_app(app)   # before every other before_request hook
+
     # Correlation ID: honoured from the edge/load balancer when well-formed, else generated.
     # Stored on the job at creation so API and worker logs for one job can be joined.
     @app.before_request
@@ -133,7 +136,7 @@ def create_app():
     # Assign an anonymous session cookie before anything else runs.
     @app.before_request
     def _assign_session():
-        if request.path.startswith("/static/") or request.path in ("/robots.txt", "/sitemap.xml", "/googlef87d1a0bfb7e854c.html"):
+        if request.path.startswith("/static/") or request.path in ("/robots.txt", "/sitemap.xml", "/googlef87d1a0bfb7e854c.html", "/favicon.ico"):
             return None   # crawlers and assets never need (or should receive) a session cookie
         ensure_session()
         return None
@@ -218,7 +221,7 @@ def create_app():
         # Indexing directives: only the registered public pages (routes/seo.py) may be indexed, and only when
         # they answer 200. Everything else (app pages, /api, /admin, errors, non-production hosts) is noindex.
         path = request.path
-        if not (path.startswith("/static/") or path in ("/robots.txt", "/sitemap.xml", "/googlef87d1a0bfb7e854c.html")):
+        if not (path.startswith("/static/") or path in ("/robots.txt", "/sitemap.xml", "/googlef87d1a0bfb7e854c.html", "/favicon.ico")):
             if not is_indexable_path(path) or response.status_code >= 400:
                 response.headers["X-Robots-Tag"] = "noindex, nofollow"
         # Brand images/icons change rarely: let browsers reuse them for a day (css/js keep revalidating).
