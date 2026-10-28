@@ -30,6 +30,17 @@ def _env_int(name: str, default: int) -> int:
         return 0
 
 
+def _env_float(name: str, default: float) -> float:
+    """Float env var; a malformed value falls back to the default rather than stopping the app booting."""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return float(raw.strip())
+    except ValueError:
+        return default
+
+
 # SHA-256 fingerprints (never the values) of credentials that were committed to
 # the repository in the past. They must be treated as public: the app refuses to
 # boot in production with any of them, so a forgotten Railway variable cannot
@@ -169,11 +180,45 @@ class Config:
     PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "").strip()
     PAYSTACK_PLAN_MONTHLY = os.environ.get("PAYSTACK_PLAN_MONTHLY", "").strip()  # PLN_xxx, created in the dashboard
     PAYSTACK_PLAN_ANNUAL = os.environ.get("PAYSTACK_PLAN_ANNUAL", "").strip()
-    # Shown on the pricing page; Paystack charges the NGN amount of the plan code.
+    # Prices are set in USD. The naira amount is derived from the live USD->NGN rate (utils/fx.py), so it follows the
+    # dollar without a code change. PRICE_NGN_* are now only a last-resort fallback for when no rate can be fetched
+    # (and the whole source of truth when OMIXA_FX_MODE=fixed). Leave them empty to rely on the live rate.
     PRICE_USD_MONTHLY = float(os.environ.get("OMIXA_PRICE_USD_MONTHLY", "5"))
     PRICE_USD_ANNUAL = float(os.environ.get("OMIXA_PRICE_USD_ANNUAL", "50"))
-    PRICE_NGN_MONTHLY = int(os.environ.get("OMIXA_PRICE_NGN_MONTHLY", "0"))
-    PRICE_NGN_ANNUAL = int(os.environ.get("OMIXA_PRICE_NGN_ANNUAL", "0"))
+    PRICE_NGN_MONTHLY = _env_int("OMIXA_PRICE_NGN_MONTHLY", 0)
+    PRICE_NGN_ANNUAL = _env_int("OMIXA_PRICE_NGN_ANNUAL", 0)
+
+    # --- Live USD -> NGN conversion (utils/fx.py, docs/ACCESS_GATE_AND_FX.md) ---------------------------------
+    FX_MODE = os.environ.get("OMIXA_FX_MODE", "auto").strip().lower()           # auto | fixed
+    FX_URL = os.environ.get("OMIXA_FX_URL", "https://open.er-api.com/v6/latest/USD").strip()
+    FX_CACHE_SECONDS = max(300, _env_int("OMIXA_FX_CACHE_SECONDS", 6 * 3600))    # how long a fetched rate is reused
+    FX_TIMEOUT_SECONDS = max(1, _env_int("OMIXA_FX_TIMEOUT_SECONDS", 3))
+    FX_FALLBACK_USD_NGN = _env_float("OMIXA_FX_FALLBACK_USD_NGN", 0.0)           # used only if no live rate was ever obtained
+    FX_BUFFER_PERCENT = max(0.0, min(25.0, _env_float("OMIXA_FX_BUFFER_PERCENT", 0.0)))  # optional cushion added to the rate
+    FX_ROUND_TO_NGN = max(1, _env_int("OMIXA_FX_ROUND_TO_NGN", 100))             # round the naira price to this step
+    FX_MIN_RATE = _env_float("OMIXA_FX_MIN_RATE", 100.0)                         # sanity bounds: a rate outside is rejected
+    FX_MAX_RATE = _env_float("OMIXA_FX_MAX_RATE", 20000.0)
+    # Keep the NGN amount Paystack actually charges (the plan) in step with the displayed price. New subscribers only:
+    # existing subscriptions keep the amount they signed up at (update_existing_subscriptions=false).
+    PAYSTACK_AUTO_PRICE = _env_flag("OMIXA_PAYSTACK_AUTO_PRICE", True)
+    PAYSTACK_AUTO_PRICE_TOLERANCE_PERCENT = max(0.0, _env_float("OMIXA_PAYSTACK_AUTO_PRICE_TOLERANCE_PERCENT", 2.0))
+
+    # --- Temporary pre-launch access gate (utils/access_gate.py, docs/ACCESS_GATE_AND_FX.md) ------------------
+    # Off unless OMIXA_ACCESS_GATE_ENABLED=true. When on, EVERY page and API route needs the team password (checked on
+    # the server), except health checks, the Paystack webhook and the metrics endpoint, which have their own
+    # authentication. Both secrets come from the environment only. Misconfiguration fails CLOSED (site stays private).
+    ACCESS_GATE_ENABLED = _env_flag("OMIXA_ACCESS_GATE_ENABLED", False)
+    ACCESS_GATE_PASSWORD = os.environ.get("OMIXA_ACCESS_GATE_PASSWORD", "").strip("\r\n")
+    ACCESS_GATE_SECRET = os.environ.get("OMIXA_ACCESS_GATE_SECRET", "").strip()
+    ACCESS_GATE_SESSION_HOURS = max(1, min(24 * 30, _env_int("OMIXA_ACCESS_GATE_SESSION_HOURS", 12)))
+    # Optional: the instant the gate switches itself off, e.g. 2026-11-13T00:00:00+01:00. Unset = stays on until disabled.
+    ACCESS_GATE_OPEN_AT = os.environ.get("OMIXA_ACCESS_GATE_OPEN_AT", "").strip()
+    # "app" (default): the pages search engines index (routes/seo.py PUBLIC_PAGES), the sitemap and static files stay
+    # public and behave exactly as before, so SEO is untouched; the working app and every API are locked.
+    # "site": everything is locked and robots.txt says Disallow: / (maximum privacy, hides the site from Google).
+    ACCESS_GATE_SCOPE = os.environ.get("OMIXA_ACCESS_GATE_SCOPE", "app").strip().lower()
+    ACCESS_GATE_ATTEMPTS_PER_MINUTE = _env_int("OMIXA_ACCESS_GATE_ATTEMPTS_PER_MINUTE", 6)
+    ACCESS_GATE_ATTEMPTS_PER_HOUR = _env_int("OMIXA_ACCESS_GATE_ATTEMPTS_PER_HOUR", 40)
     PUBLIC_BASE_URL = os.environ.get("OMIXA_PUBLIC_BASE_URL", "").strip().rstrip("/")
     # Hostnames that serve this same app but must not be public: GET/HEAD requests to them get a permanent redirect to
     # PUBLIC_BASE_URL (see utils/canonical_host.py). An allowlist, never derived from the request. Only active when

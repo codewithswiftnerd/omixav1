@@ -48,11 +48,14 @@ def batch():
 @pages_bp.get("/pricing")
 def pricing():
     from accounts import paystack
+    from utils import fx
     m, a = Config.PRICE_USD_MONTHLY, Config.PRICE_USD_ANNUAL
+    ngn = fx.ngn_prices()   # naira = dollar price x today's rate; falls back to the fixed OMIXA_PRICE_NGN_* values
     return render_template(
         "pricing.html", usd_monthly=m, usd_annual=a, saves=round(m * 12 - a, 2),
         months_free=round((m * 12 - a) / m, 1) if m else 0,
-        ngn_monthly=Config.PRICE_NGN_MONTHLY, ngn_annual=Config.PRICE_NGN_ANNUAL,
+        ngn_monthly=ngn["monthly"], ngn_annual=ngn["annual"],
+        ngn_is_live=ngn["source"] in (fx.LIVE, fx.CACHED), fx_credit=fx.attribution_required() and ngn["rate"] is not None,
         payments_available=paystack.configured(), **product_facts(),
     )
 

@@ -33,6 +33,7 @@ os.environ.setdefault(
 TEST_ADMIN_PASSWORD = "pytest-admin-password"  # the plaintext behind the hash above
 os.environ.setdefault("OMIXA_DB_PATH", os.path.join(_TEST_TMP, "omixa.db"))
 os.environ.setdefault("OMIXA_TEMP_DIR", os.path.join(_TEST_TMP, "temp"))
+os.environ.setdefault("OMIXA_FX_MODE", "fixed")  # tests never reach for the live exchange-rate API (tests/test_fx_pricing.py opts in)
 os.environ.setdefault("RATE_LIMIT_PER_MINUTE", "0")  # tests fire many requests quickly
 os.environ.setdefault("LOGIN_RATE_LIMIT_PER_MINUTE", "0")
 

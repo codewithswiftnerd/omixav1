@@ -133,6 +133,12 @@ def create_app():
         observability.set_request_id(rid)
         return None
 
+    # TEMPORARY pre-launch access gate (utils/access_gate.py). Off unless OMIXA_ACCESS_GATE_ENABLED=true. Registered
+    # before sessions, rate limits and every route so an unauthorised request is refused before any work is done.
+    # To remove it after launch: delete these two lines (see docs/ACCESS_GATE_AND_FX.md).
+    from utils import access_gate
+    access_gate.init_app(app)
+
     # Assign an anonymous session cookie before anything else runs.
     @app.before_request
     def _assign_session():

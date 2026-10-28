@@ -46,7 +46,10 @@ def base_url() -> str:
 
 
 def indexing_allowed() -> bool:
-    return bool(Config.IS_PRODUCTION)
+    """Not while the pre-launch gate hides the WHOLE site (OMIXA_ACCESS_GATE_SCOPE=site, utils/access_gate.py). With the
+    default scope "app" only the app/APIs are locked and indexing is exactly as it always was."""
+    from utils import access_gate
+    return bool(Config.IS_PRODUCTION) and not access_gate.hides_site()
 
 
 def is_indexable_path(path: str) -> bool:

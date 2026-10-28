@@ -455,3 +455,9 @@ Paystack's API. Firestore rules deny all client writes.
   inline only for files up to 500k cells in queue mode (larger files get the validation block in the analysis
   report); the quality score still rewards explicit imputation in the Completeness dimension, offset by the
   flagged Accuracy finding.
+
+
+## Pre-launch access gate and live naira pricing
+The site can be kept private until launch with a server-side password gate, and the naira price follows the live
+exchange rate. How to enable, disable and remove the gate, every Railway variable, and the search-engine caveats:
+[docs/ACCESS_GATE_AND_FX.md](docs/ACCESS_GATE_AND_FX.md).

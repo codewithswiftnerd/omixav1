@@ -25,11 +25,14 @@ def _base_url():
 
 @billing_bp.get("/plans")
 def plans():
+    from utils import fx
+    ngn = fx.ngn_prices()   # dollars are the price; naira follows the live rate (see utils/fx.py)
     return jsonify({
         "free": {"max_upload_mb": Config.FREE_MAX_UPLOAD_MB},
-        "pro_monthly": {"usd": Config.PRICE_USD_MONTHLY, "ngn": Config.PRICE_NGN_MONTHLY},
-        "pro_annual": {"usd": Config.PRICE_USD_ANNUAL, "ngn": Config.PRICE_NGN_ANNUAL,
+        "pro_monthly": {"usd": Config.PRICE_USD_MONTHLY, "ngn": ngn["monthly"]},
+        "pro_annual": {"usd": Config.PRICE_USD_ANNUAL, "ngn": ngn["annual"],
                        "saves_usd": round(Config.PRICE_USD_MONTHLY * 12 - Config.PRICE_USD_ANNUAL, 2)},
+        "ngn_rate": ngn["rate"],
         "payments_available": paystack.configured(),
     }), 200
 
@@ -47,6 +50,7 @@ def checkout():
     if not user.get("email"):
         return jsonify({"error": "Your account needs an email address to subscribe."}), 400
     reference = "omx_" + uuid.uuid4().hex
+    paystack.ensure_plan_price(_client, plan)   # keeps the charged naira amount in step with the dollar price; never raises
     try:
         data = _client.initialize(email=user["email"], plan=plan, uid=user["uid"], reference=reference,
                                   callback_url=_base_url() + url_for("billing.checkout_return"))

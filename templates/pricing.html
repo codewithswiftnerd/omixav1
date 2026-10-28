@@ -26,7 +26,7 @@
   <article class="card price-card featured">
     <h2>Pro Monthly</h2>
     <p class="price">${{ '%g' % usd_monthly }}<span>/month</span></p>
-    {% if ngn_monthly %}<p class="hint">Billed in naira: ≈ ₦{{ '{:,}'.format(ngn_monthly) }}/month</p>{% endif %}
+    {% if ngn_monthly %}<p class="hint">Billed in naira: ≈ ₦{{ '{:,}'.format(ngn_monthly) }}/month{% if ngn_is_live %} at today's exchange rate{% endif %}</p>{% endif %}
     <ul class="price-list">
       <li><strong>Everything in Free</strong></li>
       <li>Quality Profiles: set the standard once</li>
@@ -83,6 +83,7 @@
 
 <p class="hint center" id="priceMsg" role="status"></p>
 {% if not payments_available %}<p class="hint center">Online payments are being set up. Check back soon.</p>{% endif %}
+{% if ngn_monthly and ngn_is_live %}<p class="hint center">Naira amounts are approximate and follow the dollar exchange rate.{% if fx_credit %} <a href="https://www.exchangerate-api.com" rel="noopener">Rates by Exchange Rate API</a>.{% endif %}</p>{% endif %}
 <p class="hint center">Cancel any time from your dashboard. Uploaded files are deleted automatically (within {{ ttl_minutes }} minutes; Pro batch results after {{ batch_hours }} hours). Pro history keeps quality figures and change summaries, never your rows.</p>
 {% endblock %}
 {% block scripts %}

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Omixa is preparing for launch</title>
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="theme-color" content="#381593">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/app.css">
+<link rel="stylesheet" href="/static/css/gate.css">
+</head>
+<body class="gate-body">
+<main class="gate-wrap">
+  <section class="gate-card" aria-labelledby="gateTitle">
+    <img class="gate-logo" src="/static/brand/omixa-icon.png" alt="" width="64" height="64">
+    <p class="gate-brand">Omixa</p>
+    <h1 id="gateTitle">Omixa is preparing for launch</h1>
+    <p class="gate-lead">We're putting the finishing touches on something new. Check back very soon.</p>
+
+    {% if show_form %}
+    <form class="gate-form" method="post" action="{{ unlock_path }}" autocomplete="off">
+      <p class="gate-team">On the Omixa team? Enter the access password to continue.</p>
+      {% if error %}<p class="gate-error" role="alert">{{ error }}</p>{% endif %}
+      <label class="gate-label" for="gatePassword">Access password</label>
+      <input class="gate-input" id="gatePassword" name="password" type="password" required maxlength="256"
+             autocomplete="current-password" autocapitalize="off" spellcheck="false">
+      <input type="hidden" name="next" value="{{ next_path }}">
+      <button class="gate-button" type="submit">Continue</button>
+    </form>
+    {% elif misconfigured %}
+    <p class="gate-note">Access is temporarily unavailable. Please try again later.</p>
+    {% endif %}
+  </section>
+  <p class="gate-foot">&copy; 2026 Omixa</p>
+</main>
+</body>
+</html>

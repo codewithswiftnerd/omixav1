@@ -74,8 +74,72 @@ class PaystackClient:
     def verify(self, reference):
         return self._call("GET", f"/transaction/verify/{reference}")
 
+    def fetch_plan(self, plan_code):
+        return self._call("GET", f"/plan/{plan_code}")
+
+    def update_plan_amount(self, plan_code, amount_ngn):
+        """Change the NGN amount of a plan for NEW subscriptions only: existing subscribers keep the amount they
+        signed up at (update_existing_subscriptions=false; Paystack's default would re-price them). Kobo, not naira."""
+        return self._call("PUT", f"/plan/{plan_code}",
+                          json={"amount": int(amount_ngn) * 100, "update_existing_subscriptions": False})
+
     def manage_link(self, subscription_code):
         return self._call("GET", f"/subscription/{subscription_code}/manage/link")
+
+
+# --- Keep the naira amount Paystack charges in step with the live exchange rate -------------------------------------
+# A Paystack plan has one fixed NGN amount. utils/fx.py works out what the dollar price is worth in naira today; at checkout
+# we make sure the plan about to be charged is within OMIXA_PAYSTACK_AUTO_PRICE_TOLERANCE_PERCENT of that, and move it if not.
+# Only new subscriptions see the change. It never blocks a payment: any failure is logged and checkout carries on with
+# the plan as it stands.
+PLAN_CHECK_SECONDS = 1800
+_plan_amount_cache: dict[str, tuple[int, float]] = {}   # plan code -> (amount in kobo, when it was last confirmed)
+
+
+def reset_plan_cache_for_tests() -> None:
+    _plan_amount_cache.clear()
+
+
+def ensure_plan_price(client, plan: str) -> str:
+    """Returns a short outcome string ('unchanged', 'updated', or why nothing was done). Never raises."""
+    try:
+        from utils import fx
+        if not Config.PAYSTACK_AUTO_PRICE or not configured():
+            return "skipped: auto price off"
+        if not hasattr(client, "fetch_plan") or not hasattr(client, "update_plan_amount"):
+            return "skipped: client cannot manage plans"
+        prices = fx.ngn_prices()
+        if prices["source"] not in (fx.LIVE, fx.CACHED):   # only follow a real exchange rate, never a stale fixed number
+            return "skipped: no live rate"
+        code = plan_codes().get(plan)
+        target = prices["monthly"] if plan == PRO_MONTHLY else prices["annual"]
+        if not code or not target:
+            return "skipped: no plan code or price"
+        target_kobo = int(target) * 100
+        now = time.time()
+        cached = _plan_amount_cache.get(code)
+        if cached and now - cached[1] < PLAN_CHECK_SECONDS:
+            current = cached[0]
+        else:
+            current = int(client.fetch_plan(code).get("amount") or 0)
+            _plan_amount_cache[code] = (current, now)
+        drift = abs(current - target_kobo) * 100.0 / target_kobo
+        if current and drift <= Config.PAYSTACK_AUTO_PRICE_TOLERANCE_PERCENT:
+            return "unchanged"
+        client.update_plan_amount(code, int(target))
+        _plan_amount_cache[code] = (target_kobo, now)
+        logger.info("Paystack plan %s re-priced from %s to %s NGN for new subscribers (rate %.2f)",
+                    plan, current // 100, int(target), prices["rate"])
+        try:
+            import db as metadata_db
+            metadata_db.audit("system", "plan.price_synced", plan,
+                              meta={"from_ngn": current // 100, "to_ngn": int(target), "rate": prices["rate"]})
+        except Exception:
+            logger.exception("audit write failed for plan price sync")
+        return "updated"
+    except Exception:
+        logger.exception("Could not sync the Paystack plan amount; continuing with the plan as it is")
+        return "failed"
 
 
 def _resolve_plan(data: dict) -> str | None:
