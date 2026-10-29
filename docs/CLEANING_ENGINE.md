@@ -77,8 +77,9 @@ placeholder, never silently changed). `account_status` / `account_type` are no l
   Dotted abbreviations resolve to the plain one (`I.T.` -> `IT`).
 - Flag columns (`is_verified`, `active`...) with a stray value (`maybe`) still get their recognised yes/no spellings
   unified to `Yes` / `No`; the stray value is left as typed and reported. Generic columns are never touched.
-- `currency_label_standardization` (OMX-FIX-015): columns named currency/ccy map naira, ₦, NGN -> NGN, £ -> GBP,
-  `$` / dollars -> USD (assumption), € -> EUR. Combined values (`NGN/USD`) are left alone.
+- `currency_label_standardization` (OMX-FIX-015): columns named currency/ccy map naira, ₦, NGN -> NGN,
+  `US$`/`USD` -> USD, € -> EUR. `$`, `dollars`, `£` and `pounds` are shared by several currencies, so they are NEVER
+  assumed (left as typed). Combined values (`NGN/USD`) are left alone.
 - Worded placeholders (`not known`, `TBD`, `not available`...) count as missing; `Naija` resolves to Nigeria.
 - Mixed `dd/mm/yyyy` and `mm-dd-yyyy` dates are still NOT converted: they are genuinely ambiguous, so the engine
   reports the column instead of guessing.

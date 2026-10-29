@@ -457,7 +457,5 @@ Paystack's API. Firestore rules deny all client writes.
   flagged Accuracy finding.
 
 
-## Pre-launch access gate and live naira pricing
-The site can be kept private until launch with a server-side password gate, and the naira price follows the live
-exchange rate. How to enable, disable and remove the gate, every Railway variable, and the search-engine caveats:
-[docs/ACCESS_GATE_AND_FX.md](docs/ACCESS_GATE_AND_FX.md).
+## Live naira pricing
+The naira price follows the live exchange rate. Details and every Railway variable: [docs/LIVE_NAIRA_PRICING.md](docs/LIVE_NAIRA_PRICING.md).

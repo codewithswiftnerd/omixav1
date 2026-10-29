@@ -1,0 +1,795 @@
+{
+ "_meta": {
+  "id": "iso4217-subset",
+  "version": "2026.10-omixa.1",
+  "source": "ISO 4217 alphabetic codes and names for ~60 widely used currencies, curated by Omixa. Not exhaustive: unlisted currencies are left unchanged.",
+  "count": 52
+ },
+ "currencies": [
+  {
+   "code": "NGN",
+   "name": "Nigerian Naira",
+   "aliases": [
+    "naira",
+    "nigerian naira"
+   ],
+   "symbols": [
+    "₦"
+   ]
+  },
+  {
+   "code": "GHS",
+   "name": "Ghanaian Cedi",
+   "aliases": [
+    "cedi",
+    "cedis",
+    "ghanaian cedi",
+    "ghanaian cedis",
+    "ghana cedi",
+    "ghana cedis"
+   ],
+   "symbols": [
+    "GH₵",
+    "GH¢",
+    "₵",
+    "GHC"
+   ]
+  },
+  {
+   "code": "KES",
+   "name": "Kenyan Shilling",
+   "aliases": [
+    "kenyan shilling",
+    "kenyan shillings",
+    "kenya shilling",
+    "kenya shillings"
+   ],
+   "symbols": [
+    "KSh",
+    "Ksh",
+    "KShs"
+   ]
+  },
+  {
+   "code": "ZAR",
+   "name": "South African Rand",
+   "aliases": [
+    "rand",
+    "south african rand",
+    "rands"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "TZS",
+   "name": "Tanzanian Shilling",
+   "aliases": [
+    "tanzanian shilling",
+    "tanzanian shillings"
+   ],
+   "symbols": [
+    "TSh"
+   ]
+  },
+  {
+   "code": "UGX",
+   "name": "Ugandan Shilling",
+   "aliases": [
+    "ugandan shilling",
+    "ugandan shillings"
+   ],
+   "symbols": [
+    "USh"
+   ]
+  },
+  {
+   "code": "RWF",
+   "name": "Rwandan Franc",
+   "aliases": [
+    "rwandan franc",
+    "rwandan francs"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "ETB",
+   "name": "Ethiopian Birr",
+   "aliases": [
+    "birr",
+    "ethiopian birr"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "EGP",
+   "name": "Egyptian Pound",
+   "aliases": [
+    "egyptian pound",
+    "egyptian pounds"
+   ],
+   "symbols": [
+    "E£"
+   ]
+  },
+  {
+   "code": "MAD",
+   "name": "Moroccan Dirham",
+   "aliases": [
+    "moroccan dirham",
+    "moroccan dirhams"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "XOF",
+   "name": "West African CFA Franc",
+   "aliases": [
+    "west african cfa franc",
+    "west african cfa francs",
+    "cfa franc bceao"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "XAF",
+   "name": "Central African CFA Franc",
+   "aliases": [
+    "central african cfa franc",
+    "central african cfa francs",
+    "cfa franc beac"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "ZMW",
+   "name": "Zambian Kwacha",
+   "aliases": [
+    "zambian kwacha",
+    "kwacha"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "EUR",
+   "name": "Euro",
+   "aliases": [
+    "euro",
+    "euros"
+   ],
+   "symbols": [
+    "€"
+   ]
+  },
+  {
+   "code": "GBP",
+   "name": "Pound Sterling",
+   "aliases": [
+    "pound sterling",
+    "pounds sterling",
+    "sterling",
+    "british pound",
+    "british pounds",
+    "gb pound",
+    "gb pounds"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "USD",
+   "name": "US Dollar",
+   "aliases": [
+    "us dollar",
+    "us dollars",
+    "u s dollar",
+    "u s dollars",
+    "united states dollar",
+    "united states dollars",
+    "american dollar",
+    "american dollars"
+   ],
+   "symbols": [
+    "US$",
+    "U$",
+    "USD$"
+   ]
+  },
+  {
+   "code": "CAD",
+   "name": "Canadian Dollar",
+   "aliases": [
+    "canadian dollar",
+    "canadian dollars"
+   ],
+   "symbols": [
+    "CA$",
+    "CAD$"
+   ]
+  },
+  {
+   "code": "AUD",
+   "name": "Australian Dollar",
+   "aliases": [
+    "australian dollar",
+    "australian dollars"
+   ],
+   "symbols": [
+    "A$",
+    "AU$",
+    "AUD$"
+   ]
+  },
+  {
+   "code": "NZD",
+   "name": "New Zealand Dollar",
+   "aliases": [
+    "new zealand dollar",
+    "new zealand dollars",
+    "nz dollar",
+    "nz dollars"
+   ],
+   "symbols": [
+    "NZ$"
+   ]
+  },
+  {
+   "code": "HKD",
+   "name": "Hong Kong Dollar",
+   "aliases": [
+    "hong kong dollar",
+    "hong kong dollars"
+   ],
+   "symbols": [
+    "HK$"
+   ]
+  },
+  {
+   "code": "SGD",
+   "name": "Singapore Dollar",
+   "aliases": [
+    "singapore dollar",
+    "singapore dollars"
+   ],
+   "symbols": [
+    "S$",
+    "SG$"
+   ]
+  },
+  {
+   "code": "JPY",
+   "name": "Japanese Yen",
+   "aliases": [
+    "yen",
+    "japanese yen"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "CNY",
+   "name": "Chinese Yuan",
+   "aliases": [
+    "yuan",
+    "renminbi",
+    "rmb",
+    "chinese yuan"
+   ],
+   "symbols": [
+    "CN¥"
+   ]
+  },
+  {
+   "code": "INR",
+   "name": "Indian Rupee",
+   "aliases": [
+    "indian rupee",
+    "indian rupees"
+   ],
+   "symbols": [
+    "₹"
+   ]
+  },
+  {
+   "code": "PKR",
+   "name": "Pakistani Rupee",
+   "aliases": [
+    "pakistani rupee",
+    "pakistani rupees"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "BDT",
+   "name": "Bangladeshi Taka",
+   "aliases": [
+    "taka",
+    "bangladeshi taka"
+   ],
+   "symbols": [
+    "৳"
+   ]
+  },
+  {
+   "code": "LKR",
+   "name": "Sri Lankan Rupee",
+   "aliases": [
+    "sri lankan rupee",
+    "sri lankan rupees"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "CHF",
+   "name": "Swiss Franc",
+   "aliases": [
+    "swiss franc",
+    "swiss francs"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "SEK",
+   "name": "Swedish Krona",
+   "aliases": [
+    "swedish krona",
+    "swedish kronor"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "NOK",
+   "name": "Norwegian Krone",
+   "aliases": [
+    "norwegian krone",
+    "norwegian kroner"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "DKK",
+   "name": "Danish Krone",
+   "aliases": [
+    "danish krone",
+    "danish kroner"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "PLN",
+   "name": "Polish Zloty",
+   "aliases": [
+    "zloty",
+    "polish zloty",
+    "złoty"
+   ],
+   "symbols": [
+    "zł"
+   ]
+  },
+  {
+   "code": "CZK",
+   "name": "Czech Koruna",
+   "aliases": [
+    "koruna",
+    "czech koruna"
+   ],
+   "symbols": [
+    "Kč"
+   ]
+  },
+  {
+   "code": "HUF",
+   "name": "Hungarian Forint",
+   "aliases": [
+    "forint",
+    "hungarian forint"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "TRY",
+   "name": "Turkish Lira",
+   "aliases": [
+    "turkish lira",
+    "lira"
+   ],
+   "symbols": [
+    "₺"
+   ]
+  },
+  {
+   "code": "RUB",
+   "name": "Russian Ruble",
+   "aliases": [
+    "ruble",
+    "rouble",
+    "russian ruble",
+    "russian rouble"
+   ],
+   "symbols": [
+    "₽"
+   ]
+  },
+  {
+   "code": "UAH",
+   "name": "Ukrainian Hryvnia",
+   "aliases": [
+    "hryvnia",
+    "ukrainian hryvnia"
+   ],
+   "symbols": [
+    "₴"
+   ]
+  },
+  {
+   "code": "AED",
+   "name": "UAE Dirham",
+   "aliases": [
+    "uae dirham",
+    "emirati dirham",
+    "united arab emirates dirham"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "SAR",
+   "name": "Saudi Riyal",
+   "aliases": [
+    "saudi riyal",
+    "saudi riyals"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "ILS",
+   "name": "Israeli New Shekel",
+   "aliases": [
+    "shekel",
+    "new shekel",
+    "israeli shekel"
+   ],
+   "symbols": [
+    "₪"
+   ]
+  },
+  {
+   "code": "BRL",
+   "name": "Brazilian Real",
+   "aliases": [
+    "brazilian real",
+    "real",
+    "reais"
+   ],
+   "symbols": [
+    "R$"
+   ]
+  },
+  {
+   "code": "MXN",
+   "name": "Mexican Peso",
+   "aliases": [
+    "mexican peso",
+    "mexican pesos"
+   ],
+   "symbols": [
+    "MX$",
+    "Mex$"
+   ]
+  },
+  {
+   "code": "ARS",
+   "name": "Argentine Peso",
+   "aliases": [
+    "argentine peso",
+    "argentine pesos"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "COP",
+   "name": "Colombian Peso",
+   "aliases": [
+    "colombian peso",
+    "colombian pesos"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "CLP",
+   "name": "Chilean Peso",
+   "aliases": [
+    "chilean peso",
+    "chilean pesos"
+   ],
+   "symbols": []
+  },
+  {
+   "code": "PEN",
+   "name": "Peruvian Sol",
+   "aliases": [
+    "peruvian sol",
+    "sol",
+    "soles"
+   ],
+   "symbols": [
+    "S/"
+   ]
+  },
+  {
+   "code": "PHP",
+   "name": "Philippine Peso",
+   "aliases": [
+    "philippine peso",
+    "philippine pesos",
+    "piso"
+   ],
+   "symbols": [
+    "₱"
+   ]
+  },
+  {
+   "code": "IDR",
+   "name": "Indonesian Rupiah",
+   "aliases": [
+    "rupiah",
+    "indonesian rupiah"
+   ],
+   "symbols": [
+    "Rp"
+   ]
+  },
+  {
+   "code": "MYR",
+   "name": "Malaysian Ringgit",
+   "aliases": [
+    "ringgit",
+    "malaysian ringgit"
+   ],
+   "symbols": [
+    "RM"
+   ]
+  },
+  {
+   "code": "THB",
+   "name": "Thai Baht",
+   "aliases": [
+    "baht",
+    "thai baht"
+   ],
+   "symbols": [
+    "฿"
+   ]
+  },
+  {
+   "code": "VND",
+   "name": "Vietnamese Dong",
+   "aliases": [
+    "dong",
+    "vietnamese dong"
+   ],
+   "symbols": [
+    "₫"
+   ]
+  },
+  {
+   "code": "KRW",
+   "name": "South Korean Won",
+   "aliases": [
+    "south korean won",
+    "korean won"
+   ],
+   "symbols": []
+  }
+ ],
+ "ambiguous": {
+  "$": {
+   "candidates": [
+    "USD",
+    "CAD",
+    "AUD",
+    "NZD",
+    "HKD",
+    "SGD",
+    "MXN",
+    "ARS",
+    "COP",
+    "CLP"
+   ],
+   "reason": "The dollar sign is used by many currencies."
+  },
+  "dollar": {
+   "candidates": [
+    "USD",
+    "CAD",
+    "AUD",
+    "NZD",
+    "HKD",
+    "SGD"
+   ],
+   "reason": "Several currencies are called dollars."
+  },
+  "dollars": {
+   "candidates": [
+    "USD",
+    "CAD",
+    "AUD",
+    "NZD",
+    "HKD",
+    "SGD"
+   ],
+   "reason": "Several currencies are called dollars."
+  },
+  "£": {
+   "candidates": [
+    "GBP",
+    "EGP",
+    "LBP",
+    "SYP"
+   ],
+   "reason": "The pound sign is used by several currencies."
+  },
+  "pound": {
+   "candidates": [
+    "GBP",
+    "EGP",
+    "LBP",
+    "SYP"
+   ],
+   "reason": "Several currencies are called pounds."
+  },
+  "pounds": {
+   "candidates": [
+    "GBP",
+    "EGP",
+    "LBP",
+    "SYP"
+   ],
+   "reason": "Several currencies are called pounds."
+  },
+  "¥": {
+   "candidates": [
+    "JPY",
+    "CNY"
+   ],
+   "reason": "The yen/yuan sign is shared by the Japanese yen and the Chinese yuan."
+  },
+  "kr": {
+   "candidates": [
+    "SEK",
+    "NOK",
+    "DKK",
+    "ISK"
+   ],
+   "reason": "Krona/krone is used by several countries."
+  },
+  "r": {
+   "candidates": [
+    "ZAR",
+    "BRL"
+   ],
+   "reason": "A bare R is not a unique currency symbol."
+  },
+  "n": {
+   "candidates": [
+    "NGN"
+   ],
+   "reason": "A bare N is not a reliable currency symbol."
+  },
+  "shilling": {
+   "candidates": [
+    "KES",
+    "TZS",
+    "UGX",
+    "SOS"
+   ],
+   "reason": "Several currencies are called shillings."
+  },
+  "shillings": {
+   "candidates": [
+    "KES",
+    "TZS",
+    "UGX",
+    "SOS"
+   ],
+   "reason": "Several currencies are called shillings."
+  },
+  "rupee": {
+   "candidates": [
+    "INR",
+    "PKR",
+    "LKR",
+    "NPR",
+    "MUR"
+   ],
+   "reason": "Several currencies are called rupees."
+  },
+  "rupees": {
+   "candidates": [
+    "INR",
+    "PKR",
+    "LKR",
+    "NPR",
+    "MUR"
+   ],
+   "reason": "Several currencies are called rupees."
+  },
+  "franc": {
+   "candidates": [
+    "CHF",
+    "XOF",
+    "XAF",
+    "RWF"
+   ],
+   "reason": "Several currencies are called francs."
+  },
+  "francs": {
+   "candidates": [
+    "CHF",
+    "XOF",
+    "XAF",
+    "RWF"
+   ],
+   "reason": "Several currencies are called francs."
+  },
+  "cfa": {
+   "candidates": [
+    "XOF",
+    "XAF"
+   ],
+   "reason": "CFA francs exist in a West African and a Central African form."
+  },
+  "fcfa": {
+   "candidates": [
+    "XOF",
+    "XAF"
+   ],
+   "reason": "CFA francs exist in a West African and a Central African form."
+  },
+  "dirham": {
+   "candidates": [
+    "AED",
+    "MAD"
+   ],
+   "reason": "Several currencies are called dirhams."
+  },
+  "dirhams": {
+   "candidates": [
+    "AED",
+    "MAD"
+   ],
+   "reason": "Several currencies are called dirhams."
+  },
+  "peso": {
+   "candidates": [
+    "MXN",
+    "ARS",
+    "COP",
+    "CLP",
+    "PHP"
+   ],
+   "reason": "Several currencies are called pesos."
+  },
+  "pesos": {
+   "candidates": [
+    "MXN",
+    "ARS",
+    "COP",
+    "CLP",
+    "PHP"
+   ],
+   "reason": "Several currencies are called pesos."
+  },
+  "c$": {
+   "candidates": [
+    "CAD",
+    "NIO"
+   ],
+   "reason": "C$ is used for both the Canadian dollar and the Nicaraguan córdoba."
+  },
+  "₩": {
+   "candidates": [
+    "KRW",
+    "KPW"
+   ],
+   "reason": "The won sign is shared by South and North Korea."
+  }
+ }
+}

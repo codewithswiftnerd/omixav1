@@ -141,10 +141,14 @@ class AuditLog:
         reversibility: str = M.REVERSIBLE,
         issue: Optional[str] = None,
         column_labels: Optional[dict] = None,
+        annotations: Optional[dict] = None,
     ) -> list[dict]:
         """`column_labels` maps current column names -> the names the user saw in the
         original file, so entries refer to the headers they recognise even after a
-        later step renames them."""
+        later step renames them. `annotations` ({row label: dict}) is optional per-cell
+        provenance (e.g. which mapping rule produced the value); it is copied onto each
+        cell-log record under "mapping" and summarised on the entry. Rules that pass
+        nothing behave exactly as before."""
         step = {"name": step_name, "renamed": {}, "dropped_columns": [], "removed_rows": None, "cells": {}}
         new_entries: list[dict] = []
         labels = column_labels or {}
@@ -237,6 +241,10 @@ class AuditLog:
                     reversibility=reversibility if c in step["cells"] else M.PARTIALLY_REVERSIBLE,
                     cells_changed=n, rows_affected=n, examples=ex,
                 )
+                if annotations:
+                    anns = [annotations[i] for i in idxs if i in annotations]
+                    if anns:
+                        entry["mapping"] = _summarise_annotations(anns)
                 new_entries.append(entry)
                 to_missing = int((a[mask].isna() & b[mask].notna()).sum())
                 from_missing = int((a[mask].notna() & b[mask].isna()).sum())
@@ -253,7 +261,8 @@ class AuditLog:
                     self.cell_log.append({
                         "row": _idx(i), "column": label(c), "original": _scalar(b.at[i]), "new": _scalar(a.at[i]),
                         "rule": step_name, "rule_id": rule_id, "operation": operation, "reason": reason,
-                        "approval": approval, "change_id": entry["id"]})
+                        "approval": approval, "change_id": entry["id"],
+                        **({"mapping": annotations[i]} if annotations and i in annotations else {})})
 
         if new_entries:
             self.steps.append(step)
@@ -316,6 +325,18 @@ class AuditLog:
             "ledger_cells_retained": self.ledger_cells,
             "ledger_truncated": self.ledger_truncated,
         }
+
+
+def _summarise_annotations(anns: list) -> dict:
+    def count(key):
+        out: dict = {}
+        for a in anns:
+            v = a.get(key)
+            if v is not None:
+                out[str(v)] = out.get(str(v), 0) + 1
+        return out
+    return {"cells": len(anns), "categories": count("category"), "origins": count("origin"), "modes": count("mode"),
+            "rule_ids": sorted(count("rule_id")), "reference_versions": sorted(count("reference_version"))}
 
 
 def _idx(i):

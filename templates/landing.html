@@ -80,6 +80,7 @@
           <div class="main-actions">
             <button id="runBtn" class="btn-main" disabled>Clean my data</button>
             <button id="reviewBtn" type="button" class="btn btn-secondary hidden">Review flagged values</button>
+            <button id="mapBtn" type="button" class="btn btn-secondary hidden">Standardize values</button>
           </div>
 
           <dialog id="reviewDialog" class="m-dialog review-dialog" aria-labelledby="reviewTitle">
@@ -91,6 +92,18 @@
             <div class="m-dialog-actions">
               <button type="button" class="btn btn-secondary" id="reviewKeepAll">Keep everything</button>
               <button type="button" class="btn btn-primary" id="reviewDone">Save choices</button>
+            </div>
+          </dialog>
+
+          <dialog id="mapDialog" class="m-dialog review-dialog" aria-labelledby="mapTitle">
+            <div class="m-dialog-body">
+              <h2 id="mapTitle">Standardize values <span class="badge badge-plan-pro">Pro</span></h2>
+              <p>Countries, yes/no flags, currency labels and category spellings can be made consistent. Tick a column to include it. Safe matches are applied automatically; anything uncertain is left unchanged unless you approve it. Nothing happens until you press “Clean my data”, and your original file is never touched.</p>
+            </div>
+            <div class="rv-body" id="mapBody"></div>
+            <div class="m-dialog-actions">
+              <button type="button" class="btn btn-secondary" id="mapClear">Don’t standardize</button>
+              <button type="button" class="btn btn-primary" id="mapDone">Save choices</button>
             </div>
           </dialog>
 

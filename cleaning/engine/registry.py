@@ -10,6 +10,7 @@ from cleaning.engine.dates import DateDetectionRule, NormalizeDateRule, Validate
 from cleaning.engine.email_rules import ValidateEmailRule
 from cleaning.engine.numeric import BasicNumericCleanupRule, NormalizeCurrencyRule, RemoveCurrencySymbolsRule
 from cleaning.engine.phone import NormalizePhoneRule, ValidatePhoneRule
+from cleaning.engine.standardize import StandardizeValuesRule
 from cleaning.engine.text import (CustomReplacementRule, MissingValueRule, NormalizeCaseRule,
                                   NormalizeWhitespaceRule, TrimWhitespaceRule)
 
@@ -17,7 +18,7 @@ _CLASSES = [
     TrimWhitespaceRule, NormalizeWhitespaceRule, BasicNumericCleanupRule, RemoveCurrencySymbolsRule,
     MissingValueRule, DateDetectionRule, DuplicateDetectionRule,
     NormalizeCaseRule, NormalizePhoneRule, ValidatePhoneRule, NormalizeDateRule, ValidateDateRule,
-    ValidateEmailRule, NormalizeCurrencyRule, StandardizeCategoriesRule, CustomReplacementRule,
+    ValidateEmailRule, NormalizeCurrencyRule, StandardizeCategoriesRule, CustomReplacementRule, StandardizeValuesRule,
 ]
 RULE_TYPES: dict[str, type[BaseCleaningRule]] = {c.type: c for c in _CLASSES}
 

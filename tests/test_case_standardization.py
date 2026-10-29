@@ -209,7 +209,8 @@ def test_generic_column_with_yes_no_and_junk_is_not_touched():
 def test_currency_labels_are_brought_to_iso_codes():
     df = pd.DataFrame({"currency_label": ["NGN", "naira", "₦", "USD", "$", "GBP", "£", "NGN/USD", "mystery"]})
     out, _ = clean(df, rules=["currency_label_standardization"])
-    assert out["currency_label"].tolist() == ["NGN", "NGN", "NGN", "USD", "USD", "GBP", "GBP", "NGN/USD", "mystery"]
+    # "$" and "£" are shared by several currencies: never assumed, left exactly as typed
+    assert out["currency_label"].tolist() == ["NGN", "NGN", "NGN", "USD", "$", "GBP", "£", "NGN/USD", "mystery"]
     other = pd.DataFrame({"plan": ["naira", "$", "£"]})
     assert clean(other, rules=["currency_label_standardization"])[0]["plan"].tolist() == ["naira", "$", "£"]
 

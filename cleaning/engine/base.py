@@ -151,6 +151,7 @@ class Flag:
     reason: str                       # stable machine code, e.g. "ambiguous_date"
     message: str                      # human explanation
     suggestion: Any = None            # what the rule would propose, if anything
+    meta: Any = None                  # optional provenance (e.g. the mapping rule behind the suggestion)
 
     def to_dict(self) -> dict:
         return {"row": _jsonable(self.row), "original": _jsonable(self.original), "reason": self.reason,
@@ -174,6 +175,8 @@ class RuleResult:
     flags: list[Flag] = field(default_factory=list)
     metrics: dict = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    # {row label: {...}} per-cell provenance for the audit trail (optional; rules that do not set it are unchanged)
+    provenance: dict = field(default_factory=dict)
 
 
 @dataclass

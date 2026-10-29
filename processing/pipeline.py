@@ -624,6 +624,18 @@ def run_pipeline(
         result["processing_warnings"] = list(result.get("processing_warnings") or []) + [
             {"code": "unexplained_row_count_change", "rows_in": rows_in, "rows_out": rows_out,
              "audited_removed": removed_audited, "unexplained": unexplained}]
+    # ONE figure for "invalid values detected": the integrity report's (computed from validating the upload and the
+    # final file). The summary used to count the number of FINDINGS in the cleaned report instead, so the two
+    # screens disagreed for the same file (e.g. 1 vs 7).
+    _iv = ir.get("invalid_values") or {}
+    if isinstance(_iv.get("detected"), int):
+        _old = cleaning_summary["counts"].get("invalid_values_detected")
+        cleaning_summary["counts"]["invalid_values_detected"] = _iv["detected"]
+        cleaning_summary["counts"]["invalid_values_remaining"] = int(_iv.get("remaining", 0) or 0) if "remaining" in _iv else (
+            sum((_iv.get("by_kind_after") or {}).values()))
+        if isinstance(cleaning_summary.get("text"), str):
+            cleaning_summary["text"] = cleaning_summary["text"].replace(
+                f"Invalid values detected: {_old}", f"Invalid values detected: {_iv['detected']}", 1)
     cleaning_summary["integrity"] = {"status": ir["status"], "fully_clean": ir["fully_clean"], "export_verified": ir["export_verified"]}
     # The result screen may only say "Your data is clean" when BOTH the quality findings and the integrity report agree.
     _review = (cleaning_summary.get("quality_comparison") or {}).get("review")

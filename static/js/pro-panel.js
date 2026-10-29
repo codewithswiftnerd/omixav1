@@ -16,6 +16,7 @@ window.OmixaPro = (function () {
     } catch (e) { /* the free tool never depends on accounts */ }
   })();
   return {
+    isPro: () => isPro,
     profileId: () => (isPro && $('profileSelect') ? $('profileSelect').value : ''),
     showResults: function (summary) {
       const el = $('proResults');

@@ -19,7 +19,7 @@ FREE_RULES = frozenset({
 })
 PRO_RULES = frozenset({
     "normalize_phone", "validate_phone", "normalize_date", "validate_date", "normalize_case",
-    "validate_email", "normalize_currency", "standardize_categories", "custom_replacements",
+    "validate_email", "normalize_currency", "standardize_categories", "custom_replacements", "standardize_values",
 })
 # Product features that are not themselves a rule
 PRO_FEATURES = frozenset({

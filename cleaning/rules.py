@@ -624,10 +624,13 @@ def handle_boolean_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.
     return df, changed
 
 
+# Only labels that name ONE currency. "$", "dollar(s)", "£" and "pound(s)" are shared by several currencies
+# (USD/CAD/AUD..., GBP/EGP/LBP...), so they are never converted here: they stay as typed.
+# (The Pro `standardize_values` rule reports them as ambiguous and lets the user decide.)
 _CURRENCY_LABELS = {
     "ngn": "NGN", "naira": "NGN", "\u20a6": "NGN", "nigerian naira": "NGN",
-    "gbp": "GBP", "\u00a3": "GBP", "pound": "GBP", "pounds": "GBP", "sterling": "GBP", "pound sterling": "GBP",
-    "usd": "USD", "$": "USD", "dollar": "USD", "dollars": "USD", "us dollar": "USD", "us dollars": "USD",
+    "gbp": "GBP", "sterling": "GBP", "pound sterling": "GBP",
+    "usd": "USD", "us dollar": "USD", "us dollars": "USD", "us$": "USD",
     "eur": "EUR", "\u20ac": "EUR", "euro": "EUR", "euros": "EUR",
 }
 _CURRENCY_COLUMN_TOKENS = {"currency", "ccy", "curr"}
@@ -636,8 +639,9 @@ _CURRENCY_COLUMN_TOKENS = {"currency", "ccy", "curr"}
 def handle_currency_label_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.DataFrame, int]:
     """
     A column that NAMES the currency ("currency", "currency_label", "ccy") but spells it five ways
-    (naira / \u20a6 / NGN, \u00a3 / GBP) is brought to ISO codes. Only unambiguous names and symbols are mapped
-    ("$" is read as USD); combined values such as "NGN/USD" and anything unknown are left as typed.
+    (naira / \u20a6 / NGN) is brought to ISO codes. Only labels that name ONE currency are mapped; shared
+    symbols and words ("$", "dollars", "\u00a3", "pounds") are never assumed, and combined values such as
+    "NGN/USD" and anything unknown are left as typed.
     """
     changed = 0
     per_column = {}

@@ -15,6 +15,8 @@ from accounts.entitlements import effective
 from accounts.store import get_store
 from cleaning.engine import FeatureNotAvailable, RuleConfigError, authorize_profile, parse_profile, catalog
 from cleaning.engine import access
+from cleaning.mapping import MAPPERS, build_plan, suggest_for_dataframe, validate_custom_mappings
+from routes.validation import _load as _load_job_frame
 
 cleaning_bp = Blueprint("cleaning", __name__)
 logger = logging.getLogger("omixa.cleaning")
@@ -67,3 +69,47 @@ def validate_profile():
              for c, rs in parsed.columns.items()}
     return jsonify({"valid": True, "name": parsed.name, "execution_order": order,
                     "required_capabilities": sorted(parsed.required_capabilities())}), 200
+
+
+@cleaning_bp.post("/mapping/<job_id>")
+def mapping_preview(job_id):
+    """READ-ONLY preview of value standardisation for an uploaded file. Nothing is written or changed.
+
+    No `column`  -> suggestions for every column that really looks like countries / yes-no flags / currency
+                    labels / inconsistent categories (a column is never assumed from its name alone).
+    With `column` + `category` -> the exact preview for that column in the chosen `output_format`, including
+                    the user's own `mappings` ({"SMB": "Small Business"}), so the UI can show what WILL happen.
+    The job must belong to the caller; the plan is derived server-side (Pro, like the rule itself).
+    """
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"error": "The request body must be an object."}), 400
+    try:
+        access.authorize({"standardize_values"}, is_pro=server_side_is_pro())
+    except FeatureNotAvailable as exc:
+        return jsonify(exc.to_response()), 402
+    df, failure = _load_job_frame(job_id, body)
+    if failure:
+        return failure
+    categories = {c: m.describe() for c, m in MAPPERS.items()}
+    column = body.get("column")
+    if column is None:
+        return jsonify({"job_id": job_id, "categories": categories, "suggestions": suggest_for_dataframe(df)}), 200
+    category = body.get("category")
+    if not isinstance(column, str) or column not in df.columns:
+        return jsonify({"error": "That column is not in this file."}), 404
+    if category not in MAPPERS:
+        return jsonify({"error": "'category' must be one of: " + ", ".join(MAPPERS) + "."}), 400
+    mappings, canonical = body.get("mappings") or {}, body.get("canonical") or []
+    if not isinstance(mappings, dict) or not isinstance(canonical, list) or \
+            not all(isinstance(c, str) for c in canonical) or not isinstance(body.get("confirm_numeric_flags", False), bool):
+        return jsonify({"error": "'mappings' must be an object, 'canonical' a list of text and 'confirm_numeric_flags' true or false."}), 400
+    if len(mappings) > 200 or len(canonical) > 200:
+        return jsonify({"error": "At most 200 mappings or canonical labels."}), 400
+    try:
+        validate_custom_mappings(mappings)
+        plan = build_plan(df[column], column, category, output_format=body.get("output_format"), mappings=mappings,
+                          params={"canonical": canonical, "confirm_numeric_flags": body.get("confirm_numeric_flags", False)})
+    except ValueError as exc:
+        return jsonify({"code": "INVALID_MAPPING", "error": str(exc)}), 400
+    return jsonify({"job_id": job_id, "preview": plan.to_dict(limit=int(min(max(int(body.get("limit", 100) or 100), 1), 200)))}), 200

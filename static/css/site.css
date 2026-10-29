@@ -607,3 +607,15 @@ pre, code { max-width: 100%; overflow-x: auto; }
 .contact-card textarea { resize: vertical; min-height: 140px; }
 .contact-card .alert { margin: 16px 0 0; }
 .contact-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+/* ---- standardize values dialog (reuses the review pop-up look) ---- */
+.mp-bar { display: flex; gap: 10px 14px; align-items: center; flex-wrap: wrap; margin: 4px 0 10px; font-size: .86rem; }
+.mp-bar label { display: inline-flex; gap: 6px; align-items: center; }
+.mp-auto { font-size: .78rem; color: var(--text-secondary); }
+.mp-edit { width: 100%; margin-top: 6px; }
+.mp-add { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 14px; }
+.mp-add input { flex: 1 1 140px; min-width: 0; }
+.mp-custom { font-size: .8rem; color: var(--text-secondary); margin: 4px 0; }
+.mp-item-ok { background: transparent; border: 1px dashed var(--gray-200); }
+.mp-item-ok .rv-val { background: transparent; color: inherit; }
+@media (max-width: 640px) { .mp-add input, .mp-add button { flex: 1 1 100%; min-height: 44px; font-size: 16px; } }

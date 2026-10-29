@@ -188,7 +188,7 @@ class Config:
     PRICE_NGN_MONTHLY = _env_int("OMIXA_PRICE_NGN_MONTHLY", 0)
     PRICE_NGN_ANNUAL = _env_int("OMIXA_PRICE_NGN_ANNUAL", 0)
 
-    # --- Live USD -> NGN conversion (utils/fx.py, docs/ACCESS_GATE_AND_FX.md) ---------------------------------
+    # --- Live USD -> NGN conversion (utils/fx.py, docs/LIVE_NAIRA_PRICING.md) ---------------------------------
     FX_MODE = os.environ.get("OMIXA_FX_MODE", "auto").strip().lower()           # auto | fixed
     FX_URL = os.environ.get("OMIXA_FX_URL", "https://open.er-api.com/v6/latest/USD").strip()
     FX_CACHE_SECONDS = max(300, _env_int("OMIXA_FX_CACHE_SECONDS", 6 * 3600))    # how long a fetched rate is reused
@@ -203,22 +203,6 @@ class Config:
     PAYSTACK_AUTO_PRICE = _env_flag("OMIXA_PAYSTACK_AUTO_PRICE", True)
     PAYSTACK_AUTO_PRICE_TOLERANCE_PERCENT = max(0.0, _env_float("OMIXA_PAYSTACK_AUTO_PRICE_TOLERANCE_PERCENT", 2.0))
 
-    # --- Temporary pre-launch access gate (utils/access_gate.py, docs/ACCESS_GATE_AND_FX.md) ------------------
-    # Off unless OMIXA_ACCESS_GATE_ENABLED=true. When on, EVERY page and API route needs the team password (checked on
-    # the server), except health checks, the Paystack webhook and the metrics endpoint, which have their own
-    # authentication. Both secrets come from the environment only. Misconfiguration fails CLOSED (site stays private).
-    ACCESS_GATE_ENABLED = _env_flag("OMIXA_ACCESS_GATE_ENABLED", False)
-    ACCESS_GATE_PASSWORD = os.environ.get("OMIXA_ACCESS_GATE_PASSWORD", "").strip("\r\n")
-    ACCESS_GATE_SECRET = os.environ.get("OMIXA_ACCESS_GATE_SECRET", "").strip()
-    ACCESS_GATE_SESSION_HOURS = max(1, min(24 * 30, _env_int("OMIXA_ACCESS_GATE_SESSION_HOURS", 12)))
-    # Optional: the instant the gate switches itself off, e.g. 2026-11-13T00:00:00+01:00. Unset = stays on until disabled.
-    ACCESS_GATE_OPEN_AT = os.environ.get("OMIXA_ACCESS_GATE_OPEN_AT", "").strip()
-    # "app" (default): the pages search engines index (routes/seo.py PUBLIC_PAGES), the sitemap and static files stay
-    # public and behave exactly as before, so SEO is untouched; the working app and every API are locked.
-    # "site": everything is locked and robots.txt says Disallow: / (maximum privacy, hides the site from Google).
-    ACCESS_GATE_SCOPE = os.environ.get("OMIXA_ACCESS_GATE_SCOPE", "app").strip().lower()
-    ACCESS_GATE_ATTEMPTS_PER_MINUTE = _env_int("OMIXA_ACCESS_GATE_ATTEMPTS_PER_MINUTE", 6)
-    ACCESS_GATE_ATTEMPTS_PER_HOUR = _env_int("OMIXA_ACCESS_GATE_ATTEMPTS_PER_HOUR", 40)
     PUBLIC_BASE_URL = os.environ.get("OMIXA_PUBLIC_BASE_URL", "").strip().rstrip("/")
     # Hostnames that serve this same app but must not be public: GET/HEAD requests to them get a permanent redirect to
     # PUBLIC_BASE_URL (see utils/canonical_host.py). An allowlist, never derived from the request. Only active when

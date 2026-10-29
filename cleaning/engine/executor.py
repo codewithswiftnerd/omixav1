@@ -38,6 +38,10 @@ SUPERSEDES = {
                             "categorical_standardization"},
     "basic_missing_value_handling": {"missing_token_normalization"},
     "validate_email": set(), "basic_duplicate_detection": set(),
+    # the mapping engine replaces the default country / yes-no / currency-label / category rewrites for its column,
+    # so an automatic rule can never re-write (or undo) the representation the user chose
+    "standardize_values": {"gender_standardization", "country_standardization", "boolean_standardization",
+                           "categorical_standardization", "currency_label_standardization"},
 }
 
 
@@ -128,7 +132,7 @@ def run_profile(df: pd.DataFrame, profile: CleaningProfile, *, audit: Optional[A
                     rule_id=f"OMX-ENG-{rule.type.upper().replace('_', '-')}", operation=rule.operation,
                     confidence=rule.fix_confidence, approval=M.APPROVAL_USER_SELECTED,
                     reason=rule.description, reversibility=M.REVERSIBLE, issue=None,
-                    column_labels={real: labels.get(real, real)})
+                    column_labels={real: labels.get(real, real)}, annotations=res.provenance or None)
             for f in res.flags:
                 next_id += 1
                 col_flags.append((next_id, rule.type, f))
@@ -177,10 +181,13 @@ def _apply_decisions(df, real, col_flags, profile, pcol, audit, labels, uploaded
     by_text: dict[str, list] = {}
     for fid, rtype, f in col_flags:
         # a decision may quote the value as uploaded OR as it looked when the rule flagged it
-        for text in {f.original, _safe_at(uploaded, f.row)}:
-            if isinstance(text, str):
-                by_text.setdefault(text, []).append((fid, f))
+        for text in (f.original, _safe_at(uploaded, f.row)):
+            for key in _decision_keys(text):
+                bucket = by_text.setdefault(key, [])
+                if (fid, f) not in bucket:
+                    bucket.append((fid, f))
     before = series.copy()
+    ann: dict = {}
     for d in mine:
         hits = by_text.get(d.original, [])
         if not hits:
@@ -199,13 +206,35 @@ def _apply_decisions(df, real, col_flags, profile, pcol, audit, labels, uploaded
         for fid, f in hits:
             series.at[f.row] = value
             status[fid] = "accepted"
+            if isinstance(f.meta, dict):
+                edited = d.value is not None and value != f.suggestion
+                ann[f.row] = {**f.meta, "mode": "user_edited" if edited else "user_approved",
+                              "applied_value": value, "origin": f.meta.get("origin", "reference")}
     if audit is not None and status:
         audit.record_step(
             "review_decision", pd.DataFrame({real: before}), pd.DataFrame({real: series}),
             rule_id="OMX-ENG-REVIEW", operation=M.CORRECTION, confidence=None, approval=M.APPROVAL_USER_APPROVED,
             reason="You accepted a flagged value during review.", reversibility=M.REVERSIBLE,
-            column_labels={real: labels.get(real, real)})
+            column_labels={real: labels.get(real, real)}, annotations=ann or None)
     return series, status
+
+
+def _decision_keys(value) -> list:
+    """The text a review decision may use to name a flagged cell. A number is named by how a person writes it
+    (1, 1.0 and "1" all name the integer 1), so a 0/1 column can be reviewed like any other."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, bool) or hasattr(value, "item") and isinstance(getattr(value, "item")(), bool):
+        return []
+    try:
+        num = value.item() if hasattr(value, "item") else value
+    except Exception:
+        return []
+    if isinstance(num, int):
+        return [str(num)]
+    if isinstance(num, float) and num == num:
+        return [repr(num)] + ([str(int(num))] if num == int(num) else [])
+    return []
 
 
 def _safe_at(series, row):
@@ -216,7 +245,11 @@ def _safe_at(series, row):
 
 
 def _unmatched(profile, review, mapping) -> list[dict]:
-    seen = {(r["column"], r["original"]) for r in review} | {(r["column"], r["value_when_flagged"]) for r in review}
+    seen = set()
+    for r in review:
+        for v in (r["original"], r["value_when_flagged"]):
+            for k in _decision_keys(v):
+                seen.add((r["column"], k))
     out = []
     for d in profile.decisions:
         real = mapping.get(d.column)

@@ -166,6 +166,7 @@ async function setFile(f){
     validationConfig = { column_types: {} };
     renderValidation(repJson.validation);
     prepareReview(repJson.validation);
+    prepareMapping();
     setStage('');
     setPhase('review');
     runBtn.disabled = false;
@@ -476,7 +477,7 @@ runBtn.addEventListener('click', async () => {
       method:'POST',
       credentials:'include',
       headers: apiHeaders({'Content-Type':'application/json'}),
-      body: JSON.stringify({ rules, resolutions: selectedResolutions(), leave_as_is: selectedLeaveAsIs(), has_header: hasHeader(), options: reviewOptions(), profile_id: (window.OmixaPro && OmixaPro.profileId()) || undefined })
+      body: JSON.stringify({ rules, resolutions: selectedResolutions(), leave_as_is: selectedLeaveAsIs(), has_header: hasHeader(), options: reviewOptions(), cleaning_profile: mappingProfile(), profile_id: (window.OmixaPro && OmixaPro.profileId()) || undefined })
     });
     let procJson = await procRes.json();
     if(!procRes.ok) throw upgradeAwareError(procRes, procJson, 'processing failed');
@@ -713,6 +714,15 @@ function renderResults(summary){
     detailBlocks.appendChild(block);
   }
 
+  const mapRows = mappingResultRows(summary);
+  if(mapRows.length){
+    const block = document.createElement('div');
+    block.innerHTML = `<h3>Value standardization</h3>` + tableFrom(
+      ['column', 'type', 'changed automatically', 'decided by you', 'still undecided (left as is)'], mapRows)
+      + '<p class="hint">Values that were uncertain or ambiguous are never changed without your approval. They stay exactly as uploaded.</p>';
+    detailBlocks.appendChild(block);
+  }
+
   if(summary.resolutions_applied && summary.resolutions_applied.length){
     const block = document.createElement('div');
     block.innerHTML = `<h3>Your resolution choices</h3>` + tableFrom(
@@ -817,7 +827,7 @@ async function doDownload(){
 
 function resetAll(){
   selectedFile = null; lastJobId = null; preCleanScore = null;
-  resetReview();
+  resetReview(); resetMapping();
   fileNameEl.textContent = ''; fileInput.value = '';
   runBtn.disabled = true;
   results.classList.add('hidden');
@@ -981,4 +991,166 @@ function reviewOptions(){
     }
   });
   return Object.keys(out).length ? { value_actions: out } : undefined;
+}
+
+
+// ---- Standardize values (Pro): countries, yes/no, currency labels, categories ----------------------------
+// Everything shown here comes from POST /api/cleaning/mapping/<job> (read-only). Choices are sent to
+// /api/process as a cleaning_profile with one `standardize_values` rule per ticked column; the server
+// re-validates all of it and decides what is safe. Nothing is applied by this dialog itself.
+const mapBtn = $('mapBtn'), mapDialog = $('mapDialog');
+const MAP_LABEL = { country: 'Countries', boolean: 'Yes / No', currency: 'Currency labels', category: 'Category labels' };
+let mapState = {};   // key -> {column, category, enabled, output_format, formats, custom:[{from,to}], decisions:{original:{choice,value}}, preview}
+const mapKey = (col, cat) => JSON.stringify([col, cat]);
+
+function resetMapping(){ mapState = {}; if(mapBtn) mapBtn.classList.add('hidden'); }
+
+function updateMapButton(){
+  if(!mapBtn) return;
+  const all = Object.values(mapState), on = all.filter(s => s.enabled).length;
+  mapBtn.classList.toggle('hidden', !all.length);
+  mapBtn.textContent = on ? `Standardize values (${on} column${on === 1 ? '' : 's'} chosen)` : 'Standardize values';
+}
+
+async function mapFetch(body){
+  const res = await fetch(base() + '/api/cleaning/mapping/' + lastJobId, { method: 'POST', credentials: 'include',
+    headers: apiHeaders({'Content-Type': 'application/json'}), body: JSON.stringify({ has_header: hasHeader(), ...body }) });
+  const json = await res.json();
+  if(!res.ok) throw new Error(json.error || 'Could not prepare the preview');
+  return json;
+}
+
+async function prepareMapping(){
+  resetMapping();
+  if(!mapBtn || !lastJobId || !(window.OmixaPro && OmixaPro.isPro())) return;
+  try{
+    const json = await mapFetch({});
+    (json.suggestions || []).forEach(s => {
+      mapState[mapKey(s.column, s.category)] = { column: s.column, category: s.category, enabled: false,
+        output_format: s.output_format, formats: s.output_formats, custom: [], decisions: {}, preview: s };
+    });
+    updateMapButton();
+  }catch(_){ /* optional extra: the normal flow never depends on it */ }
+}
+
+async function mapRefresh(key){
+  const st = mapState[key];
+  const mappings = {}; st.custom.forEach(m => { mappings[m.from] = m.to; });
+  try{
+    const json = await mapFetch({ column: st.column, category: st.category, output_format: st.output_format, mappings });
+    st.preview = { ...json.preview, output_formats: st.formats };
+    st.error = '';
+  }catch(err){ st.error = err.message; }
+  renderMapping();
+}
+
+function mapItemHtml(key, it){
+  const k = escHtml(key);
+  if(it.status === 'safe' || it.status === 'user_defined'){
+    return `<div class="rv-item mp-item-ok"><div class="rv-what"><span><mark class="rv-val">${escHtml(it.original)}</mark> → <strong>${escHtml(it.proposed)}</strong></span>
+      <span class="rv-meta">${it.count} cell${it.count === 1 ? '' : 's'} · applied automatically</span><span class="rv-why">${escHtml(it.reason)}</span></div></div>`;
+  }
+  if(it.status === 'not_applicable') return '';
+  const cur = (mapState[key].decisions[String(it.original)] || {}), c = cur.choice || 'later';
+  const label = it.status === 'review' ? 'Needs your approval' : it.status === 'ambiguous' ? 'Ambiguous: not changed' : 'Not recognised: not changed';
+  const opt = (v, t) => `<option value="${v}"${c === v ? ' selected' : ''}>${t}</option>`;
+  const orig = escHtml(JSON.stringify(it.original));
+  return `<div class="rv-item"><div class="rv-what"><span><mark class="rv-val">${escHtml(it.original)}</mark>${it.proposed ? ` → <strong>${escHtml(it.proposed)}</strong>?` : ''}</span>
+      <span class="rv-meta">${it.count} cell${it.count === 1 ? '' : 's'} · ${label}</span><span class="rv-why">${escHtml(it.reason)}</span></div>
+      <div><select class="rv-choice mp-choice" data-key="${k}" data-orig="${orig}" aria-label="What to do with ${escHtml(it.original)}">
+        ${opt('later', 'Decide later (left unchanged)')}${opt('reject', 'Keep as is')}${it.proposed ? opt('accept', 'Use “' + escHtml(it.proposed) + '”') : ''}${opt('edit', 'Type my own…')}
+      </select>${c === 'edit' ? `<input class="mp-edit" data-key="${k}" data-orig="${orig}" maxlength="200" value="${escHtml(cur.value || '')}" aria-label="Your value for ${escHtml(it.original)}">` : ''}</div></div>`;
+}
+
+function renderMapping(){
+  const body = $('mapBody'), states = Object.entries(mapState);
+  if(!states.length){ body.innerHTML = '<p class="hint">No column looks like countries, yes/no flags, currency labels or inconsistent categories.</p>'; return; }
+  body.innerHTML = states.map(([key, st]) => {
+    const p = st.preview, sm = p.summary, k = escHtml(key);
+    const fmt = Object.entries(st.formats).map(([v, t]) => `<option value="${v}"${st.output_format === v ? ' selected' : ''}>${escHtml(t)}</option>`).join('');
+    const items = (p.items || []).map(it => mapItemHtml(key, it)).join('');
+    const custom = st.custom.map((m, i) => `<div class="mp-custom">Your mapping: “${escHtml(m.from)}” → “${escHtml(m.to)}” (this file only)
+      <button type="button" class="link-btn mp-del" data-key="${k}" data-i="${i}">remove</button></div>`).join('');
+    return `<section class="rv-col mp-col"><h3>${escHtml(st.column)} · ${MAP_LABEL[st.category] || escHtml(st.category)}
+        <label class="mp-bar"><input type="checkbox" class="mp-enable" data-key="${k}"${st.enabled ? ' checked' : ''}> Standardize this column</label></h3>
+      <p class="rv-meta">${escHtml(p.column_fit && p.column_fit.reason || '')} ${sm.will_apply} cell${sm.will_apply === 1 ? '' : 's'} would change automatically, ${sm.needs_approval + sm.ambiguous + sm.unrecognised} need a decision or stay as they are.</p>
+      ${Object.keys(st.formats).length > 1 ? `<div class="mp-bar"><label>Write values as <select class="mp-format" data-key="${k}">${fmt}</select></label></div>` : ''}
+      ${st.error ? `<p class="hint" role="alert">${escHtml(st.error)}</p>` : ''}${items || '<p class="hint">Nothing to change in this column.</p>'}${p.items_truncated ? '<p class="hint">Only the most common values are listed.</p>' : ''}
+      ${custom}<div class="mp-add"><input class="mp-from" data-key="${k}" maxlength="200" placeholder="Value in your file" aria-label="Value in your file">
+        <input class="mp-to" data-key="${k}" maxlength="200" placeholder="Should become" aria-label="Should become"><button type="button" class="btn btn-secondary mp-addbtn" data-key="${k}">Add mapping</button></div></section>`;
+  }).join('');
+}
+
+async function openMapping(){
+  if(!mapDialog) return;
+  renderMapping();
+  if(typeof mapDialog.showModal === 'function'){ if(!mapDialog.open) mapDialog.showModal(); } else mapDialog.setAttribute('open', '');
+}
+function closeMapping(){ if(mapDialog.open) mapDialog.close(); else mapDialog.removeAttribute('open'); updateMapButton(); }
+
+if(mapBtn) mapBtn.addEventListener('click', openMapping);
+if(mapDialog){
+  const keyOf = el => el.dataset.key, origOf = el => JSON.parse(el.dataset.orig);
+  mapDialog.addEventListener('change', e => {
+    const t = e.target, key = t.dataset && t.dataset.key; if(!key || !mapState[key]) return;
+    const st = mapState[key];
+    if(t.classList.contains('mp-enable')){
+      st.enabled = t.checked;
+      // one standardization per column: choosing one kind switches the others off
+      if(t.checked) Object.values(mapState).forEach(o => { if(o !== st && o.column === st.column) o.enabled = false; });
+      renderMapping();
+    }else if(t.classList.contains('mp-format')){ st.output_format = t.value; mapRefresh(key); }
+    else if(t.classList.contains('mp-choice')){
+      const o = String(origOf(t));
+      if(t.value === 'later') delete st.decisions[o]; else st.decisions[o] = { choice: t.value, value: (st.decisions[o] || {}).value || '' };
+      renderMapping();
+    }
+  });
+  mapDialog.addEventListener('input', e => {
+    const t = e.target; if(!t.classList || !t.classList.contains('mp-edit')) return;
+    const st = mapState[keyOf(t)], o = String(origOf(t)); if(st && st.decisions[o]) st.decisions[o].value = t.value;
+  });
+  mapDialog.addEventListener('click', e => {
+    const t = e.target.closest && e.target.closest('button'); if(!t) return;
+    if(t.id === 'mapDone' || t.id === 'mapClose') return closeMapping();
+    if(t.id === 'mapClear'){ Object.values(mapState).forEach(s => { s.enabled = false; s.decisions = {}; }); renderMapping(); return closeMapping(); }
+    const key = t.dataset.key, st = key && mapState[key]; if(!st) return;
+    if(t.classList.contains('mp-del')){ st.custom.splice(Number(t.dataset.i), 1); mapRefresh(key); }
+    if(t.classList.contains('mp-addbtn')){
+      const sec = t.closest('.mp-col'), from = sec.querySelector('.mp-from').value.trim(), to = sec.querySelector('.mp-to').value.trim();
+      if(!from || !to){ st.error = 'Fill in both boxes. A mapping to nothing is not allowed.'; return renderMapping(); }
+      st.custom = st.custom.filter(m => m.from.toLowerCase() !== from.toLowerCase()); st.custom.push({ from, to });
+      st.enabled = true; mapRefresh(key);
+    }
+  });
+  mapDialog.addEventListener('close', updateMapButton);
+}
+
+// The cleaning_profile for /api/process; undefined when no column was ticked.
+function mappingProfile(){
+  const columns = {}, decisions = [];
+  Object.values(mapState).filter(s => s.enabled).forEach(st => {
+    const rule = { type: 'standardize_values', category: st.category, output_format: st.output_format };
+    const mappings = {}; st.custom.forEach(m => { mappings[m.from] = m.to; });
+    if(Object.keys(mappings).length) rule.mappings = mappings;
+    columns[st.column] = { rules: [rule] };
+    Object.entries(st.decisions).forEach(([original, d]) => {
+      if(d.choice === 'reject') decisions.push({ column: st.column, original, action: 'reject' });
+      else if(d.choice === 'accept') decisions.push({ column: st.column, original, action: 'accept' });
+      else if(d.choice === 'edit' && d.value && d.value.trim()) decisions.push({ column: st.column, original, action: 'accept', value: d.value.trim() });
+    });
+  });
+  if(!Object.keys(columns).length) return undefined;
+  return decisions.length ? { name: 'Standardize values', columns, decisions } : { name: 'Standardize values', columns };
+}
+
+// Rows for the result screen: straight from the server's per-column report (no figures are recomputed here).
+function mappingResultRows(summary){
+  const eng = summary && summary.cleaning_engine; if(!eng || !eng.columns) return [];
+  const rows = [];
+  Object.entries(eng.columns).forEach(([col, info]) => {
+    const r = (info.rules || []).find(x => x.type === 'standardize_values' && x.status === 'ran'); if(!r) return;
+    rows.push([col, MAP_LABEL[(r.metrics || {}).category] || '', r.changed, info.review_items - info.review_pending, info.review_pending]);
+  });
+  return rows;
 }
