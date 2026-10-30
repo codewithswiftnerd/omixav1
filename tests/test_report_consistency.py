@@ -60,3 +60,36 @@ class ReportConsistencyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ImputationReportingTests(unittest.TestCase):
+    """A fill the user approved through a resolution must be reported everywhere, and match the file."""
+
+    def setUp(self):
+        import utils.security as security
+        security._hits.clear()
+        _pro.ProTests.setUp(self)
+        rows = ["Id,Age,Score,City"] + [
+            f"{i},{'' if i % 5 == 0 else 20 + i % 30},{'' if i % 8 == 0 else 50 + i % 40},{'' if i % 7 == 0 else 'Lagos'}"
+            for i in range(1, 41)]
+        r = self.c.post("/api/upload/", data={"file": (io.BytesIO(("\n".join(rows) + "\n").encode()), "m.csv")},
+                        content_type="multipart/form-data")
+        self.job = r.get_json()["job_id"]
+        res = [{"column": c, "issue": "missing_values", "choice": "impute"} for c in ("Age", "Score")]
+        self.s = self.c.post(f"/api/process/{self.job}", json={"resolutions": res}).get_json()["summary"]
+        raw = self.c.get(f"/api/download/{self.job}").data.decode("utf-8-sig")
+        self.out = pd.read_csv(io.StringIO(raw), dtype=str, keep_default_na=False)
+
+    def test_imputation_counts_match_everywhere(self):
+        ir = self.s["integrity_report"]
+        self.assertEqual(ir["imputation"]["estimated"], 13)                       # 8 Age + 5 Score
+        self.assertEqual(self.s["cleaning_summary"]["counts"]["missing_values_filled"], 13)
+        self.assertEqual(ir["missing_values"]["filled"], 13)                      # not double counted
+        self.assertTrue(any("filled with an estimate" in w for w in ir["warnings"]))
+
+    def test_estimates_are_in_the_audit_as_user_approved_and_untouched_blanks_stay_blank(self):
+        entries = [e for e in self.s["audit"]["entries"] if e["rule"] == "resolution:missing_values:impute"]
+        self.assertEqual(sorted(e["cells_changed"] for e in entries), [5, 8])
+        self.assertTrue(all(e["approval"] == "user_approved" for e in entries))
+        self.assertEqual((self.out["Age"] == "").sum() + (self.out["Score"] == "").sum(), 0)
+        self.assertEqual((self.out["City"] == "").sum(), 5)                        # never invented without a choice

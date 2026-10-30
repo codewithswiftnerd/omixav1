@@ -162,6 +162,11 @@ class Config:
     # behind a TLS-terminating proxy).
     FORCE_HTTPS = _env_flag("OMIXA_FORCE_HTTPS", _IS_PRODUCTION)
 
+    # When on, password (email + password) sign-ins are refused until Firebase reports the address as verified.
+    # Off by default: the sign-in page must first send the verification email (Firebase sendEmailVerification),
+    # otherwise nobody with a password account could ever get in. Google sign-in is unaffected.
+    REQUIRE_VERIFIED_EMAIL = _env_flag("OMIXA_REQUIRE_VERIFIED_EMAIL", False)
+
     # --- Plans -----------------------------------------------------------
     # Free users get the whole cleaning engine; the limits below are the only caps.
     FREE_MAX_UPLOAD_MB = int(os.environ.get("OMIXA_FREE_MAX_UPLOAD_MB", "10"))

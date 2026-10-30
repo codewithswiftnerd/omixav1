@@ -35,3 +35,8 @@ RAILWAY_ENV_VARS*
 *.pem
 *.key
 secrets/
+
+# SQLite runtime files (WAL mode side files are not matched by *.db)
+*.db-shm
+*.db-wal
+*.db-journal

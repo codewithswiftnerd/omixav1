@@ -79,7 +79,7 @@ def _resolution_totals(resolution_log: dict) -> dict:
         key = issue_to_key.get(item.get("issue"))
         if key:
             totals[key] += item.get("changed", 0)
-        elif item.get("issue") == "high_missingness" and item.get("choice") == "fill_anyway":
+        elif item.get("issue") in ("missing_values", "high_missingness") and item.get("choice") in ("impute", "fill_anyway"):
             totals["missing_values_filled"] += item.get("changed", 0)
     return totals
 

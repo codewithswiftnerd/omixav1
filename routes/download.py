@@ -33,7 +33,7 @@ def download_file(job_id):
         return jsonify({"error": "Invalid job_id"}), 400
 
     _row = metadata_db.get_job(job_id)
-    if _row and _row.get("batch_id"):
+    if _row and _row.get("batch_id") and owns(_row.get("session_hash")):
         # Batch outputs are kept for the batch retention period and downloaded from the batch,
         # so a single download here must not delete them.
         return jsonify({"error": "This file belongs to a batch. Download it from the batch page."}), 409

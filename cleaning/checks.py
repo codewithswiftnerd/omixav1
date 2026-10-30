@@ -453,6 +453,20 @@ def check_invalid_email(ctx: CheckContext) -> list[dict]:
 _E164_RE = re.compile(r"^\+\d{8,15}$")
 
 
+_PLACEHOLDER_RUNS = ("1234567", "7654321", "0123456", "9876543")
+
+
+def _placeholder_phone_mask(values: pd.Series) -> pd.Series:
+    """True for numbers that look like filler rather than real lines: the same number appearing three or more
+    times in one column, an obvious run (1234567), or a number made of one or two distinct digits. Judged on the
+    digits alone, so 0801234567 and +234 801 234 567 count as the same number. A signal for review, never a fix."""
+    digits = values.astype(str).str.replace(r"\D", "", regex=True)
+    repeated = digits.map(digits.value_counts()) >= 3
+    runs = digits.map(lambda d: any(r in d for r in _PLACEHOLDER_RUNS))
+    flat = digits.map(lambda d: len(d) >= 7 and len(set(d)) <= 2)
+    return (repeated | runs | flat) & (digits.str.len() > 0)
+
+
 def check_suspicious_phone(ctx: CheckContext) -> list[dict]:
     """Offer the country-confirmed phone standardization for any phone column that is not
     already in international (+<digits>) form, not only for odd digit counts. The country is
@@ -467,10 +481,16 @@ def check_suspicious_phone(ctx: CheckContext) -> list[dict]:
         digits = values.str.replace(r"\D", "", regex=True).str.len()
         odd_length = int(((digits < 7) | (digits > 15)).sum())
         not_intl = int((~values.astype(str).str.strip().str.match(_E164_RE)).sum())
+        placeholders = int(_placeholder_phone_mask(values).sum())
+        if placeholders and not not_intl:
+            not_intl = placeholders
         if not_intl:
             detail = f"{not_intl} value(s) are not in international (+country code) format."
             if odd_length:
                 detail += f" {odd_length} of them have an unusual number of digits for a phone number."
+            if placeholders:
+                detail += (f" {placeholders} look like placeholders (the same number repeated, or an obvious run "
+                           "such as 1234567), not real phone numbers.")
             raw = {
                 "column": col, "issue": "suspicious_phone_format",
                 # Digit-count problems are scored exactly as before. A column whose numbers merely lack a
@@ -482,7 +502,10 @@ def check_suspicious_phone(ctx: CheckContext) -> list[dict]:
                               "standardize matching numbers to +country-code form; values that don't match "
                               "are kept exactly as they are and listed for review.",
             }
-            if not odd_length:
+            if placeholders:
+                raw["affected"] = max(raw["affected"], placeholders)
+                raw["suggestion"] += " Placeholder-looking numbers are never altered or guessed; find the real numbers in your source."
+            elif not odd_length:
                 raw["advisory"] = True
             out.append(raw)
     return out
@@ -591,6 +614,9 @@ def check_impossible_age(ctx: CheckContext) -> list[dict]:
                 parts.append(f"{len(negative)} negative (invalid)")
             if len(too_high):
                 parts.append(f"{len(too_high)} above 120 (suspicious)")
+            zeros = int((v == 0).sum())
+            if zeros >= 3:
+                parts.append(f"{zeros} are exactly 0 (often a placeholder for 'unknown', not a real age)")
             out.append({
                 "column": col, "issue": "impossible_age", "affected": int(len(bad)), "population": int(len(v)),
                 "invalid_count": int(len(negative)), "suspicious_count": int(len(too_high)),

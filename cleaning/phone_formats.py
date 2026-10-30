@@ -226,6 +226,16 @@ COUNTRY_ALIASES: dict[str, str] = {
 }
 
 
+def split_country_spec(spec):
+    """'NG' -> ('NG', False); 'NG:local' -> ('NG', True). Anything else -> (None, False)."""
+    if not isinstance(spec, str):
+        return None, False
+    code, _, fmt = spec.strip().upper().partition(":")
+    if code not in COUNTRIES or fmt not in ("", "LOCAL"):
+        return None, False
+    return code, fmt == "LOCAL"
+
+
 def normalize_phone(raw_value: str, country_code: str) -> str | None:
     """
     Tries to normalize a single phone value to "+<dial_code><national
@@ -243,6 +253,7 @@ def normalize_phone(raw_value: str, country_code: str) -> str | None:
     """
     import re
 
+    country_code, local = split_country_spec(country_code)
     country = COUNTRIES.get(country_code)
     if not country or not isinstance(raw_value, str):
         return None
@@ -260,7 +271,13 @@ def normalize_phone(raw_value: str, country_code: str) -> str | None:
     #    rules. Anything else (e.g. "+234 0803...", a trunk 0 left inside) is left for review.
     stripped = raw_value.strip()
     if stripped.startswith("+") or digits.startswith("00"):
-        return _international_e164(digits if stripped.startswith("+") else digits[2:])
+        e164 = _international_e164(digits if stripped.startswith("+") else digits[2:])
+        if local:
+            # Local format only rewrites THIS country's numbers; a foreign number keeps its international form.
+            if e164 and e164.startswith("+" + dial):
+                return (trunk or "") + e164[1 + len(dial):]
+            return e164
+        return e164
 
     # 1) Already carries this country's dial code.
     if digits.startswith(dial) and lo <= len(digits) - len(dial) <= hi:
@@ -278,6 +295,8 @@ def normalize_phone(raw_value: str, country_code: str) -> str | None:
     else:
         return None
 
+    if local:
+        return f"{trunk or ''}{national}"
     return f"+{dial}{national}"
 
 

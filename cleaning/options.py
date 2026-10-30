@@ -103,10 +103,12 @@ def _phone_country(raw):
     from cleaning.phone_formats import COUNTRIES
 
     def one(v, _c=None):
-        code = v.strip().upper() if isinstance(v, str) else v
-        if code not in COUNTRIES:
-            raise OptionsError("'phone_country' must be a supported ISO country code such as NG")
-        return code
+        from cleaning.phone_formats import split_country_spec
+        code, local = split_country_spec(v)
+        if code is None:
+            raise OptionsError("'phone_country' must be a supported ISO country code such as NG, "
+                               "or NG:local to keep numbers in local format (0803...)")
+        return code + (":local" if local else "")
     if isinstance(raw, dict):
         return _column_map(raw, "phone_country", one)
     return one(raw)

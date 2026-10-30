@@ -8,12 +8,14 @@ server-side subscription record.
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 from typing import Callable, Optional
 
 from flask import jsonify, session
 
 from accounts.store import get_store, store_error
+from config import Config
 
 _verifier: Optional[Callable[[str], dict]] = None
 
@@ -52,14 +54,25 @@ def sign_in(token: str):
         claims = verify_id_token(token)
     except ValueError as exc:
         return None, (jsonify({"error": str(exc)}), 401)
+    if Config.REQUIRE_VERIFIED_EMAIL and claims.get("provider") == "password" and not claims.get("email_verified"):
+        return None, (jsonify({"error": "Please verify your email address before signing in."}), 403)
     uid, now = claims["uid"], time.time()
     existing = store.get_user(uid)
     fields = {"email": claims.get("email"), "name": claims.get("name"), "last_seen": now,
               "provider": claims.get("provider")}
+    if "email_verified" in claims:
+        fields["email_verified"] = bool(claims["email_verified"])
     if existing is None:
         fields.update(created_at=now, plan="free", subscription_status="free")
     store.upsert_user(uid, fields)
+    # Signing in starts a fresh identity: nothing elevated or pre-login (admin flag, CSRF token) may carry over.
+    # The anonymous "sid" is kept on purpose, because it owns the visitor's in-progress jobs.
+    for stale in ("is_admin", "admin_at", "admin_seen", "csrf_token"):
+        session.pop(stale, None)
     session["uid"] = uid
+    # Server-side revocation: the cookie is a signed client-side blob, so it carries the user's current
+    # session epoch and is rejected once sign_out() rotates that epoch (see current_user_record).
+    session["ep"] = ((existing or {}).get("session_epoch")) or ""
     session.permanent = True
     if existing is None:
         _welcome_new_account(claims)
@@ -77,7 +90,17 @@ def _welcome_new_account(claims: dict) -> None:
 
 
 def sign_out():
-    session.pop("uid", None)
+    """Ends this browser's sign-in AND revokes every copy of the cookie: the user's session epoch is rotated, so a
+    stolen or replayed cookie stops working immediately instead of living out its 12 hours."""
+    uid = session.pop("uid", None)
+    session.pop("ep", None)
+    if uid:
+        try:
+            store = get_store()
+            if store is not None:
+                store.upsert_user(uid, {"session_epoch": secrets.token_hex(8)})
+        except Exception:
+            logging.getLogger("omixa.auth").error("could not rotate session epoch on sign-out")
 
 
 def current_uid() -> Optional[str]:
@@ -96,7 +119,8 @@ def current_user_record():
         user = store.get_user(uid)
     except Exception:
         return None, (jsonify({"error": "Accounts are temporarily unavailable."}), 503)
-    if user is None:
+    if user is None or (user.get("session_epoch") or "") != (session.get("ep") or ""):
         session.pop("uid", None)
+        session.pop("ep", None)
         return None, (jsonify({"error": "Please sign in.", "auth_required": True}), 401)
     return user, None

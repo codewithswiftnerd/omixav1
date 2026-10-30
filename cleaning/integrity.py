@@ -55,6 +55,7 @@ def build_integrity_report(
     cleaned_labels: dict, missing_tracking: dict, audit, details: dict, rules_applied: list,
     duplicates_before: dict, duplicates_after: dict, quality_before: dict, quality_after: dict,
     export_verification: Optional[dict], removed_with_rows: Optional[dict] = None,
+    resolution_imputed: Optional[dict] = None,
 ) -> dict:
     before = _by_column(validation_before)
     after = _by_column(validation_after, lambda c: cleaned_labels.get(c, c))
@@ -134,6 +135,10 @@ def build_integrity_report(
     labelled = sum(int(v.get("filled", 0)) for v in per_col_fill.values() if v.get("action") == "unknown_category")
     estimated = sum(int(v.get("filled", 0)) for v in per_col_fill.values()
                     if v.get("action") in ("median_imputation", "mode_imputation"))
+    # Estimates the user approved through a resolution ("Fill with estimates") are imputation too. They were logged
+    # separately from the fill-missing rule and used to be missing from this report, which then claimed 0.
+    resolution_estimated = sum(int(n) for n in (resolution_imputed or {}).values())
+    estimated += resolution_estimated
     labelled_unresolved = min(labelled, int(tot["after"]["unresolved"]))
     unresolved_original = int(tot["after"]["unresolved"]) - labelled_unresolved
     if unresolved_original:

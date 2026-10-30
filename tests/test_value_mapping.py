@@ -255,6 +255,19 @@ def test_custom_mappings_do_not_leak_into_other_runs_or_files():
     assert build_plan(S(["SMB"]), "c", "category").items[0].status == "canonical"
 
 
+def test_chained_custom_mappings_are_rejected_as_ambiguous():
+    with pytest.raises(RuleConfigError, match="both a target"):
+        StandardizeValuesRule({"category": "category", "mappings": {"SMB": "Small Business", "Small Business": "Big"}})
+    # the same label as source and target of ONE mapping, or two sources sharing a target, are fine
+    StandardizeValuesRule({"category": "category", "mappings": {"SMB": "Small Business", "Small-Business": "Small Business"}})
+
+
+def test_build_plan_rejects_non_text_category_and_format_instead_of_crashing():
+    for kw in ({"category": ["country"]}, {"category": "country", "output_format": ["x"]}):
+        with pytest.raises(ValueError):
+            build_plan(S(["Ghana"]), "c", kw["category"], output_format=kw.get("output_format"))
+
+
 def test_custom_mapping_validation():
     with pytest.raises(RuleConfigError, match="two different"):
         StandardizeValuesRule({"category": "category", "mappings": {"SMB": "A", "smb": "B"}})
@@ -425,3 +438,12 @@ def test_suggestions_preview_shape_and_json_serialisable():
     item = next(i for i in c["items"] if i["original"] == "England")
     assert item["needs_approval"] is True and item["applied_automatically"] is False and item["reason"]
     assert any(s["category"] == "boolean" for s in sug)
+
+
+def test_suggestions_skip_numeric_and_identifier_columns_but_offer_a_bare_zero_one_for_review():
+    df = pd.DataFrame({"id": range(40), "amount": [i * 1.5 for i in range(40)], "flag": [0, 1] * 20,
+                       "name": [f"person {i}" for i in range(40)], "Country": ["GH", "Nigeria"] * 20})
+    got = {(s["column"], s["category"]) for s in suggest_for_dataframe(df)}
+    assert got == {("flag", "boolean"), ("Country", "country")}
+    flag = next(s for s in suggest_for_dataframe(df) if s["column"] == "flag")
+    assert flag["summary"]["needs_approval"] == 40 and flag["summary"]["will_apply"] == 0     # never automatic

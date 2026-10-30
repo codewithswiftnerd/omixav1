@@ -98,8 +98,14 @@ def mapping_preview(job_id):
     category = body.get("category")
     if not isinstance(column, str) or column not in df.columns:
         return jsonify({"error": "That column is not in this file."}), 404
-    if category not in MAPPERS:
+    if not isinstance(category, str) or category not in MAPPERS:
         return jsonify({"error": "'category' must be one of: " + ", ".join(MAPPERS) + "."}), 400
+    fmt, limit = body.get("output_format"), body.get("limit", 100)
+    if fmt is not None and not isinstance(fmt, str):
+        return jsonify({"error": "'output_format' must be text."}), 400
+    if isinstance(limit, bool) or not isinstance(limit, int):
+        return jsonify({"error": "'limit' must be a whole number."}), 400
+    limit = min(max(limit, 1), 200)
     mappings, canonical = body.get("mappings") or {}, body.get("canonical") or []
     if not isinstance(mappings, dict) or not isinstance(canonical, list) or \
             not all(isinstance(c, str) for c in canonical) or not isinstance(body.get("confirm_numeric_flags", False), bool):
@@ -108,8 +114,9 @@ def mapping_preview(job_id):
         return jsonify({"error": "At most 200 mappings or canonical labels."}), 400
     try:
         validate_custom_mappings(mappings)
-        plan = build_plan(df[column], column, category, output_format=body.get("output_format"), mappings=mappings,
-                          params={"canonical": canonical, "confirm_numeric_flags": body.get("confirm_numeric_flags", False)})
+        plan = build_plan(df[column], column, category, output_format=fmt, mappings=mappings,
+                          params={"canonical": canonical, "confirm_numeric_flags": body.get("confirm_numeric_flags", False)},
+                          track_rows=False)
     except ValueError as exc:
         return jsonify({"code": "INVALID_MAPPING", "error": str(exc)}), 400
-    return jsonify({"job_id": job_id, "preview": plan.to_dict(limit=int(min(max(int(body.get("limit", 100) or 100), 1), 200)))}), 200
+    return jsonify({"job_id": job_id, "preview": plan.to_dict(limit=limit)}), 200

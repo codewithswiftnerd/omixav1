@@ -17,6 +17,7 @@ from __future__ import annotations
 import hmac
 import hashlib
 import secrets
+import time
 
 from flask import session, request
 from werkzeug.security import check_password_hash
@@ -71,8 +72,23 @@ def owns(owner_hash: str | None) -> bool:
 # --------------------------------------------------------------------
 
 
+ADMIN_ABSOLUTE_SECONDS = 60 * 60   # an admin sign-in never lasts more than an hour
+ADMIN_IDLE_SECONDS = 20 * 60       # ...or 20 minutes without activity
+
+
 def is_admin() -> bool:
-    return bool(session.get("is_admin"))
+    """Admin flag plus server-checked lifetimes. The session cookie is signed client-side, so without these a
+    copied admin cookie would stay valid for the full 12-hour cookie lifetime, even after logout."""
+    if not session.get("is_admin"):
+        return False
+    now = time.time()
+    started, seen = session.get("admin_at"), session.get("admin_seen")
+    if not isinstance(started, (int, float)) or not isinstance(seen, (int, float)) \
+            or now - started > ADMIN_ABSOLUTE_SECONDS or now - seen > ADMIN_IDLE_SECONDS:
+        logout_admin()
+        return False
+    session["admin_seen"] = now
+    return True
 
 
 def attempt_admin_login(username: str, password: str) -> bool:
@@ -99,13 +115,14 @@ def attempt_admin_login(username: str, password: str) -> bool:
     session.clear()
     session["sid"] = secrets.token_urlsafe(32)
     session["is_admin"] = True
+    session["admin_at"] = session["admin_seen"] = time.time()
     session.permanent = True
     return True
 
 
 def logout_admin() -> None:
-    session.pop("is_admin", None)
-    session.pop("csrf_token", None)
+    for k in ("is_admin", "admin_at", "admin_seen", "csrf_token"):
+        session.pop(k, None)
 
 
 # --------------------------------------------------------------------

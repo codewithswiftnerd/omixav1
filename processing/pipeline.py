@@ -600,7 +600,7 @@ def run_pipeline(
         missing_tracking=result["missing_tracking"], audit=audit, details=change_log["details"],
         rules_applied=change_log["rules_applied"], duplicates_before=duplicates_before, duplicates_after=duplicates_after,
         quality_before=quality_before, quality_after=post_report, export_verification=export_verification,
-        removed_with_rows=removed_with_rows)
+        removed_with_rows=removed_with_rows, resolution_imputed=resolution_log.get("imputed"))
     ir = result["integrity_report"]
     # Row-count reconciliation: every record that left the dataset must be explained by an audited,
     # rule-attributed removal. A mismatch is never accepted silently (see docs/CLEANING_ENGINE.md).

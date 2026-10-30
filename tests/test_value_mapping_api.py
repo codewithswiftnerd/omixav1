@@ -70,7 +70,10 @@ class ValueMappingApiTests(unittest.TestCase):
         bad = [{"column": "Nope", "category": "country"}, {"column": "Country", "category": "planets"},
                {"column": "Country", "category": "country", "output_format": "alpha9"},
                {"column": "Segment", "category": "category", "mappings": {"SMB": ""}},
-               {"column": "Segment", "category": "category", "mappings": "x"}]
+               {"column": "Segment", "category": "category", "mappings": "x"},
+               {"column": "Country", "category": ["country"]}, {"column": "Country", "category": "country", "output_format": ["x"]},
+               {"column": "Country", "category": "country", "limit": "abc"}, {"column": "Country", "category": "country", "limit": [1]},
+               {"column": "Segment", "category": "category", "mappings": {"SMB": "A", "A": "B"}}]
         for body in bad:
             r = c.post(f"/api/cleaning/mapping/{job}", json=body)
             self.assertIn(r.status_code, (400, 404), body)

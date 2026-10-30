@@ -42,6 +42,13 @@ def validate_custom_mappings(mappings: Optional[dict]) -> dict:
             raise ValueError(f"'{src}' is mapped to two different values.")
         seen[k] = dst
         out[src] = dst
+    # A target that is also a source mapped elsewhere would give different answers for the same text
+    # depending on which cell it is (is "Small Business" final, or does it become "Big"?). Make the user decide.
+    for src, dst in out.items():
+        k = _ckey(dst)
+        if k in seen and k != _ckey(src) and _ckey(seen[k]) != k:
+            raise ValueError(f"'{dst}' is both a target ('{src}' -> '{dst}') and a value you map to something else. "
+                             "Map each value once, straight to its final label.")
     return out
 
 
@@ -132,28 +139,42 @@ def _distinct(series: pd.Series) -> dict:
     return out
 
 
+def _distinct_counts(series: pd.Series) -> dict:
+    """Same shape as _distinct but vectorised and WITHOUT row numbers: enough for analysis and previews."""
+    vc = series.value_counts(dropna=True)
+    out = {}
+    for raw, n in vc.items():
+        if is_blank(raw):
+            continue
+        out[(type(raw).__name__, raw if isinstance(raw, (str, int, float, bool)) else str(raw))] = [raw, int(n)]
+    return out
+
+
 def build_plan(series: pd.Series, column: str, category: str, *, output_format: Optional[str] = None,
-               mappings: Optional[dict] = None, params: Optional[dict] = None) -> MappingPlan:
-    if category not in MAPPERS:
+               mappings: Optional[dict] = None, params: Optional[dict] = None, track_rows: bool = True) -> MappingPlan:
+    if not isinstance(category, str) or category not in MAPPERS:
         raise ValueError(f"Unknown mapping category '{category}'.")
     mapper = MAPPERS[category]
     fmt = output_format or mapper.default_output
-    if fmt not in mapper.output_formats:
+    if not isinstance(fmt, str) or fmt not in mapper.output_formats:
         raise ValueError(f"'{fmt}' is not an output format for {category}. Choose one of: {', '.join(mapper.output_formats)}.")
     params = dict(params or {})
     custom = validate_custom_mappings(mappings)
     params["mappings"] = custom
     custom_by_key = {_ckey(s): (s, d) for s, d in custom.items()}
 
-    distinct = _distinct(series)
+    # track_rows=False (previews/suggestions) counts values with pandas; only applying a plan needs row labels.
+    distinct = _distinct(series) if track_rows else _distinct_counts(series)
+    size = (lambda rows: len(rows)) if track_rows else (lambda n: n)
     counts: dict = {}
     for raw, rows in distinct.values():
-        counts[raw] = counts.get(raw, 0) + len(rows)
+        counts[raw] = counts.get(raw, 0) + size(rows)
     analysis = mapper.analyze(counts, column, params)
 
     items = []
     for raw, rows in distinct.values():
-        n = len(rows)
+        n = size(rows)
+        rows = rows if track_rows else []
         origin = "reference"
         k = _ckey(raw) if isinstance(raw, str) else None
         if k is not None and k in custom_by_key:
@@ -233,19 +254,37 @@ def apply_plan(series: pd.Series, plan: MappingPlan):
     return ApplyResult(out, flags, prov, stats)
 
 
+MAX_DISTINCT_FOR_SUGGESTIONS = 5000
+
+
+def _candidate_categories(s: pd.Series) -> tuple:
+    """Cheap, conservative pre-filter so a wide or tall file is not scanned four times per column."""
+    if pd.api.types.is_bool_dtype(s):
+        return ("boolean",)
+    if pd.api.types.is_numeric_dtype(s):
+        nz = s.dropna()
+        if len(nz) and nz.isin([0, 1]).all():
+            return ("boolean",)                       # only a 0/1 column could possibly be a flag
+        return ()
+    if not (s.dtype == object or pd.api.types.is_string_dtype(s)):
+        return ()
+    if s.nunique(dropna=True) > MAX_DISTINCT_FOR_SUGGESTIONS:
+        return ()                                     # identifiers / free text, not labels
+    return ("country", "currency", "boolean", "category")
+
+
 def suggest_for_dataframe(df: pd.DataFrame, *, max_columns: int = 200, preview: int = 8) -> list[dict]:
     """Which columns could use which mapping, with a preview. Read-only. Strong evidence only:
     nothing is suggested for a column that does not look like the category."""
     out = []
     for col in list(df.columns)[:max_columns]:
         s = df[col]
-        if not (s.dtype == object or pd.api.types.is_string_dtype(s) or pd.api.types.is_bool_dtype(s)
-                or pd.api.types.is_numeric_dtype(s)):
+        if isinstance(s, pd.DataFrame):               # duplicate column names: skip rather than guess
             continue
         found = []
-        for cat in ("country", "currency", "boolean", "category"):
+        for cat in _candidate_categories(s):
             try:
-                plan = build_plan(s, str(col), cat)
+                plan = build_plan(s, str(col), cat, track_rows=False)
             except ValueError:
                 continue
             if not plan.analysis.applicable:

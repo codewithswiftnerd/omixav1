@@ -99,9 +99,17 @@ RESOLUTION_OPTIONS: dict[str, list[dict]] = {
     # Each option's "group" is the region, used by the frontend to
     # render a grouped <select> instead of one long flat list.
     "suspicious_phone_format": [
-        {"id": code, "label": f'{c["name"]} (+{c["dial_code"]})', "group": c["region"],
-         "description": f'Normalize to +{c["dial_code"]}-prefixed numbers wherever the digit count matches {c["name"]}\'s format; anything that doesn\'t match is left as-is.'}
+        opt
         for code, c in COUNTRIES.items()
+        for opt in (
+            {"id": code, "label": f'{c["name"]} (+{c["dial_code"]})', "group": c["region"],
+             "description": f'Normalize to +{c["dial_code"]}-prefixed numbers wherever the digit count matches {c["name"]}\'s format; anything that doesn\'t match is left as-is.'},
+            {"id": f"{code}:local", "label": f'{c["name"]}, local format ({c["trunk_prefix"] or "no prefix"}\u2026)',
+             "group": c["region"],
+             "description": f'Write {c["name"]} numbers WITHOUT the +{c["dial_code"]} country code, in local form'
+                            + (f' starting with {c["trunk_prefix"]}' if c["trunk_prefix"] else "")
+                            + '. Numbers from other countries keep their international form; anything that doesn\'t match is left as-is.'},
+        )
     ],
 }
 

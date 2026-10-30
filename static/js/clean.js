@@ -353,9 +353,14 @@ function renderRecommendations(recommendations){
         choiceHtml = `
           <select class="resolve-select" id="${selectId}"
                   data-column="${escHtml(f.column || '')}" data-issue="${escHtml(f.issue)}">
-            <option value="skip" selected>Leave as is (no change)</option>${opts}
+            <option value="skip">Leave as is (no change)</option>${opts}
           </select>`;
       }
+
+      // Impossible ages (below 0 or above 120) are never real values: start on "blank them" so they come out of
+      // the cleaned file unless the user changes it. Every other finding still starts on "Leave as is".
+      const preselect = f.issue === 'impossible_age' ? 'blank_invalid' : 'skip';
+      choiceHtml = choiceHtml.replace(`<option value="${preselect}">`, `<option value="${preselect}" selected>`);
 
       item.innerHTML = `
         <span class="badge ${escHtml(f.severity)}">${escHtml(f.severity)}</span>
@@ -1063,7 +1068,7 @@ function mapItemHtml(key, it){
 }
 
 function renderMapping(){
-  const body = $('mapBody'), states = Object.entries(mapState);
+  const body = $('mapBody'), states = Object.entries(mapState), keepTop = body.scrollTop;
   if(!states.length){ body.innerHTML = '<p class="hint">No column looks like countries, yes/no flags, currency labels or inconsistent categories.</p>'; return; }
   body.innerHTML = states.map(([key, st]) => {
     const p = st.preview, sm = p.summary, k = escHtml(key);
@@ -1079,6 +1084,7 @@ function renderMapping(){
       ${custom}<div class="mp-add"><input class="mp-from" data-key="${k}" maxlength="200" placeholder="Value in your file" aria-label="Value in your file">
         <input class="mp-to" data-key="${k}" maxlength="200" placeholder="Should become" aria-label="Should become"><button type="button" class="btn btn-secondary mp-addbtn" data-key="${k}">Add mapping</button></div></section>`;
   }).join('');
+  body.scrollTop = keepTop;   // re-rendering must not throw the reader back to the top
 }
 
 async function openMapping(){

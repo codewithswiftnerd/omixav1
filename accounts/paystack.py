@@ -13,6 +13,7 @@ import logging
 import time
 
 import requests
+from urllib.parse import quote as urlquote
 
 from accounts.entitlements import PLAN_DAYS, PRO_ANNUAL, PRO_MONTHLY
 from config import Config
@@ -72,7 +73,7 @@ class PaystackClient:
         return self._call("POST", "/transaction/initialize", json=payload)
 
     def verify(self, reference):
-        return self._call("GET", f"/transaction/verify/{reference}")
+        return self._call("GET", f"/transaction/verify/{urlquote(str(reference), safe='')}")
 
     def fetch_plan(self, plan_code):
         return self._call("GET", f"/plan/{plan_code}")
@@ -142,15 +143,28 @@ def ensure_plan_price(client, plan: str) -> str:
         return "failed"
 
 
-def _resolve_plan(data: dict) -> str | None:
+def _resolve_plan(data: dict, store=None) -> str | None:
+    """Which Omixa plan a charge pays for.
+
+    Trusted sources only: (1) the Paystack plan code, which maps to a plan we configured; (2) a checkout WE
+    started: the reference must exist in our payments record, initiated for the same user and plan.
+    Free-form `metadata` is never enough on its own: anyone holding the (public) Paystack key can create a
+    transaction with arbitrary metadata and a tiny amount, and the genuine webhook for it would be signed.
+    """
     plan_obj = data.get("plan_object") or data.get("plan") or {}
     code = plan_obj.get("plan_code") if isinstance(plan_obj, dict) else None
     plan = plan_for_code(code)
     if plan:
         return plan
     meta = data.get("metadata") or {}
-    if isinstance(meta, dict) and meta.get("omixa") and meta.get("plan") in PLAN_DAYS:
-        return meta["plan"]
+    reference = data.get("reference")
+    if store is None or not reference or not isinstance(meta, dict):
+        return None
+    if meta.get("omixa") and meta.get("plan") in PLAN_DAYS:
+        record = store.get_payment(reference) or {}
+        if record.get("status") == "initiated" and record.get("plan") == meta["plan"] \
+                and record.get("uid") and record.get("uid") == meta.get("uid"):
+            return meta["plan"]
     return None
 
 
@@ -171,7 +185,7 @@ def apply_charge_success(store, data: dict, now: float | None = None) -> str:
     if data.get("status") != "success":
         return "ignored: not successful"
     reference = data.get("reference")
-    plan = _resolve_plan(data)
+    plan = _resolve_plan(data, store)
     if not reference or not plan:
         return "ignored: not an Omixa subscription charge"
     user = _resolve_user(store, data)
