@@ -14,7 +14,5 @@ redis==5.0.8
 boto3==1.35.36
 psycopg[binary,pool]==3.2.3
 defusedxml==0.7.1
-=======
 python-dateutil==2.9.0
 
->>>>>>> 9852116b03602e69785249d3ebc56ea14e47324a
