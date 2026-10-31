@@ -689,6 +689,7 @@ def run_pipeline(*args, **kwargs) -> dict:
     import inspect
     from cleaning import detectors
     from cleaning.options import parse_options
+<<<<<<< HEAD
     protected = []
     try:
         raw = inspect.signature(_run_pipeline_impl).bind(*args, **kwargs).arguments.get("options")
@@ -696,6 +697,17 @@ def run_pipeline(*args, **kwargs) -> dict:
     except Exception:
         protected = []          # a malformed option is rejected, with the proper message, by the implementation itself
     with detectors.keep_as_values(protected):
+=======
+    from cleaning import consistency
+    protected, consistency_cfg = [], {}
+    try:
+        raw = inspect.signature(_run_pipeline_impl).bind(*args, **kwargs).arguments.get("options")
+        parsed = parse_options(raw)
+        protected, consistency_cfg = parsed.get("not_missing", []), parsed.get("consistency", {})
+    except Exception:
+        pass          # a malformed option is rejected, with the proper message, by the implementation itself
+    with detectors.keep_as_values(protected), consistency.configured(consistency_cfg):
+>>>>>>> 302fe70 (changes)
         return _run_pipeline_impl(*args, **kwargs)
 
 

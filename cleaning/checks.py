@@ -439,11 +439,25 @@ def check_outliers(ctx: CheckContext) -> list[dict]:
             if iqr == 0:
                 continue
             lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+<<<<<<< HEAD
         n_out = int(((s < lo) | (s > hi)).sum())
+=======
+        outside = (s < lo) | (s > hi)
+        n_total_out = int(outside.sum())
+        if n_total_out:
+            from cleaning import consistency
+            explained = consistency.explained_cells(_relations(ctx)).get(str(col), set())
+            if explained:
+                outside = outside & ~s.index.isin(list(explained))
+        n_out = int(outside.sum())
+>>>>>>> 302fe70 (changes)
         if n_out:
+            shared = n_total_out - n_out
             out.append({
                 "column": col, "issue": "potential_outliers", "affected": n_out, "population": int(len(s)),
-                "detail": f"{n_out} values fall outside the typical range ({round(lo, 2)} to {round(hi, 2)}).",
+                "detail": f"{n_out} values fall outside the typical range ({round(lo, 2)} to {round(hi, 2)})."
+                          + (f" {shared} more are reported once, under the related-columns finding that explains them."
+                             if shared else ""),
                 "suggestion": "Not auto-fixed, worth a manual look before trusting averages or totals "
                               "on this column. Unusual is not the same as wrong.",
             })

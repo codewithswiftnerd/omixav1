@@ -225,6 +225,13 @@
     closeDialog();
   });
 
+  // removing rows by key is only possible once the key columns are named
+  $('optDupKeys').addEventListener('input', () => {
+    const has = $('optDupKeys').value.trim().length > 0;
+    $('optDupRemove').disabled = !has;
+    if (!has) $('optDupRemove').value = 'report';
+  });
+
   // ---- choices -> request body
   function batchOptions() {
     const o = {};
@@ -233,7 +240,12 @@
     if ($('optPhone').value) o.phone_country = $('optPhone').value;
     const list = s => s.split(',').map(x => x.trim()).filter(Boolean);
     if (list($('optMarkers').value).length) o.missing_markers = list($('optMarkers').value);
-    if (list($('optDupKeys').value).length) o.duplicate_keys = list($('optDupKeys').value);
+    if (list($('optNotMissing').value).length) o.not_missing = list($('optNotMissing').value);
+    if (list($('optDupKeys').value).length) {
+      o.duplicate_keys = list($('optDupKeys').value);
+      if ($('optDupRemove').value !== 'report') o.duplicate_removal = $('optDupRemove').value;   // needs the key columns
+    }
+    if ($('optConsistency').value === 'off') o.consistency = { enabled: false };
     const m = $('optMissing').value;
     if (m !== 'leave') {
       const rule = { action: m };

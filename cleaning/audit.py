@@ -142,6 +142,7 @@ class AuditLog:
         issue: Optional[str] = None,
         column_labels: Optional[dict] = None,
         annotations: Optional[dict] = None,
+        twins: Optional[dict] = None,
     ) -> list[dict]:
         """`column_labels` maps current column names -> the names the user saw in the
         original file, so entries refer to the headers they recognise even after a
@@ -206,7 +207,16 @@ class AuditLog:
                 self.ledger_truncated = True
             # For the duplicates step, say WHICH kept row each removed row is a copy of (same values in every
             # column), so every removal can be checked by a person: "row 5 was removed: identical to row 2".
+<<<<<<< HEAD
             twin = _duplicate_twins(before, after, removed_idx) if step_name == "duplicates" else {}
+=======
+            if step_name == "duplicates":
+                twin = _duplicate_twins(before, after, removed_idx)
+            elif twins:
+                twin = {i: twins[i] for i in removed_idx if i in twins}      # chosen by the step itself (same key)
+            else:
+                twin = {}
+>>>>>>> 302fe70 (changes)
             ex = []
             for i in list(removed_idx)[:EXAMPLES_PER_ENTRY]:
                 e = {"row": _idx(i), "before": {str(c): _short(rows.at[i, c]) for c in list(rows.columns)[:4]}, "after": "row removed"}

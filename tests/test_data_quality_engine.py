@@ -351,6 +351,178 @@ class TestDuplicates:
         assert (("duplicate_identifier_values", ident) in issues(res))
 
 
+<<<<<<< HEAD
+=======
+class TestOptInKeyRemovalAndSettings:
+    EMP = lambda self: pd.DataFrame({"Emp No": ["E100", "E100", "E101", "E103", "E103", "E104"],
+                                     "Name": ["Ada", "Ada B", "John", "Mary", "Mary", "Paul"],
+                                     "Pay": [500, 520, 400, 380, 380, 610]})
+
+    def test_default_never_removes_rows_that_only_share_a_key(self):
+        res, out = run(self.EMP(), options={"duplicate_keys": ["Emp No"]})
+        assert out["Emp No"].tolist().count("E100") == 2           # reported, not removed
+        assert res["integrity_report"]["duplicates"]["by_key"]["groups"] >= 1
+
+    def test_keep_first_removes_and_explains_every_removal(self):
+        res, out = run(self.EMP(), options={"duplicate_keys": ["Emp No"], "duplicate_removal": "keep_first"})
+        assert out["Emp No"].tolist() == ["E100", "E101", "E103", "E104"] and out["Pay"].tolist()[0] == "500"
+        by_rule = {r["rule_id"]: r for r in res["change_log"]["removed_rows"]}
+        assert set(by_rule) == {"OMX-FIX-013", "OMX-FIX-019"}      # exact copy vs. key-only duplicate, told apart
+        key_row = by_rule["OMX-FIX-019"]
+        assert key_row["duplicate_of"] == 0 and key_row["duplicate_of_source_row"] == 2 and key_row["approval"] == "user_selected"
+        assert key_row["values"]["Pay"] == 520, "the removed row's own values are preserved in the report"
+
+    def test_keep_last_keeps_the_later_row(self):
+        _, out = run(self.EMP(), options={"duplicate_keys": ["Emp No"], "duplicate_removal": "keep_last"})
+        assert out["Pay"].tolist()[0] == "520"
+
+    def test_unknown_key_column_fails_loudly_and_changes_nothing(self):
+        from cleaning.engine.base import RuleConfigError
+        with pytest.raises(RuleConfigError):
+            run(self.EMP(), options={"duplicate_keys": ["Nope"], "duplicate_removal": "keep_first"})
+
+    def test_blank_keys_are_never_duplicates_of_each_other(self):
+        df = pd.DataFrame({"Ref": ["R1", "", "", "R2", "R1"], "Note": list("abcde")})
+        _, out = run(df, options={"duplicate_keys": ["Ref"], "duplicate_removal": "keep_first"})
+        assert out["Ref"].tolist().count("") == 2 and out["Ref"].tolist().count("R1") == 1
+
+    def test_removal_needs_a_key_and_validates_input(self):
+        from cleaning.options import OptionsError, parse_options
+        with pytest.raises(OptionsError):
+            parse_options({"duplicate_removal": "keep_first"})
+        with pytest.raises(OptionsError):
+            parse_options({"duplicate_keys": ["a"], "duplicate_removal": "delete_everything"})
+        assert "duplicate_removal" not in parse_options({"duplicate_keys": ["a"], "duplicate_removal": "report"})
+
+    def test_consistency_can_be_switched_off(self):
+        res, _ = run(RETAIL(), options={"consistency": {"enabled": False}})
+        assert not findings(res, "calculation_mismatch") and not findings(res, "contradictory_ordering")
+
+    def test_tolerance_is_configurable(self):
+        df = pd.DataFrame({"sku": list("abcdefgh"), "qty": [2, 3, 4, 5, 6, 7, 8, 9],
+                           "price": [100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0]})
+        df["total"] = df.qty * df.price
+        df.loc[2, "total"] *= 1.03                                  # 3% off
+        strict, _ = run(df)
+        loose, _ = run(df, options={"consistency": {"tolerance": 0.05}})
+        assert findings(strict, "calculation_mismatch") and not findings(loose, "calculation_mismatch")
+
+    def test_ignored_columns_take_no_part(self):
+        res, _ = run(RETAIL(), options={"consistency": {"ignore_columns": ["Line Amount"]}})
+        assert not findings(res, "calculation_mismatch") and findings(res, "contradictory_ordering")
+
+    def test_consistency_options_are_validated(self):
+        from cleaning.options import OptionsError, parse_options
+        for bad in ({"enabled": "yes"}, {"tolerance": 0.5}, {"tolerance": True}, {"ignore_columns": "x"}, {"bogus": 1}, "off"):
+            with pytest.raises(OptionsError):
+                parse_options({"consistency": bad})
+
+    def test_consistency_settings_do_not_leak_between_concurrent_jobs(self):
+        got, errors = {}, []
+
+        def work(name, opts):
+            try:
+                res, _ = run(RETAIL(), options=opts)
+                got[name] = len(findings(res, "calculation_mismatch"))
+            except Exception as e:      # pragma: no cover
+                errors.append(e)
+
+        ts = [threading.Thread(target=work, args=(f"off{i}", {"consistency": {"enabled": False}})) for i in range(4)] + \
+             [threading.Thread(target=work, args=(f"on{i}", None)) for i in range(4)]
+        [t.start() for t in ts]
+        [t.join() for t in ts]
+        assert not errors and all(got[f"off{i}"] == 0 for i in range(4)) and all(got[f"on{i}"] == 1 for i in range(4))
+
+
+class TestCodesAreNotMistakenForMoney:
+    @pytest.mark.parametrize("header,vals", [("Ref", ["R1", "R2", "R3", "R4", "R5"]), ("Ticket", ["R100", "R250", "R999", "R12"]),
+                                             ("Seat", ["A42", "B7", "C19", "D3"])])
+    def test_letter_plus_digits_is_kept_as_written(self, header, vals):
+        _, out = run(pd.DataFrame({header: vals, "x": list("abcdef")[:len(vals)]}))
+        assert out[header].tolist() == vals
+
+    def test_a_code_never_collides_with_a_plain_number(self):
+        res, out = run(pd.DataFrame({"Ref": ["R1", "R2", "R1", "R3"], "x": list("abcd")}), options={"duplicate_keys": ["Ref"]})
+        assert out["Ref"].tolist() == ["R1", "R2", "R1", "R3"]
+
+    @pytest.mark.parametrize("header,vals,expected", [
+        ("Price", ["R100", "R250", "R999", "R12"], ["100", "250", "999", "12"]),
+        ("Amount", ["R1500", "R200", "R30", "R4000"], ["1500", "200", "30", "4000"]),
+        ("misc", ["R 1,200.50", "R 80.00", "R 15.25", "R 9.99"], ["1200.5", "80", "15.25", "9.99"]),
+    ])
+    def test_real_amounts_are_still_converted(self, header, vals, expected):
+        _, out = run(pd.DataFrame({header: vals, "x": list("abcd")}))
+        assert out[header].tolist() == expected
+
+
+class TestBatchPageControls:
+    """The batch page exposes the new settings and sends exactly the option keys the backend validates."""
+    ROOT = __import__("pathlib").Path(__file__).resolve().parents[1]
+
+    def _files(self):
+        return ((self.ROOT / "templates/batch.html").read_text(encoding="utf-8"),
+                (self.ROOT / "static/js/batch.js").read_text(encoding="utf-8"))
+
+    @pytest.mark.parametrize("control,option_key", [("optNotMissing", "not_missing"), ("optDupRemove", "duplicate_removal"),
+                                                    ("optConsistency", "consistency")])
+    def test_every_control_exists_and_is_sent(self, control, option_key):
+        html, js = self._files()
+        assert f'id="{control}"' in html
+        assert f"$('{control}')" in js and f"o.{option_key}" in js
+        from cleaning.options import _ALLOWED
+        assert option_key in _ALLOWED
+
+    def test_removal_is_disabled_until_a_key_is_named(self):
+        html, js = self._files()
+        assert 'id="optDupRemove" disabled' in html
+        assert "optDupRemove').disabled" in js
+
+    def test_a_request_shaped_like_the_ui_is_accepted_and_works(self):
+        from cleaning.options import parse_options
+        sent = {"not_missing": ["none"], "duplicate_keys": ["Emp No"], "duplicate_removal": "keep_first",
+                "consistency": {"enabled": False}}
+        assert parse_options(sent) == sent
+        df = pd.DataFrame({"Emp No": ["E1", "E1", "E2"], "Allergy": ["None", "Dust", "None"]})
+        res, out = run(df, options=sent)
+        assert out["Emp No"].tolist() == ["E1", "E2"] and out["Allergy"].tolist() == ["None", "None"]
+
+
+class TestLimitsThatWereFixed:
+    def test_one_wrong_value_is_reported_once_not_also_as_an_outlier(self):
+        res, _ = run(RETAIL())
+        assert findings(res, "calculation_mismatch")
+        assert not findings(res, "potential_outliers"), "the 500 is already explained by the calculation mismatch"
+
+    def test_an_unrelated_outlier_is_still_reported(self):
+        df = RETAIL()
+        df["Weight"] = [1.1, 1.2, 1.0, 1.3, 950.0, 1.1]               # genuinely unusual, unrelated to any calculation
+        res, _ = run(df)
+        assert ("potential_outliers", "Weight") in issues(res)
+
+    @pytest.mark.parametrize("width", [60, 100])
+    def test_relationship_is_found_in_a_wide_file(self, width):
+        rng = np.random.default_rng(width)
+        n = 3000
+        df = pd.DataFrame(rng.normal(50, 10, (n, width - 3)).round(2), columns=[f"m{i}" for i in range(width - 3)])
+        df["q"], df["p"] = rng.integers(1, 20, n), rng.uniform(1, 99, n).round(2)
+        df["tot"] = (df.q * df.p).round(2)
+        df.loc[10, "tot"] += 40
+        f = consistency.find_relationships(df, profiling.profile_dataset(df)["columns"])
+        match = [r for r in f["relations"] if r.target == "tot"]
+        assert match and match[0].violation_count == 1 and not f["search"]["search_capped"]
+
+    def test_wide_files_still_produce_no_false_relationships(self):
+        rng = np.random.default_rng(11)
+        df = pd.DataFrame(rng.integers(1, 7, (500, 80)), columns=[f"c{i}" for i in range(80)])
+        assert consistency.find_relationships(df, profiling.profile_dataset(df)["columns"])["relations"] == []
+
+    def test_a_file_wider_than_the_cap_says_it_was_capped(self):
+        rng = np.random.default_rng(2)
+        df = pd.DataFrame(rng.normal(50, 10, (200, 130)).round(2), columns=[f"m{i}" for i in range(130)])
+        assert consistency.find_relationships(df, profiling.profile_dataset(df)["columns"])["search"]["search_capped"] is True
+
+
+>>>>>>> 302fe70 (changes)
 # ============================================================================ 5. reporting + invariants
 class TestReportingAndInvariants:
     def test_before_and_after_reports_refer_to_the_same_uploaded_rows(self):

@@ -422,6 +422,10 @@ _fixer("approved_value_actions", "OMX-FIX-018", M.DELETION, 0.99,
        "Every original stays in the change log.", remediation=M.REQUIRES_REVIEW)
 _fixer("duplicates", "OMX-FIX-013", M.DELETION, 0.95,
        "Exact duplicate rows removed, first occurrence kept.")
+_fixer("key_duplicates", "OMX-FIX-019", M.DELETION, 0.8,
+       "Rows that repeat the key columns you chose were removed, keeping one row per key (first or last, as you "
+       "selected). The rows could differ in other columns, so this only runs when you ask for it.",
+       remediation=M.REQUIRES_REVIEW)
 
 # user-chosen resolutions (cleaning/resolutions.py): documented so the audit has an id for them
 _RESOLUTION_OPS = {

@@ -82,10 +82,10 @@ HIGH_MISSING_THRESHOLD = 70
 # the default rules in their documented order, and the estimate-based fill LAST so a filled cell can
 # never be mistaken for a duplicate or be normalized as if it were original data.
 # The two option-driven rules run only when the request's `options` configures them (see apply_rules).
-OPTION_RULES = ["approved_value_mappings", "missing_value_handling", "approved_value_actions"]
+OPTION_RULES = ["approved_value_mappings", "missing_value_handling", "approved_value_actions", "key_duplicates"]
 # approved_value_actions runs right after column_names: the user's decisions about flagged values (clear / remove
 # rows) were made against the values AS UPLOADED, so they must apply before any rule rewrites those values.
-RULE_ORDER = ["column_names", "approved_value_actions"] + DEFAULT_RULES + ["missing_values", "approved_value_mappings", "missing_value_handling"]
+RULE_ORDER = ["column_names", "approved_value_actions"] + DEFAULT_RULES + ["key_duplicates", "missing_values", "approved_value_mappings", "missing_value_handling"]
 
 
 def canonical_rule_order(rules) -> list:
@@ -255,6 +255,45 @@ def handle_duplicates(df: pd.DataFrame, details: dict) -> tuple[pd.DataFrame, in
         "kept": "first",
     }
     return df, removed
+
+
+def handle_key_duplicates(df: pd.DataFrame, details: dict) -> tuple[pd.DataFrame, int]:
+    """
+    OPT-IN removal of rows that repeat the key columns the user chose (options: duplicate_keys + duplicate_removal).
+
+    Never part of the default rules. Exact duplicates (every column equal) are the default rule's business; this
+    step is for the case a person has decided "one row per Emp No / invoice / email, keep the first (or last)".
+    Because the rows may differ in other columns, it only runs when the user asked for it and named the key, and:
+      * every key column must be found: a key that cannot be resolved fails the job (nothing is changed) instead of
+        quietly removing nothing, or removing on a partial key;
+      * a row with an EMPTY key cell is never a duplicate of anything (blank is not a value);
+      * every removal is logged by the audit (row, values, which kept row it matched, and why).
+    """
+    from cleaning.engine.base import RuleConfigError
+    opts = details.get("_options") or {}
+    mode = opts.get("duplicate_removal")
+    keys = opts.get("duplicate_keys") or []
+    if mode not in ("keep_first", "keep_last") or not keys:
+        return df, 0
+    labels = details.get("_column_labels") or {}
+    by_name = {str(c): c for c in df.columns}
+    by_name.update({str(labels.get(c, c)): c for c in df.columns})      # the header as uploaded OR as tidied
+    missing = [k for k in keys if k not in by_name]
+    if missing:
+        raise RuleConfigError(
+            f"Duplicate key column(s) not found: {', '.join(missing)}. Nothing was changed.", code="DUPLICATE_KEY_NOT_FOUND")
+    cols = list(dict.fromkeys(by_name[k] for k in keys))
+    filled = df[cols].notna().all(axis=1) & ~df[cols].astype(str).apply(lambda s: s.str.strip() == "").any(axis=1)
+    dup = df.duplicated(subset=cols, keep="first" if mode == "keep_first" else "last") & filled
+    removed = int(dup.sum())
+    details["key_duplicates"] = {"keys": [str(c) for c in cols], "keep": "first" if mode == "keep_first" else "last",
+                                 "removed": removed, "rows_with_empty_key_ignored": int((~filled).sum())}
+    kept = df[~dup]
+    kept_by_key = {k: lbl for lbl, k in zip(kept.index, kept[cols].astype(str).itertuples(index=False, name=None))}
+    details["_twins"] = {lbl: kept_by_key.get(k) for lbl, k in
+                         zip(df.index[dup], df.loc[dup, cols].astype(str).itertuples(index=False, name=None))
+                         if kept_by_key.get(k) is not None}
+    return kept, removed
 
 
 def handle_formatting(df: pd.DataFrame, details: dict) -> tuple[pd.DataFrame, int]:
@@ -430,6 +469,16 @@ def handle_numeric_text_cleaning(df: pd.DataFrame, details: dict) -> tuple[pd.Da
         opts = details.get("_options") or {}
         marker = non_null.map(detectors.is_missing_token)
         real = non_null[~marker]
+        # A letter fused straight onto digits ("R100", "A42", "T7") is a CODE (ticket, reference, seat) far more often
+        # than an amount, and stripping the letter would silently destroy the identifier (and can invent false
+        # duplicates: R1 and 1). It is read as money only when the header says money, or a value carries something
+        # only an amount has (a space after the symbol, a decimal point, a thousands separator).
+        if len(real) and not (set(profiling.name_tokens(str(col))) & detectors.MONEY_NAME_TOKENS):
+            carrying_vals = real[real.map(lambda v: currencies.currency_marker(str(v)) is not None)]
+            if len(carrying_vals) and carrying_vals.map(lambda v: bool(re.fullmatch(r"[A-Za-z]\d+", str(v).strip()))).all():
+                unconverted[col] = {"count": int(len(carrying_vals)), "examples": [str(v) for v in carrying_vals.unique()[:5]],
+                                    "reason": "looks_like_code"}
+                continue
         # A column that mixes currencies (₦ next to $ and £) must not be flattened into bare numbers: the
         # amounts would silently lose which currency each was in. Leave it exactly as uploaded and say why.
         mixed = currencies.mixed_currency_markers(real.unique())
@@ -1052,6 +1101,7 @@ def _date_order_for(details: dict, col) -> str | None:
 RULE_DISPATCH = {
     "missing_values": handle_missing_values,
     "duplicates": handle_duplicates,
+    "key_duplicates": handle_key_duplicates,
     "formatting": handle_formatting,
     "column_names": handle_column_names,
     "missing_token_normalization": handle_missing_token_normalization,
@@ -1072,7 +1122,7 @@ RULE_DISPATCH = {
 
 
 # Rules a "Leave as is" lock does not park a column from (see apply_rules).
-LOCK_EXEMPT_RULES = {"duplicates", "column_names"}
+LOCK_EXEMPT_RULES = {"duplicates", "key_duplicates", "column_names"}
 
 
 def _split_held(df, labels, held_out, rule_name):
@@ -1134,7 +1184,7 @@ def apply_rules(
     # Option-driven steps: configuring them in `options` IS the user's request to run them (rules=[] still means
     # "no built-in cleaning"; it does not cancel something the user configured explicitly).
     wanted = [r for r, key in (("approved_value_mappings", "value_mappings"), ("missing_value_handling", "missing_values"),
-                         ("approved_value_actions", "value_actions"))
+                         ("approved_value_actions", "value_actions"), ("key_duplicates", "duplicate_removal"))
               if (options or {}).get(key) and r not in selected]
     if wanted:
         selected = canonical_rule_order(list(selected) + wanted)
@@ -1169,11 +1219,12 @@ def apply_rules(
         step_approval = approval
         if rule_name == "numeric_text_cleaning" and (options or {}).get("number_words"):
             step_approval = M.APPROVAL_USER_SELECTED   # the user switched number-word reading on
-        if rule_name in review_options.USER_DIRECTED_RULES or (
+        if rule_name == "key_duplicates" or rule_name in review_options.USER_DIRECTED_RULES or (
                 rule_name == "date_standardization" and ((options or {}).get("date_orders") or (options or {}).get("date_order") in ("day_first", "month_first"))) or (
                 rule_name == "phone_cleaning" and (options or {}).get("phone_country")):
             step_approval = M.APPROVAL_USER_SELECTED   # the user chose the convention / country / mapping / action
         details["_column_labels"] = labels
+        details.pop("_twins", None)
         held = _split_held(df, labels, held_out, rule_name)
         if held is not None:
             df, parked = held
@@ -1193,10 +1244,12 @@ def apply_rules(
                 reason=spec.explanation if spec else "",
                 reversibility=spec.reversibility if spec else M.REVERSIBLE,
                 column_labels=labels,
+                twins=details.get("_twins"),
             )
         labels = _rename_labels(labels, before_cols, list(df.columns))
 
     details.pop("_protected_blank", None)
+    details.pop("_twins", None)
     details.pop("_options", None)
     details.pop("_column_labels", None)
     log = {"rules_applied": selected, "changes": changes, "details": details}
