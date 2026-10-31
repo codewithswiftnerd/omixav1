@@ -124,7 +124,7 @@ def profile_column(name: str, series: pd.Series, total_rows: int) -> ColumnProfi
         # "N/A", "-", "Unknown" are placeholders, not values: they must not make a numeric,
         # date or flag column look like free text.
         as_text = non_null_series.astype(str).str.strip()
-        non_null_series = non_null_series[~as_text.str.lower().isin(detectors.MISSING_TOKENS)]
+        non_null_series = non_null_series[~as_text.str.lower().isin(detectors.missing_tokens())]
     non_null = int(len(non_null_series))
     unique_ratio = (non_null_series.nunique() / non_null) if non_null else 0.0
     base = dict(

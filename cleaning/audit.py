@@ -204,14 +204,23 @@ class AuditLog:
                 }
             else:
                 self.ledger_truncated = True
+            # For the duplicates step, say WHICH kept row each removed row is a copy of (same values in every
+            # column), so every removal can be checked by a person: "row 5 was removed: identical to row 2".
+            twin = _duplicate_twins(before, after, removed_idx) if step_name == "duplicates" else {}
             ex = []
             for i in list(removed_idx)[:EXAMPLES_PER_ENTRY]:
-                ex.append({"row": _idx(i), "before": {str(c): _short(rows.at[i, c]) for c in list(rows.columns)[:4]}, "after": "row removed"})
+                e = {"row": _idx(i), "before": {str(c): _short(rows.at[i, c]) for c in list(rows.columns)[:4]}, "after": "row removed"}
+                if i in twin:
+                    e["duplicate_of"] = _idx(twin[i])
+                ex.append(e)
             self.removed_rows_total += int(len(removed_idx))
             for i in list(removed_idx)[:max(0, REMOVED_ROWS_LOG_MAX - len(self.removed_rows_log))]:
-                self.removed_rows_log.append({
+                entry = {
                     "row": _idx(i), "rule": step_name, "rule_id": rule_id, "reason": reason, "approval": approval,
-                    "values": {str(label(c)): _scalar(rows.at[i, c]) for c in rows.columns}})
+                    "values": {str(label(c)): _scalar(rows.at[i, c]) for c in rows.columns}}
+                if i in twin:
+                    entry["duplicate_of"] = _idx(twin[i])
+                self.removed_rows_log.append(entry)
             new_entries.append(self._entry(
                 step_name, rule_id, operation=M.DELETION, column=None, reason=reason, issue=issue,
                 confidence=confidence, approval=approval,
@@ -341,6 +350,29 @@ def _summarise_annotations(anns: list) -> dict:
 
 def _idx(i):
     return i.item() if hasattr(i, "item") else i
+
+
+def _duplicate_twins(before: pd.DataFrame, after: pd.DataFrame, removed_idx) -> dict:
+    """{removed row label: label of the surviving row with identical values}. Matches on a row hash and then
+    confirms equality, so a hash collision can never attach the wrong row. Best effort: any failure just means
+    the removal is logged without its twin, never that the audit breaks."""
+    try:
+        cols = [c for c in before.columns if c in after.columns]
+        if not cols or not len(removed_idx):
+            return {}
+        hb = pd.util.hash_pandas_object(before[cols].astype(str), index=False)
+        ha = pd.util.hash_pandas_object(after[cols].astype(str), index=False)
+        first_kept = {}
+        for label, h in zip(after.index, ha.to_numpy()):
+            first_kept.setdefault(int(h), label)
+        out = {}
+        for i in removed_idx:
+            kept = first_kept.get(int(hb.at[i]))
+            if kept is not None and before.loc[i, cols].astype(str).tolist() == after.loc[kept, cols].astype(str).tolist():
+                out[i] = kept
+        return out
+    except Exception:
+        return {}
 
 
 # ------------------------------------------------------------------ reverting

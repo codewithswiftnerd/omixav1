@@ -659,9 +659,9 @@ def _marker_category(v, ctype: str) -> Optional[tuple[str, str, str]]:
         return MISSING, "empty", "Empty cell."
     if isinstance(v, str):
         low = v.strip().lower()
-        if low in detectors.STRONG_MISSING_TOKENS:
+        if low in detectors.strong_missing_tokens():
             return MISSING, "missing_marker", f"{v.strip()!r} is a recognised missing-value marker."
-        if low in detectors.WEAK_MISSING_TOKENS:
+        if low in detectors.weak_missing_tokens():
             if ctype in (TEXT, CATEGORICAL, IDENTIFIER):
                 return UNRESOLVED, "ambiguous_placeholder", (
                     f"{v.strip()!r} may mean 'no value' or may be a real answer/note. Kept as written; please decide.")

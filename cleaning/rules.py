@@ -354,7 +354,7 @@ def handle_missing_token_normalization(df: pd.DataFrame, details: dict) -> tuple
     text_columns = df.select_dtypes(include=["object", "string"]).columns
     # User-configured markers (e.g. "error", "unknown") are WEAK: blanked only where the column is clearly
     # numeric/date/e-mail/phone, preserved and surfaced everywhere else, exactly like built-in weak markers.
-    extra = set((details.get("_options") or {}).get("missing_markers") or [])
+    extra = set((details.get("_options") or {}).get("missing_markers") or []) - detectors.protected_values()
 
     for col in text_columns:
         series = df[col]

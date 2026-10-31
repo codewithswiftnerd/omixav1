@@ -6,8 +6,9 @@ Three different things are kept apart because they deserve different treatment:
              `duplicates` rule removes, first occurrence kept, every removal written to the audit ledger.
   by_key     Rows that share the SAME values in the user's chosen key columns (e.g. email) but differ in
              other columns. Reported for review; never removed or merged automatically.
-  potential  Rows that share a STRONG identifier (e-mail or phone) but are not exact copies, so they may be
-             one person recorded twice. Review only.
+  potential  Rows that share a STRONG identifier (e-mail, phone, or a column that behaves as a record
+             identifier such as "Emp No") but are not exact copies, so they may be one record entered twice.
+             Review only.
 
 Two people with the same name are NOT duplicates: a name is never an identifier. Same name + different e-mail
 is deliberately reported as nothing at all.
@@ -23,6 +24,46 @@ from cleaning import profiling
 
 _STRONG_TOKENS = {"email", "mail", "phone", "mobile", "tel", "telephone", "gsm", "cell"}
 MAX_GROUPS_RETURNED = 20
+
+# Words that make a column LOOK like a record identifier ("Emp No", "Invoice Ref", "SKU", "Serial", "Customer Code").
+# The name alone is never enough: see inferred_identifier_columns.
+_ID_NAME_TOKENS = {"id", "uuid", "guid", "key", "no", "num", "nr", "number", "code", "ref", "reference", "sku",
+                   "serial", "isbn", "vin", "imei"}
+# Codes that are properties of a record, not names for it: many records legitimately share them.
+_NOT_A_RECORD_ID = {"zip", "postal", "postcode", "area", "country", "currency", "state", "region", "dial", "pin",
+                    "language", "status", "type", "category", "class", "grade", "tax", "color", "colour", "size"}
+MIN_ID_ROWS = 4
+MIN_ID_UNIQUE_SHARE = 0.75
+
+
+def inferred_identifier_columns(df: pd.DataFrame) -> list:
+    """Columns that behave as a record identifier although nobody declared them one.
+
+    Two things must both be true. The NAME says identifier (id, no, number, code, ref, sku, ...), and the VALUES
+    behave like one: after exact copies are ignored, at least 75% of the filled cells are different. That second
+    test is what separates a real identifier that happens to repeat ("Emp No" E103 on two different people) from
+    a grouping key that is SUPPOSED to repeat (an order number on each line of the same order, a customer code in a
+    transactions file). Those are never reported.
+    """
+    if len(df) < MIN_ID_ROWS:
+        return []
+    try:
+        deduped = df.drop_duplicates()
+    except Exception:
+        deduped = df
+    out = []
+    for c in df.columns:
+        toks = set(profiling.name_tokens(str(c)))
+        if not toks & _ID_NAME_TOKENS or toks & _NOT_A_RECORD_ID or toks & _STRONG_TOKENS:
+            continue
+        s = deduped[c].dropna()
+        if len(s) < MIN_ID_ROWS:
+            continue
+        unique_share = s.nunique() / len(s)
+        if unique_share < MIN_ID_UNIQUE_SHARE or s.nunique() == len(s):
+            continue          # a grouping key (low uniqueness), or already unique (nothing repeats)
+        out.append(c)
+    return out
 
 
 def _norm(v):
@@ -82,7 +123,10 @@ def analyze_duplicates(df: pd.DataFrame, key_columns: Optional[list] = None, *, 
                                     samples=[_row_numbers(g, has_header) for g in grp[:MAX_GROUPS_RETURNED]])
 
     strong = [c for c in df.columns if set(profiling.name_tokens(str(c))) & _STRONG_TOKENS]
-    result["potential"]["identifier_columns"] = [str(c) for c in strong]
+    inferred = [c for c in inferred_identifier_columns(df) if c not in strong]
+    result["potential"]["identifier_columns"] = [str(c) for c in strong + inferred]
+    result["potential"]["inferred_identifier_columns"] = [str(c) for c in inferred]
+    strong = strong + inferred
     seen_rows: set = set()
     pot_groups = []
     for c in strong:

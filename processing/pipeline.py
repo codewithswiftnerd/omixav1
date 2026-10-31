@@ -248,6 +248,25 @@ def _render_floats_for_csv(cleaned_df, *, source_text_df, kept_index, cleaned_la
     return out
 
 
+def _localize_row_examples(report, *, kept_index, has_header: bool) -> None:
+    """Row numbers in findings that quote rows (related-column contradictions). A report generated from the
+    cleaned frame counts positions in the CLEANED data; map them back to the row numbers of the file the user
+    uploaded (keeping the cleaned position as `cleaned_record`), so the before and after reports talk about
+    the same rows even when duplicates were removed in between. `source_row` is the spreadsheet row number
+    (counting the header row only when the file has one)."""
+    off = 2 if has_header else 1
+    for f in (report or {}).get("findings", []):
+        for ex in f.get("examples") or []:
+            rec = ex.get("record")
+            if not isinstance(rec, int):
+                continue
+            if kept_index is not None and 0 < rec <= len(kept_index) and isinstance(kept_index[rec - 1], int):
+                ex["cleaned_record"] = rec
+                rec = kept_index[rec - 1] + 1
+                ex["record"] = rec
+            ex["source_row"] = rec - 1 + off
+
+
 def _cleaned_keys(keys, cleaned_labels):
     """Duplicate key columns are named as in the uploaded file; the cleaned frame may have renamed them."""
     if not keys:
@@ -304,7 +323,7 @@ def _resolve_locks(df, leave_as_is, resolutions, engine_profile):
     return locked, report
 
 
-def run_pipeline(
+def _run_pipeline_impl(
     job_id: str,
     rules: Optional[List[str]] = None,
     resolutions: Optional[List[dict]] = None,
@@ -404,6 +423,7 @@ def run_pipeline(
     # guaranteed to reflect the file exactly as uploaded, the same
     # report /api/report/<job_id> would return for this file.
     quality_before = generate_report(df)
+    _localize_row_examples(quality_before, kept_index=None, has_header=has_header)
     from cleaning.validation import validate_dataframe
     flagged_before: dict = {}   # {column: {row label: kind}}: lets the final report separate "fixed" from "row removed"
     validation_before = _compact_validation(validate_dataframe(df, vconfig, include_examples=False, collect_flagged=flagged_before))
@@ -513,6 +533,7 @@ def run_pipeline(
     # so the frontend can show a before/after score, not just a list of
     # "N cells changed" counts.
     post_report = generate_report(cleaned_df, provenance={"imputed": imputed})
+    _localize_row_examples(post_report, kept_index=kept_index, has_header=has_header)
     validation_after = _compact_validation(validation_after_full)
 
     cleaning_summary = build_cleaning_summary(
@@ -584,6 +605,8 @@ def run_pipeline(
     for entry in change_log_out["removed_rows"]:
         if isinstance(entry.get("row"), int):
             entry["source_row"] = entry["row"] + row_offset
+        if isinstance(entry.get("duplicate_of"), int):
+            entry["duplicate_of_source_row"] = entry["duplicate_of"] + row_offset
     result["change_log"] = change_log_out
     result["missing_tracking"] = _missing_tracking(missing_before, audit, labels_final=cleaned_labels,
                                                    cleaned_df=cleaned_df, rows_in=rows_in)
@@ -655,3 +678,25 @@ def run_pipeline(
         extra += [f"  - {w}" for w in ir["warnings"]]
         cleaning_summary["text"] += "\n".join(extra)
     return result
+
+
+def run_pipeline(*args, **kwargs) -> dict:
+    """Public entry point (signature and behaviour unchanged: see _run_pipeline_impl).
+
+    Scopes the user's `not_missing` option ("None" is a real value here) to THIS job only. The setting lives in a
+    ContextVar, so jobs running at the same time in other threads can never see it, and it is reset when the job
+    ends, whether it succeeds or raises."""
+    import inspect
+    from cleaning import detectors
+    from cleaning.options import parse_options
+    protected = []
+    try:
+        raw = inspect.signature(_run_pipeline_impl).bind(*args, **kwargs).arguments.get("options")
+        protected = parse_options(raw).get("not_missing", [])
+    except Exception:
+        protected = []          # a malformed option is rejected, with the proper message, by the implementation itself
+    with detectors.keep_as_values(protected):
+        return _run_pipeline_impl(*args, **kwargs)
+
+
+run_pipeline.__doc__ = (run_pipeline.__doc__ or "") + "\n\n" + (_run_pipeline_impl.__doc__ or "")

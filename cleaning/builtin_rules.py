@@ -280,6 +280,37 @@ R(RuleSpec(
     detector=C.check_unverified_imputation,
 ))
 
+R(RuleSpec(
+    id="OMX-ACC-006", issue="out_of_range_percentage", title="Percentage outside 0-100", dimension=M.ACCURACY,
+    criticality=0.7, confidence=0.8, min_level=M.MEDIUM,
+    remediation=M.REQUIRES_REVIEW, operation=M.NONE, resolver=None, reversibility=M.NOT_APPLICABLE,
+    explanation="The column is labelled as a percentage and nearly all of its values are between 0 and 100, but a few "
+                "are not. A share of a whole cannot be negative or above 100.",
+    recommendation="Correct from the source. These values are never changed automatically.",
+    detector=C.check_out_of_range_percentage,
+))
+
+# ---- cross-column consistency (inferred relationships; never auto-fixed) ----
+R(RuleSpec(
+    id="OMX-CON-030", issue="calculation_mismatch", title="Related numbers do not agree", dimension=M.CONSISTENCY,
+    criticality=0.7, confidence=0.75, min_level=M.MEDIUM, unit="row",
+    remediation=M.REQUIRES_REVIEW, operation=M.NONE, resolver=None, reversibility=M.NOT_APPLICABLE,
+    explanation="Across most rows one column equals a calculation on others (quantity x price = total, "
+                "subtotal + tax = total), but on some rows it does not. Which value is wrong cannot be known from "
+                "the file: the quantity, the price or the total could each be the typo.",
+    recommendation="Check each listed row against its source. Nothing is recalculated or overwritten automatically.",
+    detector=C.check_inconsistent_calculations,
+))
+R(RuleSpec(
+    id="OMX-CON-031", issue="contradictory_ordering", title="Related columns contradict each other",
+    dimension=M.CONSISTENCY, criticality=0.7, confidence=0.75, min_level=M.MEDIUM, unit="row",
+    remediation=M.REQUIRES_REVIEW, operation=M.NONE, resolver=None, reversibility=M.NOT_APPLICABLE,
+    explanation="Two columns have a natural order (an order date before its ship date, a start before an end, a "
+                "minimum below a maximum) that nearly every row follows, but some rows break it.",
+    recommendation="Check each listed row against its source. Neither value is changed automatically.",
+    detector=C.check_contradictory_ordering,
+))
+
 # ---- timeliness ---------------------------------------------------------
 R(RuleSpec(
     id="OMX-TIM-001", issue="stale_data", title="Stale records", dimension=M.TIMELINESS,

@@ -12,6 +12,8 @@ questions. Nothing in here mutates a dataframe.
 """
 
 from __future__ import annotations
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import lru_cache
 import re
 from typing import Optional
@@ -57,6 +59,11 @@ _COUNTRY_NAME_TO_CANONICAL: dict[str, str] = {c["name"].lower(): c["name"] for c
 STRONG_MISSING_TOKENS = {
     "", "na", "n/a", "n.a.", "n\\a", "null", "none", "nan", "#n/a",
     "not available", "not applicable", "no data", "n.k.", "none given",
+    # "not evaluated / not determined / no data" abbreviations that are common in lab, survey and finance exports
+    # (dotted or slashed forms only: a bare "ne" or "nd" could be a real code such as Nebraska or North Dakota)
+    "n.e.", "n.d.", "n/d", "n.v.t.",
+    # spreadsheet error values: the cell never held a usable value, so blanking it loses nothing
+    "#null!", "#div/0!", "#value!", "#ref!", "#name?", "#num!",
 }
 WEAK_MISSING_TOKENS = {
     "-", "--", "?", "nil", "unknown",
@@ -110,16 +117,52 @@ _SCI_NOTATION_RE = re.compile(r"^-?\d+(\.\d+)?[eE][+-]?\d+$")
 _PHONE_SAFE_CHARS_RE = re.compile(r"^[+()\-.\s\d]+$")
 
 
+# Words the USER has declared to be real values in THIS job ("None" in an Allergies column, "N/A" as a genuine
+# answer). A ContextVar, not a module global: it is isolated per thread / request, so two jobs running at the same
+# time can never see each other's setting, and it is always restored when the job ends.
+_PROTECTED_VALUES: ContextVar = ContextVar("omixa_protected_values", default=frozenset())
+
+
+@contextmanager
+def keep_as_values(values):
+    """Within this block, the given words are NOT treated as missing-value markers anywhere in the engine."""
+    token = _PROTECTED_VALUES.set(frozenset(str(v).strip().lower() for v in (values or []) if str(v).strip()))
+    try:
+        yield
+    finally:
+        _PROTECTED_VALUES.reset(token)
+
+
+def protected_values() -> frozenset:
+    return _PROTECTED_VALUES.get()
+
+
+def missing_tokens() -> frozenset:
+    """Every marker currently in force (strong and weak), minus words the user declared to be real values."""
+    return MISSING_TOKENS - _PROTECTED_VALUES.get()
+
+
+def strong_missing_tokens() -> frozenset:
+    return STRONG_MISSING_TOKENS - _PROTECTED_VALUES.get()
+
+
+def weak_missing_tokens() -> frozenset:
+    return WEAK_MISSING_TOKENS - _PROTECTED_VALUES.get()
+
+
 def is_missing_token(value: str) -> bool:
-    return value.strip().lower() in MISSING_TOKENS
+    low = value.strip().lower()
+    return low in MISSING_TOKENS and low not in _PROTECTED_VALUES.get()
 
 
 def is_strong_missing_token(value: str) -> bool:
-    return value.strip().lower() in STRONG_MISSING_TOKENS
+    low = value.strip().lower()
+    return low in STRONG_MISSING_TOKENS and low not in _PROTECTED_VALUES.get()
 
 
 def is_weak_missing_token(value: str) -> bool:
-    return value.strip().lower() in WEAK_MISSING_TOKENS
+    low = value.strip().lower()
+    return low in WEAK_MISSING_TOKENS and low not in _PROTECTED_VALUES.get()
 
 
 def is_email_column(name: str, series: pd.Series) -> bool:
@@ -159,9 +202,34 @@ def is_boolean_flag_column(name: str) -> bool:
     return any(k in lname for k in BOOLEAN_FLAG_NAME_KEYWORDS)
 
 
+# Units that turn "age" into something other than a person's age in years ("account age (days)", "age_months").
+_AGE_UNIT_TOKENS = {"day", "days", "week", "weeks", "month", "months", "hour", "hours", "minute", "minutes", "min",
+                    "mins", "second", "seconds", "sec", "secs", "group", "band", "range", "bracket", "category",
+                    "class", "bucket", "tier", "of"}
+_AGE_OF_THING_TOKENS = {"vehicle", "car", "asset", "equipment", "building", "account", "device", "machine", "tree",
+                        "stock", "inventory", "debt", "invoice", "record", "file", "domain", "tenure"}
+
+
 def is_age_column(name: str) -> bool:
+    """A person's age in years, judged from the header's WORDS (so "Age", "Patient Age", "age_at_visit",
+    "PatientAge" and "yrs old" are all recognised) rather than from one literal spelling.
+
+    Deliberately narrow in the other direction: "age group", "account age (days)", "vehicle age" and
+    "image"/"package" (no "age" word) are not a person's age in years, so the 0-120 range check must not
+    apply to them."""
     lname = name.lower().strip()
-    return lname == "age" or lname.endswith("_age") or lname.startswith("age_")
+    from cleaning.profiling import name_tokens   # local import: profiling imports detectors
+    tokset = set(name_tokens(name))
+    if not tokset:
+        return False
+    if tokset & (_AGE_UNIT_TOKENS | _AGE_OF_THING_TOKENS):
+        return False
+    if lname == "age" or lname.endswith("_age") or lname.startswith("age_"):
+        return True
+    if "age" in tokset or "ages" in tokset:
+        return True
+    # "years old", "yrs_old", "age in years" style headers
+    return bool(tokset & {"yrs", "years", "yr", "year"}) and "old" in tokset
 
 
 # A birth date is the one date type where "in the future" is always
