@@ -351,8 +351,6 @@ class TestDuplicates:
         assert (("duplicate_identifier_values", ident) in issues(res))
 
 
-<<<<<<< HEAD
-=======
 class TestOptInKeyRemovalAndSettings:
     EMP = lambda self: pd.DataFrame({"Emp No": ["E100", "E100", "E101", "E103", "E103", "E104"],
                                      "Name": ["Ada", "Ada B", "John", "Mary", "Mary", "Paul"],
@@ -522,7 +520,6 @@ class TestLimitsThatWereFixed:
         assert consistency.find_relationships(df, profiling.profile_dataset(df)["columns"])["search"]["search_capped"] is True
 
 
->>>>>>> 302fe70 (changes)
 # ============================================================================ 5. reporting + invariants
 class TestReportingAndInvariants:
     def test_before_and_after_reports_refer_to_the_same_uploaded_rows(self):

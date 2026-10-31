@@ -15,14 +15,10 @@ MAX_MARKERS, MAX_MARKER_LEN, MAX_KEYS = 50, 40, 10
 DATE_ORDERS = ("auto", "day_first", "month_first")
 MISSING_ACTIONS = ("leave", "fill", "flag", "remove_rows")
 MAX_COLUMNS, MAX_MAPPINGS, MAX_VALUE_LEN = 100, 200, 100
-<<<<<<< HEAD
-_ALLOWED = {"number_format", "number_words", "missing_markers", "not_missing", "duplicate_keys", "validation",
-=======
 DUPLICATE_REMOVALS = ("report", "keep_first", "keep_last")
 MAX_TOLERANCE = 0.05
 _ALLOWED = {"number_format", "number_words", "missing_markers", "not_missing", "duplicate_keys", "duplicate_removal",
             "consistency", "validation",
->>>>>>> 302fe70 (changes)
             "date_order", "date_orders", "phone_country", "missing_values", "value_mappings", "value_actions"}
 
 

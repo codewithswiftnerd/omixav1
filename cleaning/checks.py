@@ -439,9 +439,6 @@ def check_outliers(ctx: CheckContext) -> list[dict]:
             if iqr == 0:
                 continue
             lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-<<<<<<< HEAD
-        n_out = int(((s < lo) | (s > hi)).sum())
-=======
         outside = (s < lo) | (s > hi)
         n_total_out = int(outside.sum())
         if n_total_out:
@@ -450,7 +447,6 @@ def check_outliers(ctx: CheckContext) -> list[dict]:
             if explained:
                 outside = outside & ~s.index.isin(list(explained))
         n_out = int(outside.sum())
->>>>>>> 302fe70 (changes)
         if n_out:
             shared = n_total_out - n_out
             out.append({

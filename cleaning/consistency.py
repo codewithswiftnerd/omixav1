@@ -28,11 +28,8 @@ from __future__ import annotations
 
 import itertools
 import time
-<<<<<<< HEAD
-=======
 from contextlib import contextmanager
 from contextvars import ContextVar
->>>>>>> 302fe70 (changes)
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -42,12 +39,8 @@ import pandas as pd
 from cleaning import currencies, detectors, profiling
 
 # ---- evidence thresholds ------------------------------------------------------------------------------
-<<<<<<< HEAD
-MAX_NUMERIC_COLUMNS = 40          # columns searched for arithmetic relationships (3-term sums use the first 12)
-=======
 MAX_NUMERIC_COLUMNS = 120         # columns searched for arithmetic relationships (3-term sums use the first 12)
 SCREEN_ROWS = 400                 # stage-1 sample: which columns could a calculation be the result of?
->>>>>>> 302fe70 (changes)
 MAX_SUM3_COLUMNS = 12
 DISCOVERY_ROWS = 2000             # rows sampled to FIND a relationship; every row is then checked against it
 MIN_COMPARABLE = 4                # rows where every column of the relationship is filled in
@@ -85,8 +78,6 @@ _MIN_TOKENS = {"min", "minimum", "low", "lower", "lowest", "floor", "least"}
 _MAX_TOKENS = {"max", "maximum", "high", "upper", "highest", "ceiling", "cap", "most"}
 
 
-<<<<<<< HEAD
-=======
 # Per-job settings (options["consistency"]): {"enabled": bool, "tolerance": float, "ignore_columns": [names]}.
 # A ContextVar, like the protected-values setting: isolated per thread / request and reset when the job ends.
 _CONFIG: ContextVar = ContextVar("omixa_consistency_config", default={})
@@ -106,7 +97,6 @@ def _rel_tol() -> float:
     return REL_TOL if t is None else float(t)
 
 
->>>>>>> 302fe70 (changes)
 @dataclass
 class Relation:
     kind: str                         # product | sum | date_order | range_order
@@ -115,12 +105,8 @@ class Relation:
     comparable: int
     holding: int
     scale: float = 1.0                # product only: 0.01 when one factor is a percentage written as 12.5 for 12.5%
-<<<<<<< HEAD
-    violations: list = field(default_factory=list)   # [{label, record, values, expected, difference}]
-=======
     violations: list = field(default_factory=list)   # [{label, record, values, expected, difference}] (capped for size)
     violation_labels: list = field(default_factory=list)   # EVERY violating row label (not capped)
->>>>>>> 302fe70 (changes)
     violation_count: int = 0
     summary: str = ""
     named: bool = False
@@ -226,11 +212,7 @@ def _numeric_candidates(df: pd.DataFrame, profile: dict) -> tuple[dict, list]:
 
 
 def _tol(expected: np.ndarray) -> np.ndarray:
-<<<<<<< HEAD
-    return ABS_TOL + REL_TOL * np.abs(expected)
-=======
     return ABS_TOL + _rel_tol() * np.abs(expected)
->>>>>>> 302fe70 (changes)
 
 
 def _chance_rate(expected: np.ndarray, target: np.ndarray) -> float:
@@ -288,8 +270,6 @@ def _find_arithmetic(df: pd.DataFrame, profile: dict) -> tuple[list, dict]:
         return comparable >= MIN_COMPARABLE and nontrivial >= MIN_NONTRIVIAL_ROWS and hold >= MIN_HOLDING_ROWS and \
                hold / comparable >= MIN_HOLD_RATIO
 
-<<<<<<< HEAD
-=======
     # Two stages, so a wide file stays fast. Stage 1 (screen) asks, for ONE candidate calculation, which of ALL the
     # other columns it could be the result of, on a small sample and with a loose bar, in one vectorised step.
     # Stage 2 applies the strict tests (ratio, non-triviality, beating coincidence) to the survivors only.
@@ -305,7 +285,6 @@ def _find_arithmetic(df: pd.DataFrame, profile: dict) -> tuple[list, dict]:
         ok[list(exclude)] = False
         return np.flatnonzero(ok)
 
->>>>>>> 302fe70 (changes)
     # ---- products: A x B (x 0.01 when a factor is a percentage) = C
     for i, j in itertools.combinations(range(n), 2):
         if time.monotonic() > deadline:
@@ -315,15 +294,8 @@ def _find_arithmetic(df: pd.DataFrame, profile: dict) -> tuple[list, dict]:
         if _percent_hint(names[i]) or _percent_hint(names[j]):
             scales.append(0.01)
         for scale in scales:
-<<<<<<< HEAD
-            P = X[:, i] * X[:, j] * scale
-            for k in range(n):
-                if k in (i, j):
-                    continue
-=======
             for k in screen(Xs[:, i] * Xs[:, j] * scale, (i, j)):
                 P = X[:, i] * X[:, j] * scale
->>>>>>> 302fe70 (changes)
                 valid = ~np.isnan(P) & ~np.isnan(X[:, k]) & ~((P == 0) & (X[:, k] == 0))
                 comparable = int(valid.sum())
                 if comparable < MIN_COMPARABLE:
@@ -347,19 +319,10 @@ def _find_arithmetic(df: pd.DataFrame, profile: dict) -> tuple[list, dict]:
             if time.monotonic() > deadline:
                 info["search_timed_out"] = True
                 return
-<<<<<<< HEAD
-            S = X[:, list(combo)].sum(axis=1)
-            any_nan = np.isnan(X[:, list(combo)]).any(axis=1)
-            S = np.where(any_nan, np.nan, S)
-            for k in range(n):
-                if k in combo:
-                    continue
-=======
             cl = list(combo)
             Ss = np.where(np.isnan(Xs[:, cl]).any(axis=1), np.nan, Xs[:, cl].sum(axis=1))
             for k in screen(Ss, combo):
                 S = np.where(np.isnan(X[:, cl]).any(axis=1), np.nan, X[:, cl].sum(axis=1))
->>>>>>> 302fe70 (changes)
                 valid = ~np.isnan(S) & ~np.isnan(X[:, k]) & ~((S == 0) & (X[:, k] == 0))
                 comparable = int(valid.sum())
                 if comparable < MIN_COMPARABLE:
@@ -370,11 +333,7 @@ def _find_arithmetic(df: pd.DataFrame, profile: dict) -> tuple[list, dict]:
                 if hold < MIN_HOLDING_ROWS or hold / comparable < need:
                     continue
                 # trivial when it only holds because every other addend is 0 (the total just copies one column)
-<<<<<<< HEAD
-                nonzero_terms = (np.abs(X[:, list(combo)]) > 0).sum(axis=1)
-=======
                 nonzero_terms = (np.abs(X[:, cl]) > 0).sum(axis=1)
->>>>>>> 302fe70 (changes)
                 nontrivial = int((holds & (nonzero_terms >= 2)).sum())
                 if nontrivial >= MIN_NONTRIVIAL_ROWS and \
                         hold / comparable - _chance_rate(S, X[:, k]) >= MIN_MARGIN_OVER_CHANCE:
@@ -421,10 +380,7 @@ def _evaluate_arithmetic(r: Relation, cols: dict, index) -> None:
     r.comparable = int(valid.sum())
     r.holding = int((valid & ~bad).sum())
     r.violation_count = int(bad.sum())
-<<<<<<< HEAD
-=======
     r.violation_labels = list(index[np.flatnonzero(bad)])
->>>>>>> 302fe70 (changes)
     sym = "×" if r.kind == "product" else "+"
     scale_txt = " ÷ 100" if r.scale != 1.0 else ""
     r.summary = f"{r.target} = " + f" {sym} ".join(r.terms) + scale_txt
@@ -540,10 +496,7 @@ def _find_range_orders(df: pd.DataFrame, profile: dict) -> list:
             continue          # nothing wrong, or the labels are more likely swapped than individual rows wrong
         rel = Relation("range_order", hi, [lo], comparable, comparable - n_bad, named=True)
         rel.violation_count = n_bad
-<<<<<<< HEAD
-=======
         rel.violation_labels = list(df.index[np.flatnonzero(bad.to_numpy())])
->>>>>>> 302fe70 (changes)
         rel.summary = f"{lo} should not be greater than {hi}"
         for p in np.flatnonzero(bad.to_numpy())[:MAX_EXAMPLES]:
             label = df.index[p]
@@ -562,8 +515,6 @@ def find_relationships(df: pd.DataFrame, profile: dict) -> dict:
     if df is None or len(df) < MIN_COMPARABLE or len(df.columns) < 2:
         return {"relations": [], "search": {"numeric_columns_considered": 0, "numeric_columns_searched": 0,
                                            "search_capped": False, "search_timed_out": False}}
-<<<<<<< HEAD
-=======
     cfg = _CONFIG.get()
     if cfg.get("enabled") is False:
         return {"relations": [], "search": {"numeric_columns_considered": 0, "numeric_columns_searched": 0,
@@ -573,7 +524,6 @@ def find_relationships(df: pd.DataFrame, profile: dict) -> dict:
         df = df.drop(columns=[c for c in df.columns if str(c) in ignore])
         if len(df.columns) < 2:
             return {"relations": [], "search": {}}
->>>>>>> 302fe70 (changes)
     arithmetic, search = _find_arithmetic(df, profile)
     relations = list(arithmetic) + _find_date_orders(df, profile) + _find_range_orders(df, profile)
     return {"relations": relations, "search": search}
@@ -602,8 +552,6 @@ def summarize(found: dict) -> dict:
             "evidence": "inferred from the values" if not r.named else "inferred from the values and the column names",
         })
     return {"relationships": rels, "search": found.get("search", {})}
-<<<<<<< HEAD
-=======
 
 
 def explained_cells(found: dict) -> dict:
@@ -617,4 +565,3 @@ def explained_cells(found: dict) -> dict:
         for col in [r.target, *r.terms]:
             out.setdefault(col, set()).update(r.violation_labels)
     return out
->>>>>>> 302fe70 (changes)
