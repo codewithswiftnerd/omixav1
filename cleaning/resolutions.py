@@ -261,7 +261,8 @@ def _resolve_invalid_email(df: pd.DataFrame, column: str, choice: str) -> tuple[
 
     series = df[column].astype("string")
     non_null = series.notna()
-    invalid = non_null & ~series.str.match(detectors.EMAIL_RE)
+    # Judge the trimmed value: this runs BEFORE the formatting rule, so " ada@example.com " must not be blanked.
+    invalid = non_null & ~series.str.strip().str.match(detectors.EMAIL_RE).fillna(False)
     count = int(invalid.sum())
     if count:
         df.loc[invalid, column] = pd.NA
@@ -313,7 +314,16 @@ def _resolve_possible_duplicates(df: pd.DataFrame, column: str, choice: str) -> 
     from cleaning import detectors
     if detectors.is_identifier_column(str(column), df[column]) or detectors.is_unique_record_key(df[column]):
         # Records with different identifiers are different records, even when every other field
-        # happens to match (two customers can buy the same item on the same day).
+        # happens to match (two customers can buy the same item on the same day). The one exception is a
+        # row that repeats another on EVERY other column including its e-mail/phone: the same person
+        # entered again under a new ID. Only those are removed (first kept), and only on this explicit choice.
+        from cleaning import duplicates, profiling
+        id_cols = [c for c in df.columns
+                   if profiling.profile_column(str(c), df[c], len(df)).semantic_type == profiling.IDENTIFIER]
+        groups = duplicates.repeats_under_new_id(df, id_cols or [column])
+        drop = [label for g in groups for label in g[1:]]
+        if drop:
+            return df.drop(index=drop), len(drop)
         raise ResolutionRefused(f"'{column}' identifies each record (its values are unique): rows with different identifiers are "
                                 "distinct records, so none were removed")
     other_cols = [c for c in df.columns if c != column]

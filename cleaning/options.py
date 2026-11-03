@@ -15,7 +15,10 @@ MAX_MARKERS, MAX_MARKER_LEN, MAX_KEYS = 50, 40, 10
 DATE_ORDERS = ("auto", "day_first", "month_first")
 MISSING_ACTIONS = ("leave", "fill", "flag", "remove_rows")
 MAX_COLUMNS, MAX_MAPPINGS, MAX_VALUE_LEN = 100, 200, 100
-_ALLOWED = {"number_format", "number_words", "missing_markers", "duplicate_keys", "validation",
+DUPLICATE_REMOVALS = ("report", "keep_first", "keep_last")
+MAX_TOLERANCE = 0.05
+_ALLOWED = {"number_format", "number_words", "missing_markers", "not_missing", "duplicate_keys", "duplicate_removal",
+            "consistency", "validation",
             "date_order", "date_orders", "phone_country", "missing_values", "value_mappings", "value_actions"}
 
 
@@ -46,11 +49,50 @@ def parse_options(raw: Any) -> dict:
                 and all(isinstance(x, str) and 0 < len(x.strip()) <= MAX_MARKER_LEN for x in m)):
             raise OptionsError(f"'missing_markers' must be a list of up to {MAX_MARKERS} short, non-empty strings")
         out["missing_markers"] = sorted({x.strip().lower() for x in m})
+    if "not_missing" in raw:
+        # Words the user says are REAL values in their data ("None", "N/A", "Unknown"): never blanked, never counted
+        # as missing. Wins over both the built-in markers and 'missing_markers'.
+        m = raw["not_missing"]
+        if not (isinstance(m, list) and len(m) <= MAX_MARKERS
+                and all(isinstance(x, str) and 0 < len(x.strip()) <= MAX_MARKER_LEN for x in m)):
+            raise OptionsError(f"'not_missing' must be a list of up to {MAX_MARKERS} short, non-empty strings")
+        out["not_missing"] = sorted({x.strip().lower() for x in m})
+        if "missing_markers" in out:
+            out["missing_markers"] = [x for x in out["missing_markers"] if x not in out["not_missing"]]
     if "duplicate_keys" in raw:
         k = raw["duplicate_keys"]
         if not (isinstance(k, list) and 0 < len(k) <= MAX_KEYS and all(isinstance(x, str) and x for x in k)):
             raise OptionsError(f"'duplicate_keys' must be a list of 1-{MAX_KEYS} column names")
         out["duplicate_keys"] = list(k)
+    if "duplicate_removal" in raw:
+        # "report" (the default) only lists rows that share the key; the other two REMOVE them, so they need the key.
+        if raw["duplicate_removal"] not in DUPLICATE_REMOVALS:
+            raise OptionsError(f"'duplicate_removal' must be one of: {', '.join(DUPLICATE_REMOVALS)}")
+        if raw["duplicate_removal"] != "report":
+            if not out.get("duplicate_keys"):
+                raise OptionsError("'duplicate_removal' needs 'duplicate_keys': say which columns identify a duplicate")
+            out["duplicate_removal"] = raw["duplicate_removal"]
+    if "consistency" in raw:
+        c = raw["consistency"]
+        if not isinstance(c, dict) or set(c) - {"enabled", "tolerance", "ignore_columns"}:
+            raise OptionsError("'consistency' must be an object with any of: enabled, tolerance, ignore_columns")
+        cc = {}
+        if "enabled" in c:
+            if not isinstance(c["enabled"], bool):
+                raise OptionsError("'consistency.enabled' must be true or false")
+            cc["enabled"] = c["enabled"]
+        if "tolerance" in c:
+            t = c["tolerance"]
+            if isinstance(t, bool) or not isinstance(t, (int, float)) or not (0 <= t <= MAX_TOLERANCE):
+                raise OptionsError(f"'consistency.tolerance' must be a number from 0 to {MAX_TOLERANCE} "
+                                   "(0.005 = values may differ by 0.5% before they count as a mismatch)")
+            cc["tolerance"] = float(t)
+        if "ignore_columns" in c:
+            ic = c["ignore_columns"]
+            if not (isinstance(ic, list) and len(ic) <= MAX_COLUMNS and all(isinstance(x, str) and x for x in ic)):
+                raise OptionsError(f"'consistency.ignore_columns' must be a list of up to {MAX_COLUMNS} column names")
+            cc["ignore_columns"] = list(dict.fromkeys(ic))
+        out["consistency"] = cc
     if "date_order" in raw:
         if raw["date_order"] not in DATE_ORDERS:
             raise OptionsError(f"'date_order' must be one of: {', '.join(DATE_ORDERS)}")

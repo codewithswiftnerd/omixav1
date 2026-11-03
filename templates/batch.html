@@ -64,8 +64,14 @@
                 <select id="optPhone"><option value="">Don't assume a country</option>{% for code, name in countries %}<option value="{{ code }}">{{ name }}</option>{% endfor %}</select></label>
               <label class="opt"><span>Treat these as blank (comma separated)</span>
                 <input id="optMarkers" type="text" placeholder="e.g. tbd, not given, ?" maxlength="300"></label>
+              <label class="opt"><span>These are real values, not blanks (comma separated)</span>
+                <input id="optNotMissing" type="text" placeholder="e.g. none, n/a" maxlength="300"></label>
               <label class="opt"><span>Duplicates are rows sharing (columns, comma separated)</span>
                 <input id="optDupKeys" type="text" placeholder="e.g. email (blank = exact copies only)" maxlength="300"></label>
+              <label class="opt"><span>Rows that share those columns</span>
+                <select id="optDupRemove" disabled><option value="report">Only list them for me to review</option><option value="keep_first">Keep the first, remove the others</option><option value="keep_last">Keep the last, remove the others</option></select></label>
+              <label class="opt"><span>Check that related columns agree (quantity × price = total, start before end)</span>
+                <select id="optConsistency"><option value="on">Yes, report any that don't</option><option value="off">No, skip this check</option></select></label>
             </div>
 
             <p class="group-label review">Empty cells</p>

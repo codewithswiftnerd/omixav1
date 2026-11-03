@@ -124,7 +124,7 @@ def profile_column(name: str, series: pd.Series, total_rows: int) -> ColumnProfi
         # "N/A", "-", "Unknown" are placeholders, not values: they must not make a numeric,
         # date or flag column look like free text.
         as_text = non_null_series.astype(str).str.strip()
-        non_null_series = non_null_series[~as_text.str.lower().isin(detectors.MISSING_TOKENS)]
+        non_null_series = non_null_series[~as_text.str.lower().isin(detectors.missing_tokens())]
     non_null = int(len(non_null_series))
     unique_ratio = (non_null_series.nunique() / non_null) if non_null else 0.0
     base = dict(
@@ -255,4 +255,5 @@ def never_impute(profile: ColumnProfile) -> bool:
     enough to hold back here, because the cost of being wrong is asymmetric."""
     # CURRENCY: money is never imputed. The text label "Unknown" is not an amount, and a median of
     # values that may be in different currencies (EUR, NGN, USD ...) is a number nobody ever paid.
-    return profile.semantic_type in (IDENTIFIER, EMAIL, PHONE, DATE, DATETIME, CURRENCY) and profile.confidence >= 0.6
+    # PERSON_NAME: a customer called "Unknown" is a made-up record, not a flagged gap; leave the name blank.
+    return profile.semantic_type in (IDENTIFIER, PERSON_NAME, EMAIL, PHONE, DATE, DATETIME, CURRENCY) and profile.confidence >= 0.6

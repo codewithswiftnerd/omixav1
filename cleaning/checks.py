@@ -40,6 +40,7 @@ class CheckContext:
     # {column: bool numpy array}: cells a SAFE formatting fix would change (filled in by quality_report's dry runs)
     untidy: dict = field(default_factory=dict)
     _classified: dict = field(default_factory=dict, repr=False)
+    _relations: Optional[dict] = field(default=None, repr=False)   # consistency.find_relationships, computed once
 
     @property
     def total_rows(self) -> int:
@@ -66,7 +67,7 @@ def real_values(series: pd.Series) -> pd.Series:
     *missing* value (the completeness check reports it); counting it again as an invalid
     email / unrecognised gender / odd phone would double-penalise one defect."""
     values = series.dropna().astype(str)
-    return values[~values.str.strip().str.lower().isin(detectors.MISSING_TOKENS)]
+    return values[~values.str.strip().str.lower().isin(detectors.missing_tokens())]
 
 
 def _pct(n: int, d: int) -> float:
@@ -85,7 +86,7 @@ def check_missing(ctx: CheckContext) -> list[dict]:
         placeholders = 0
         if not pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series):
             as_text = series.astype("string").str.strip().str.lower()
-            placeholders = int((as_text.isin(detectors.MISSING_TOKENS) & ~na).sum())
+            placeholders = int((as_text.isin(detectors.missing_tokens()) & ~na).sum())
         missing = int(na.sum()) + placeholders
         if not missing:
             continue
@@ -142,6 +143,32 @@ def check_duplicate_rows(ctx: CheckContext) -> list[dict]:
     }]
 
 
+def record_id_columns(profile: dict) -> list:
+    """Columns the profiler is confident identify a record (customer_id, order no ...). Contact columns such as
+    phone are NOT record ids here: they are the evidence that two rows are one person."""
+    from cleaning import profiling
+    return [c for c, p in profile.items() if p.semantic_type == profiling.IDENTIFIER and p.confidence >= 0.6]
+
+
+def _repeats_under_new_id_finding(ctx: CheckContext) -> list[dict]:
+    """Same record entered again under a new identifier (see duplicates.repeats_under_new_id). Review only."""
+    from cleaning import duplicates
+    ids = record_id_columns(ctx.profile)
+    groups = duplicates.repeats_under_new_id(ctx.df, ids)
+    if not groups:
+        return []
+    rows = sum(len(g) for g in groups)
+    id_col = next((c for c in ids if c in ctx.df.columns), None)
+    return [{
+        "column": id_col, "issue": "possible_duplicate_records", "affected": rows, "population": ctx.total_rows,
+        "unit": "row",
+        "detail": f"{rows} row(s) in {len(groups)} group(s) repeat another row on every column except the record "
+                  f"ID '{id_col}' (same e-mail/phone and details, different ID).",
+        "suggestion": "Not auto-fixed: the IDs differ, so these may be one person entered twice. Review them, "
+                      "then remove the repeats if you agree.",
+    }]
+
+
 def check_possible_duplicate_records(ctx: CheckContext) -> list[dict]:
     df, n = ctx.df, ctx.total_rows
     if n < 2 or len(df.columns) < 2 or len(df.columns) > 40 or n > 50000:
@@ -158,7 +185,7 @@ def check_possible_duplicate_records(ctx: CheckContext) -> list[dict]:
         if cand > best:
             best_col, best = col, cand
     if not best:
-        return []
+        return _repeats_under_new_id_finding(ctx)
     return [{
         "column": best_col, "issue": "possible_duplicate_records", "affected": best, "population": n, "unit": "row",
         "detail": f"{best} row(s) match another row on every column except '{best_col}'.",
@@ -193,6 +220,27 @@ def check_duplicate_identifiers(ctx: CheckContext) -> list[dict]:
                 "detail": f"{conflicting} row(s) reuse an identifier already held by a different record.",
                 "suggestion": "Not auto-fixed: decide which record is right, or whether the identifier "
                               "should be reissued.",
+                "sample_values": [str(v) for v in s[dup & ~exact].astype(str).unique()[:5]],
+            })
+    # Identifiers the name-based test above does not recognise ("Emp No", "Invoice Ref", "SKU"): only columns whose
+    # values also behave like an identifier (see duplicates.inferred_identifier_columns). A grouping key that is
+    # meant to repeat is never reported.
+    from cleaning import duplicates as _dup
+    reported = {o["column"] for o in out}
+    for col in _dup.inferred_identifier_columns(df):
+        if col in reported:
+            continue
+        s = df[col]
+        dup = s.notna() & s.duplicated(keep="first")
+        conflicting = int((dup & ~exact).sum())
+        if conflicting:
+            out.append({
+                "column": col, "issue": "duplicate_identifier_values", "affected": conflicting,
+                "population": int(s.notna().sum()), "unit": "row",
+                "detail": f"{conflicting} row(s) reuse a value of '{col}' that another, different record already "
+                          f"has. Almost every other value in the column is unique, so it behaves as an identifier.",
+                "suggestion": "Not auto-fixed: these may be one record entered twice with small differences, or two "
+                              "different records that were given the same identifier. Review them.",
                 "sample_values": [str(v) for v in s[dup & ~exact].astype(str).unique()[:5]],
             })
     return out
@@ -400,18 +448,38 @@ def check_outliers(ctx: CheckContext) -> list[dict]:
         if prof.semantic_type in (profiling.IDENTIFIER, profiling.PHONE) or prof.subtype == "age":
             continue  # identifiers have no 'typical range'; ages have their own hard-limit check
         s = ctx.df[col].dropna()
-        if len(s) < 10 or s.nunique() <= 2:
+        if len(s) < 5 or s.nunique() <= 2:
             continue
-        q1, q3 = s.quantile(0.25), s.quantile(0.75)
-        iqr = q3 - q1
-        if iqr == 0:
-            continue
-        lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-        n_out = int(((s < lo) | (s > hi)).sum())
+        if len(s) < 10:
+            # Too few rows for quartile fences (they would flag ordinary spread), but a GROSS outlier (900 beside
+            # values near 70) is still visible: use the median absolute deviation with a deliberately high bar.
+            med = s.median()
+            mad = (s - med).abs().median()
+            if mad == 0:
+                continue
+            spread = 10 * mad / 0.6745
+            lo, hi = med - spread, med + spread
+        else:
+            q1, q3 = s.quantile(0.25), s.quantile(0.75)
+            iqr = q3 - q1
+            if iqr == 0:
+                continue
+            lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+        outside = (s < lo) | (s > hi)
+        n_total_out = int(outside.sum())
+        if n_total_out:
+            from cleaning import consistency
+            explained = consistency.explained_cells(_relations(ctx)).get(str(col), set())
+            if explained:
+                outside = outside & ~s.index.isin(list(explained))
+        n_out = int(outside.sum())
         if n_out:
+            shared = n_total_out - n_out
             out.append({
                 "column": col, "issue": "potential_outliers", "affected": n_out, "population": int(len(s)),
-                "detail": f"{n_out} values fall outside the typical range ({round(lo, 2)} to {round(hi, 2)}).",
+                "detail": f"{n_out} values fall outside the typical range ({round(lo, 2)} to {round(hi, 2)})."
+                          + (f" {shared} more are reported once, under the related-columns finding that explains them."
+                             if shared else ""),
                 "suggestion": "Not auto-fixed, worth a manual look before trusting averages or totals "
                               "on this column. Unusual is not the same as wrong.",
             })
@@ -439,7 +507,9 @@ def check_invalid_email(ctx: CheckContext) -> list[dict]:
         values = real_values(ctx.df[col])
         if values.empty:
             continue
-        bad = values[~values.str.match(detectors.EMAIL_RE)]
+        # Spaces around an otherwise valid address are a safe formatting fix (the whitespace finding), not a
+        # malformed email: judge the trimmed value, and never offer a valid address for blanking.
+        bad = values[~values.str.strip().str.match(detectors.EMAIL_RE)]
         if len(bad):
             out.append({
                 "column": col, "issue": "invalid_email_format", "affected": int(len(bad)), "population": int(len(values)),
@@ -732,4 +802,87 @@ def check_unverified_imputation(ctx: CheckContext) -> list[dict]:
                           f"estimates, not observations.",
                 "suggestion": "Treat these as estimates in any analysis, or replace them with real values.",
             })
+    return out
+
+
+# ------------------------------------------------------------------ related columns (cross-column consistency)
+def _relations(ctx: CheckContext) -> dict:
+    if ctx._relations is None:
+        from cleaning import consistency
+        try:
+            ctx._relations = consistency.find_relationships(ctx.df, ctx.profile)
+        except Exception:      # an inference problem must never break a quality report
+            ctx._relations = {"relations": [], "search": {}}
+    return ctx._relations
+
+
+def _relation_findings(ctx: CheckContext, kinds: tuple, issue: str, what: str, suggestion: str) -> list[dict]:
+    from cleaning import consistency
+    out = []
+    for r in _relations(ctx)["relations"]:
+        if r.kind not in kinds or not r.violation_count:
+            continue
+        shown = len(r.violations)
+        more = f" (first {shown} shown)" if r.violation_count > shown else ""
+        out.append({
+            "column": r.target, "related_columns": list(r.terms), "relationship": r.summary, "issue": issue,
+            "affected": r.violation_count, "population": r.comparable, "unit": "row",
+            "detail": f"{what}: {r.summary}. It holds on {r.holding} of {r.comparable} rows that have every value "
+                      f"filled in, but not on {r.violation_count} row(s){more}.",
+            "suggestion": suggestion,
+            "examples": consistency.relation_to_example_rows(r),
+        })
+    return out
+
+
+def check_inconsistent_calculations(ctx: CheckContext) -> list[dict]:
+    return _relation_findings(
+        ctx, ("product", "sum"), "calculation_mismatch", "These columns behave as if one is calculated from the others",
+        "Not auto-fixed and never recalculated: any of the values could be the wrong one (a quantity, a price or the "
+        "total). Check each listed row against its source.")
+
+
+def check_contradictory_ordering(ctx: CheckContext) -> list[dict]:
+    return _relation_findings(
+        ctx, ("date_order", "range_order"), "contradictory_ordering",
+        "These columns have a natural order (one should not come after the other)",
+        "Not auto-fixed: either value could be the typo, or the two columns could be swapped on that row. "
+        "Check each listed row against its source.")
+
+
+# Headers that say "percent" but where values outside 0-100 are normal (a change, a return, a margin)
+_PERCENT_UNBOUNDED_TOKENS = {"change", "growth", "delta", "diff", "difference", "yoy", "mom", "return", "returns",
+                             "margin", "variance", "increase", "decrease", "gain", "loss", "swing", "uplift",
+                             "inflation", "deviation", "error", "cagr", "roi", "profit"}
+
+
+def check_out_of_range_percentage(ctx: CheckContext) -> list[dict]:
+    """A column that is clearly a percentage (the header says so, and most values sit inside 0-100) with values
+    below 0 or above 100. A percentage of a whole cannot exceed 100, so these are entry slips or a different unit."""
+    from cleaning import consistency
+    out = []
+    for col in ctx.df.columns:
+        toks = profiling.name_tokens(str(col))
+        is_pct_name = bool(set(toks) & {"pct", "percent", "percentage", "percentages"}) or "%" in str(col)
+        if not is_pct_name or set(toks) & _PERCENT_UNBOUNDED_TOKENS:
+            continue
+        vals = consistency._to_float_series(ctx.df[col])
+        if vals is None:
+            continue
+        v = vals.dropna()
+        if len(v) < 4:
+            continue
+        inside = ((v >= 0) & (v <= 100)).mean()
+        if inside < 0.8 or inside == 1.0:
+            continue      # not a bounded percentage, or nothing out of range
+        ctx.evaluated.add(M.ACCURACY)
+        bad = v[(v < 0) | (v > 100)]
+        out.append({
+            "column": col, "issue": "out_of_range_percentage", "affected": int(len(bad)), "population": int(len(v)),
+            "detail": f"{len(bad)} value(s) are outside 0-100 in a column that otherwise reads as a percentage "
+                      f"({round(100 * inside)}% of its values are inside that range).",
+            "suggestion": "Not auto-fixed. A percentage of a whole cannot be below 0 or above 100: look for a typo, "
+                          "an extra digit, or a value recorded in a different unit.",
+            "sample_values": sorted(set(bad.tolist()))[:5],
+        })
     return out

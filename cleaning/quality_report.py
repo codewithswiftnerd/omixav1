@@ -204,7 +204,7 @@ def enrich_finding(raw: dict, ctx: CheckContext) -> dict:
     if "sample_values" in raw:
         finding["sample_values"] = raw["sample_values"]
     # optional breakdowns a check may attach (additive: existing clients ignore unknown keys)
-    for extra in ("formats_found", "invalid_count", "suspicious_count"):
+    for extra in ("formats_found", "invalid_count", "suspicious_count", "related_columns", "relationship", "examples"):
         if extra in raw:
             finding[extra] = raw[extra]
     return finding
@@ -378,6 +378,10 @@ def generate_report(
         "column_types": _column_types(df, ctx.profile),
         "scorecard": scorecard,
     }
+    if ctx._relations is not None:
+        # What was inferred about related columns, including relationships that hold on every row (good news).
+        from cleaning import consistency
+        report["relationships"] = consistency.summarize(ctx._relations)
     if project:
         report["expected_after_safe_fixes"] = _project_after_safe_fixes(df, findings, field_importance)
         if report["expected_after_safe_fixes"]:
