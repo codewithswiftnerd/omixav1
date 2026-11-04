@@ -19,7 +19,7 @@
    Form controls and <summary>/<code>/<pre> do not inherit the page font by default, which is how
    system fonts leaked into inputs, buttons and tables. One rule, no exceptions. */
 html, body, button, input, select, textarea, optgroup, option, summary, label, table, th, td,
-code, pre, kbd, samp, small, .btn, .tab, .pill, .badge, .cleaning-summary-text {
+code, pre, kbd, samp, small, .btn, .tab, .badge, .cleaning-summary-text {
   font-family: var(--font-sans);
 }
 code, pre, kbd, samp { font-variant-numeric: tabular-nums; }
@@ -199,16 +199,8 @@ body.has-file .hero-wrap { padding-top: 32px; }
 /* ---------- Marketing sections ---------- */
 .marketing { padding-bottom: 0; }
 .m-section { max-width: 1040px; margin: 0 auto; padding: 64px 18px; }
-.m-title { text-align: center; font-size: clamp(1.7rem, 6vw, 2.5rem); letter-spacing: -.025em; font-weight: 800; line-height: 1.2; margin: 0 0 36px; }
+.m-title { text-wrap: balance; text-align: center; font-size: clamp(1.7rem, 6vw, 2.5rem); letter-spacing: -.025em; font-weight: 800; line-height: 1.2; margin: 0 0 36px; }
 
-.steps3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
-.step3 { text-align: left; }
-.step3-art { height: 190px; border-radius: 22px; display: grid; place-items: center; margin-bottom: 18px; background: linear-gradient(135deg, rgba(165,84,247,.18), rgba(244,238,253,.92) 55%, rgba(104,52,214,.18)); }
-.step3-art svg { width: 72px; height: 72px; padding: 20px; border-radius: 50%; background: var(--omixa-gradient); fill: none; stroke: var(--white); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; box-shadow: 0 8px 20px rgba(165,84,247,.4); }
-.pill { display: inline-flex; align-items: center; gap: 8px; border: 1.5px solid var(--gray-300); border-radius: 10px; padding: 5px 12px; font-size: .88rem; font-weight: 600; color: var(--gray-600); }
-.pill i { width: 9px; height: 9px; border-radius: 50%; background: var(--g-purple); }
-.step3 h3 { margin: 12px 0 6px; font-size: 1.15rem; }
-.step3 p { margin: 0; font-size: .95rem; }
 
 .quality { background: var(--omixa-gradient-deep); color: var(--white); padding: 72px 18px 80px; }
 .quality-inner { max-width: 720px; margin: 0 auto; text-align: center; }
@@ -262,8 +254,7 @@ body.has-file .hero-wrap { padding-top: 32px; }
 /* ---------- Responsive ---------- */
 @media (max-width: 760px) {
   .steps3, .trust-grid { grid-template-columns: 1fr; }
-  .step3-art { height: 150px; }
-  .m-section { padding: 48px 16px; }
+    .m-section { padding: 48px 16px; }
 }
 @media (min-width: 640px) {
   .upload-card { padding: 40px 28px 28px; }
@@ -619,3 +610,93 @@ pre, code { max-width: 100%; overflow-x: auto; }
 .mp-item-ok { background: transparent; border: 1px dashed var(--gray-200); }
 .mp-item-ok .rv-val { background: transparent; color: inherit; }
 @media (max-width: 640px) { .mp-add input, .mp-add button { flex: 1 1 100%; min-height: 44px; font-size: 16px; } }
+
+
+/* =====================================================================
+   v7: plain numbered steps, locked Pro rows, Clean button below Customize
+   ===================================================================== */
+
+/* How it works: a real sequence, so numerals are right, but no icon tiles or pills */
+.steps3 { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 32px; counter-reset: none; }
+.step3 { display: grid; grid-template-columns: auto 1fr; column-gap: 18px; align-items: start; padding: 22px 0; border-top: 1px solid var(--gray-200); text-align: left; }
+.step3-n { font-size: 2.6rem; line-height: .95; font-weight: 800; letter-spacing: -.04em; color: var(--omixa-indigo); min-width: 1ch; }
+.step3 h3 { margin: 2px 0 6px; font-size: 1.15rem; letter-spacing: -.01em; }
+.step3 p { margin: 0; font-size: .95rem; max-width: 34ch; }
+@media (max-width: 760px) {
+  .steps3 { grid-template-columns: 1fr; }
+  .step3 { padding: 18px 0; }
+  .step3-n { font-size: 2.2rem; }
+}
+@media (min-width: 761px) {
+  .step3 { grid-template-columns: 1fr; row-gap: 14px; padding-top: 24px; border-top: 2px solid var(--ink); }
+}
+
+/* Sample tiles: text only */
+.sample { padding: 13px 6px; font-size: .9rem; min-height: 46px; justify-content: center; }
+
+/* Pro rows inside "Customize cleaning" */
+.group-label.pro { color: var(--omixa-indigo); }
+.pro-group { margin-top: 8px; }
+.pro-feature { margin-bottom: 8px; }
+.pro-item {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; min-height: 56px;
+  padding: 12px 14px; border: 1px dashed var(--gray-300); border-radius: 14px; background: var(--gray-50);
+  font-family: inherit; color: var(--ink); cursor: pointer;
+}
+.pro-item .lock { flex: none; width: 18px; height: 18px; fill: none; stroke: var(--gray-600); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.pro-item-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pro-item-text strong { font-size: .9rem; }
+.pro-item-text em { font-style: normal; font-size: .78rem; color: var(--gray-600); line-height: 1.35; }
+.pro-item .badge { flex: none; }
+.pro-item[aria-expanded="true"] { border-style: solid; border-color: var(--g-purple); }
+.pro-note { margin: 6px 2px 0; padding: 10px 14px; border-radius: 12px; background: var(--omixa-lavender-light); font-size: .86rem; font-weight: 600; color: var(--ink); }
+.pro-note a { color: var(--omixa-indigo); font-weight: 800; text-decoration: underline; }
+.pro-live { display: none; }
+.is-pro .pro-live { display: block; padding: 12px 14px; border-radius: 14px; background: var(--gray-50); }
+.is-pro .pro-lock-only, .is-pro .pro-note { display: none; }
+.is-pro #mapBtn { border-style: solid; border-color: var(--gray-200); background: var(--gray-50); }
+.is-pro #mapBtn .lock { display: none; }
+.pro-live label { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.pro-live select { width: 100%; }
+.pro-live .hint { margin: 8px 0 0; }
+.pro-included { display: none; }
+.is-pro .pro-included { display: flex; flex-direction: column; gap: 1px; }
+.pro-included strong { font-size: .9rem; }
+.pro-included em { font-style: normal; font-size: .78rem; color: var(--gray-600); }
+
+/* Clean button: last thing in the panel, and pinned to the bottom of the screen while the panel is long */
+.run-bar {
+  position: sticky; bottom: 0; z-index: 5; margin: 16px -18px -22px; padding: 14px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(246,242,253,.96) 28%);
+  border-radius: 0 0 22px 22px;
+}
+.run-bar .btn-main { box-shadow: 0 8px 22px rgba(56,21,147,.22); }
+@media (min-width: 640px) { .run-bar { margin: 16px -26px -28px; padding: 16px 26px; } }
+#reviewActions:empty, #reviewActions:not(:has(:not(.hidden))) { display: none; }
+#reviewActions { margin: 0 0 12px; }
+
+/* v7 spacing: one consistent rhythm, and less nested padding on phones so text gets a usable column */
+.pro-note { margin: 6px 0 0; }
+.how-scored { margin-bottom: 14px; }
+#reviewActions { margin: 14px 0 12px; }
+#preScoreWhy + #reviewActions { margin-top: 14px; }
+.work-card .fold + .fold { margin-top: 12px; }
+.work-card .group-label { margin: 20px 0 10px; }
+.work-card .group-label:first-child { margin-top: 12px; }
+.rec-item { margin-bottom: 10px; }
+.work-card .main-actions { margin: 4px 0 14px; }
+
+@media (max-width: 480px) {
+  .hero-wrap { padding: 28px 12px 24px; }
+  body.has-file .hero-wrap { padding-top: 20px; }
+  .tool-card { padding: 8px; border-radius: 26px; }
+  .upload-card { padding: 22px 12px 18px; }
+  .work-card { padding: 16px 12px; border-radius: 20px; }
+  .fold > summary { padding: 14px 14px; }
+  .fold-body { padding: 2px 12px 14px; }
+  .run-bar { margin: 16px -12px -16px; padding: 14px 12px calc(14px + env(safe-area-inset-bottom, 0px)); border-radius: 0 0 20px 20px; }
+  .report-head { gap: 14px; padding-bottom: 14px; }
+  .score-badge { width: 68px; height: 68px; }
+  .report-text h2 { font-size: 1.2rem; }
+  .pro-item { padding: 12px; gap: 10px; }
+}

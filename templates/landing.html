@@ -29,17 +29,11 @@
         <div class="samples">
           <p class="samples-title">No file? Try one of these:</p>
           <div class="samples-row">
-            <button type="button" class="sample" data-sample="customers">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17" cy="9" r="2.4"/><path d="M16.5 14c2.7 0 4.5 1.7 4.5 4.2"/></svg>
-              <span>Customers</span>
+            <button type="button" class="sample" data-sample="customers"><span>Customers</span>
             </button>
-            <button type="button" class="sample" data-sample="sales">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
-              <span>Sales</span>
+            <button type="button" class="sample" data-sample="sales"><span>Sales</span>
             </button>
-            <button type="button" class="sample" data-sample="survey">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M8.5 9h7M8.5 13h7M8.5 17h4"/></svg>
-              <span>Survey</span>
+            <button type="button" class="sample" data-sample="survey"><span>Survey</span>
             </button>
           </div>
         </div>
@@ -77,10 +71,8 @@
           <p class="hint" id="noFindings" style="display:none;">No issues found. This file looks clean already.</p>
           <div id="preScoreWhy"></div>
 
-          <div class="main-actions">
-            <button id="runBtn" class="btn-main" disabled>Clean my data</button>
+          <div class="main-actions" id="reviewActions">
             <button id="reviewBtn" type="button" class="btn btn-secondary hidden">Review flagged values</button>
-            <button id="mapBtn" type="button" class="btn btn-secondary hidden">Standardize values</button>
           </div>
 
           <dialog id="reviewDialog" class="m-dialog review-dialog" aria-labelledby="reviewTitle">
@@ -107,12 +99,6 @@
             </div>
           </dialog>
 
-          <div class="card hidden" id="proPanel" >
-            <label for="profileSelect"><strong>Quality Profile</strong> <span class="badge badge-plan-pro">Pro</span></label>
-            <select id="profileSelect"><option value="">None: general analysis</option></select>
-            <p class="hint">Check this file against a saved standard. <a href="/dashboard">Manage profiles</a></p>
-          </div>
-          <p class="hint" id="proTeaser">Want to check files against your own standard and export a quality report? <a href="/pricing">See Omixa Pro</a></p>
           <details class="fold">
             <summary>What we found</summary>
             <div class="fold-body" id="findings"></div>
@@ -137,13 +123,44 @@
                   <div id="recAmbiguousList"></div>
                   <p class="hint" id="recAmbiguousEmpty" style="display:none;">Nothing flagged for manual review.</p>
                 </div>
-                <div id="validationGroup" class="hidden">
-                  <p class="group-label review">Column validation</p>
-                  <p class="hint">Read-only check of every value. Nothing here is changed or deleted. Confirm a column's type to judge it against the right rules; click a number to see those rows.</p>
-                  <div id="validationTable" style="overflow-x:auto;"></div>
-                  <div id="validationRows"></div>
-                </div>
               </section>
+
+              <div class="pro-group" id="proGroup">
+                <p class="group-label pro">Omixa Pro</p>
+
+                <div class="pro-feature">
+                  <button type="button" class="pro-item" id="mapBtn" data-pro="standardize" aria-expanded="false">
+                    <svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+                    <span class="pro-item-text"><strong>Standardize values</strong><em id="mapStatus">Make countries, yes/no flags, currencies and categories consistent.</em></span>
+                    <span class="badge badge-plan-pro">Pro</span>
+                  </button>
+                  <p class="pro-note hidden" role="status">Subscribe to Pro to use this. <a href="/pricing">See plans</a></p>
+                </div>
+
+                <div class="pro-feature">
+                  <button type="button" class="pro-item pro-lock-only" data-pro="profile" aria-expanded="false">
+                    <svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+                    <span class="pro-item-text"><strong>Quality Profile</strong><em>Check this file against a standard you saved.</em></span>
+                    <span class="badge badge-plan-pro">Pro</span>
+                  </button>
+                  <p class="pro-note hidden" role="status">Subscribe to Pro to use this. <a href="/pricing">See plans</a></p>
+                  <div class="pro-live" id="proPanel">
+                    <label for="profileSelect"><strong>Quality Profile</strong> <span class="badge badge-plan-pro">Pro</span></label>
+                    <select id="profileSelect"><option value="">None: general analysis</option></select>
+                    <p class="hint">Check this file against a saved standard. <a href="/dashboard">Manage profiles</a></p>
+                  </div>
+                </div>
+
+                <div class="pro-feature">
+                  <button type="button" class="pro-item pro-lock-only" data-pro="report" aria-expanded="false">
+                    <svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+                    <span class="pro-item-text"><strong>Quality report (PDF)</strong><em>A shareable report with before and after figures.</em></span>
+                    <span class="badge badge-plan-pro">Pro</span>
+                  </button>
+                  <p class="pro-note hidden" role="status">Subscribe to Pro to use this. <a href="/pricing">See plans</a></p>
+                  <p class="pro-live pro-included"><strong>Quality report (PDF)</strong><em>Included with your results once the file is cleaned.</em></p>
+                </div>
+              </div>
 
               <details class="fold fold-inner">
                 <summary>All cleaning rules</summary>
@@ -172,6 +189,10 @@
               </details>
             </div>
           </details>
+
+          <div class="run-bar">
+            <button id="runBtn" class="btn-main" disabled>Clean my data</button>
+          </div>
         </section>
 
         {# Done: before/after + download #}
@@ -202,27 +223,21 @@
   <div class="marketing">
 
     <section class="m-section" id="how-it-works">
-      <h2 class="m-title" data-reveal>Say goodbye to messy data<br>in <span class="grad-text">three steps</span></h2>
-      <div class="steps3" data-stagger>
-        <article class="step3">
-          <div class="step3-art"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5M7.5 9.5L12 5l4.5 4.5M5 19h14"/></svg></div>
-          <span class="pill"><i></i>One</span>
-          <h3>Upload your file</h3>
-          <p>Choose a CSV or Excel file. Supported formats are CSV, XLSX and XLS.</p>
-        </article>
-        <article class="step3">
-          <div class="step3-art"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg></div>
-          <span class="pill"><i></i>Two</span>
-          <h3>Omixa checks it</h3>
-          <p>In seconds you see a quality score and exactly what's wrong, in plain language.</p>
-        </article>
-        <article class="step3">
-          <div class="step3-art"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19h14"/></svg></div>
-          <span class="pill"><i></i>Three</span>
-          <h3>Download clean data</h3>
-          <p>One click cleans it. Download the fixed file and see what changed.</p>
-        </article>
-      </div>
+      <h2 class="m-title" data-reveal>Say goodbye to messy data in <span class="grad-text">three steps</span></h2>
+      <ol class="steps3" data-stagger>
+        <li class="step3">
+          <span class="step3-n" aria-hidden="true">1</span>
+          <div><h3>Upload your file</h3><p>Choose a CSV or Excel file. Supported formats are CSV, XLSX and XLS.</p></div>
+        </li>
+        <li class="step3">
+          <span class="step3-n" aria-hidden="true">2</span>
+          <div><h3>Omixa checks it</h3><p>In seconds you see a quality score and exactly what's wrong, in plain language.</p></div>
+        </li>
+        <li class="step3">
+          <span class="step3-n" aria-hidden="true">3</span>
+          <div><h3>Download clean data</h3><p>One click cleans it. Download the fixed file and see what changed.</p></div>
+        </li>
+      </ol>
     </section>
 
     <section class="quality" id="quality">

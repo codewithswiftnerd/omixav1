@@ -1,1 +1,1 @@
-omixa build v6 - 2026-10-21 - responsive pass, google login CSP fix, pro upsell
+omixa build v7 - 2026-11-04 - plain steps, locked Pro rows in Customize, Clean button below Customize, validation table removed, sample dataset fixes

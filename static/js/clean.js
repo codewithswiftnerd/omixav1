@@ -164,7 +164,6 @@ async function setFile(f){
     renderReport(repJson.report);
     renderRecommendations(repJson.recommendations);
     validationConfig = { column_types: {} };
-    renderValidation(repJson.validation);
     prepareReview(repJson.validation);
     prepareMapping();
     setStage('');
@@ -398,64 +397,9 @@ function selectedLeaveAsIs(){
   return Array.from(cols);
 }
 
-// ---- Column validation report (read-only; backed by /api/validate) ----
+// Column types are never confirmed from this page any more (the validation table was removed), but the
+// review pop-up still sends the same shape to the server.
 let validationConfig = { column_types: {} };
-const VAL_TYPES = ['numeric','integer','currency','date','email','phone','categorical','identifier','text'];
-const VAL_CATS = ['valid','invalid','suspicious','missing','unresolved'];
-
-function renderValidation(v){
-  const group = $('validationGroup'), table = $('validationTable');
-  if(!group || !table) return;
-  $('validationRows').innerHTML = '';
-  if(!v || !v.columns || !v.columns.length){ group.classList.add('hidden'); return; }
-  group.classList.remove('hidden');
-  const rows = v.columns.map(c => {
-    const detected = c.type_status === 'confirmed' ? 'confirmed' : (c.type_status === 'needs_confirmation' ? 'unsure' : 'detected');
-    const sel = `<select class="val-type" data-col="${escHtml(c.column)}">` +
-      `<option value="">${escHtml(c.effective_type)} (${detected}${c.type_status === 'confirmed' ? '' : ', ' + Math.round(c.type_confidence*100) + '%'})</option>` +
-      VAL_TYPES.map(t => `<option value="${t}"${c.confirmed_type === t ? ' selected' : ''}>${t}</option>`).join('') + `</select>`;
-    const cell = cat => c.counts[cat]
-      ? `<button type="button" class="val-count" data-col="${escHtml(c.column)}" data-cat="${cat}">${c.counts[cat]}</button>` : '0';
-    const flag = c.fully_valid ? '' : ' ⚠';
-    const acts = (c.suggested_actions || []).map(a => escHtml(a.text)).join('<br>');
-    return `<tr><td><strong>${escHtml(c.column)}</strong>${flag}</td><td>${sel}</td><td>${c.total}</td>` +
-      VAL_CATS.map(k => `<td>${cell(k)}</td>`).join('') + `<td style="font-size:.75rem;">${acts}</td></tr>`;
-  }).join('');
-  table.innerHTML = `<table><thead><tr><th>Column</th><th>Type</th><th>Rows</th><th>Valid</th>` +
-    `<th>Invalid</th><th>Suspicious</th><th>Missing</th><th>Unresolved</th><th>Suggested</th></tr></thead><tbody>${rows}</tbody></table>`;
-}
-
-async function revalidate(){
-  const res = await fetch(base() + '/api/validate/' + lastJobId, { method:'POST', credentials:'include',
-    headers: apiHeaders({'Content-Type':'application/json'}),
-    body: JSON.stringify({ column_types: validationConfig.column_types, has_header: hasHeader() }) });
-  const json = await res.json();
-  if(res.ok) renderValidation(json.validation);
-}
-
-async function showValidationRows(column, category){
-  const box = $('validationRows');
-  const res = await fetch(base() + '/api/validate/' + lastJobId + '/rows', { method:'POST', credentials:'include',
-    headers: apiHeaders({'Content-Type':'application/json'}),
-    body: JSON.stringify({ column, category, column_types: validationConfig.column_types, has_header: hasHeader(), limit: 100 }) });
-  const json = await res.json();
-  if(!res.ok){ box.innerHTML = `<p class="hint">${escHtml(json.error || 'Could not load rows')}</p>`; return; }
-  const body = json.rows.map(r => `<tr><td>${r.sheet_row}</td><td>${r.value === null ? '<em>(empty)</em>' : escHtml(String(r.value))}</td><td>${escHtml(r.reason)}</td></tr>`).join('');
-  box.innerHTML = `<p class="hint"><strong>${escHtml(column)}</strong> · ${escHtml(category)} · ${json.total} row(s)` +
-    `${json.total > json.rows.length ? ' (first ' + json.rows.length + ' shown)' : ''}. Original values, unchanged.</p>` +
-    `<table><thead><tr><th>Row</th><th>Original value</th><th>Why</th></tr></thead><tbody>${body}</tbody></table>`;
-}
-
-document.addEventListener('click', e => {
-  const b = e.target.closest && e.target.closest('.val-count');
-  if(b) showValidationRows(b.dataset.col, b.dataset.cat);
-});
-document.addEventListener('change', e => {
-  if(!e.target.classList || !e.target.classList.contains('val-type')) return;
-  if(e.target.value) validationConfig.column_types[e.target.dataset.col] = e.target.value;
-  else delete validationConfig.column_types[e.target.dataset.col];
-  revalidate();
-});
 
 function setStage(text, cls){
   stage.textContent = text;
@@ -499,6 +443,7 @@ runBtn.addEventListener('click', async () => {
     if(window.OmixaPro) OmixaPro.showResults(procJson.summary);
     downloadBtn.classList.remove('hidden');
     resetBtn.classList.remove('hidden');
+    results.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }catch(err){
     setStage(err.message, 'error');
     setStep(lastJobId ? 'clean' : 'upload', 'err');
@@ -1008,13 +953,17 @@ const MAP_LABEL = { country: 'Countries', boolean: 'Yes / No', currency: 'Curren
 let mapState = {};   // key -> {column, category, enabled, output_format, formats, custom:[{from,to}], decisions:{original:{choice,value}}, preview}
 const mapKey = (col, cat) => JSON.stringify([col, cat]);
 
-function resetMapping(){ mapState = {}; if(mapBtn) mapBtn.classList.add('hidden'); }
+function resetMapping(){ mapState = {}; updateMapButton(); }
+
+function setMapStatus(text){ const el = $('mapStatus'); if(el) el.textContent = text; }
 
 function updateMapButton(){
-  if(!mapBtn) return;
+  if(!mapBtn || !(window.OmixaPro && OmixaPro.isPro())) return;
   const all = Object.values(mapState), on = all.filter(s => s.enabled).length;
-  mapBtn.classList.toggle('hidden', !all.length);
-  mapBtn.textContent = on ? `Standardize values (${on} column${on === 1 ? '' : 's'} chosen)` : 'Standardize values';
+  const n = all.length;
+  setMapStatus(on ? `${on} column${on === 1 ? '' : 's'} chosen. Tap to change.`
+    : n ? `${n} column${n === 1 ? '' : 's'} can be standardized. Tap to choose.`
+    : 'No column in this file needs it.');
 }
 
 async function mapFetch(body){
@@ -1094,7 +1043,11 @@ async function openMapping(){
 }
 function closeMapping(){ if(mapDialog.open) mapDialog.close(); else mapDialog.removeAttribute('open'); updateMapButton(); }
 
-if(mapBtn) mapBtn.addEventListener('click', openMapping);
+if(mapBtn) mapBtn.addEventListener('click', () => {
+  if(!(window.OmixaPro && OmixaPro.isPro())) return;          // Free: the locked-feature notice handles the click
+  if(!Object.keys(mapState).length){ updateMapButton(); return; }
+  openMapping();
+});
 if(mapDialog){
   const keyOf = el => el.dataset.key, origOf = el => JSON.parse(el.dataset.orig);
   mapDialog.addEventListener('change', e => {
