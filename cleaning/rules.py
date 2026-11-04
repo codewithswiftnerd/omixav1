@@ -475,7 +475,7 @@ def handle_numeric_text_cleaning(df: pd.DataFrame, details: dict) -> tuple[pd.Da
         # only an amount has (a space after the symbol, a decimal point, a thousands separator).
         if len(real) and not (set(profiling.name_tokens(str(col))) & detectors.MONEY_NAME_TOKENS):
             carrying_vals = real[real.map(lambda v: currencies.currency_marker(str(v)) is not None)]
-            if len(carrying_vals) and carrying_vals.map(lambda v: bool(re.fullmatch(r"[A-Za-z]\d+", str(v).strip()))).all():
+            if len(carrying_vals) and carrying_vals.map(lambda v: bool(re.fullmatch(r"[A-Za-z]{1,4}[-_./#]?\d+", str(v).strip()))).all():
                 unconverted[col] = {"count": int(len(carrying_vals)), "examples": [str(v) for v in carrying_vals.unique()[:5]],
                                     "reason": "looks_like_code"}
                 continue
@@ -618,13 +618,7 @@ def handle_boolean_standardization(df: pd.DataFrame, details: dict) -> tuple[pd.
         lowered = non_null.str.lower()
         unique_vals = set(lowered.unique())
 
-        name_is_flag = detectors.is_boolean_flag_column(str(col))
-        # "Yes", "Y", "TRUE" written next to "1" and "0" in one column is itself the evidence: a numeric code
-        # column never contains the word "Yes". Both kinds of token present, and nothing else, means a flag
-        # (newsletter, would_recommend, ...) whatever the header says.
-        if (not name_is_flag and unique_vals <= detectors.EXTENDED_BOOLEAN_WORDS
-                and unique_vals & {"1", "0"} and unique_vals & detectors.BOOLEAN_WORDS):
-            name_is_flag = True
+        name_is_flag = detectors.is_boolean_flag_column(str(col)) or detectors.words_prove_boolean(unique_vals)
         allowed_words = detectors.EXTENDED_BOOLEAN_WORDS if name_is_flag else detectors.BOOLEAN_WORDS
         true_words = detectors.EXTENDED_TRUE_WORDS if name_is_flag else detectors.TRUE_WORDS
         false_words = detectors.EXTENDED_FALSE_WORDS if name_is_flag else detectors.FALSE_WORDS

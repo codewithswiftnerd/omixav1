@@ -416,6 +416,26 @@
     });
   }
 
+  // ---------------------------------------------------------------- landing: steps line follows the scroll
+  function initSteps() {
+    var grid = document.querySelector('.steps3');
+    if (!grid) return;
+    var cards = Array.prototype.slice.call(grid.children);
+    var ticking = false;
+    function update() {
+      ticking = false;
+      var r = grid.getBoundingClientRect(), vh = window.innerHeight;
+      var p = clamp((vh * 0.78 - r.top) / Math.max(r.height + vh * 0.1, 1), 0, 1);
+      if (reduced()) p = 1;
+      grid.style.setProperty('--p', p.toFixed(3));
+      cards.forEach(function (c, i) { c.classList.toggle('lit', p >= (i === 0 ? 0.08 : i / (cards.length - 1) * 0.92)); });
+    }
+    function onScroll() { if (!ticking) { ticking = true; requestAnimationFrame(update); } }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    update();
+  }
+
   // ---------------------------------------------------------------- landing: before/after values resolve letter by letter
   function initBeforeAfter() {
     var card = document.getElementById('baCard'), after = document.getElementById('baAfter');
@@ -648,6 +668,7 @@
     initNudge();
     initReadyShine();
     initDropVeil();
+    initSteps();
     initBeforeAfter();
     initConfetti();
     initPageHeading();

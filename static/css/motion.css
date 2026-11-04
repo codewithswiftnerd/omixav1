@@ -68,10 +68,11 @@
 .trust-item, .price-card, .step3, .stat-card, .faq-item, .feature-card {
   transition: transform var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease);
 }
-.sample svg { transition: transform var(--dur-base) var(--ease-out); }
+.step3-art svg, .sample svg { transition: transform var(--dur-base) var(--ease-out); }
 @media (hover: hover) {
   .trust-item:hover, .price-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--omixa-violet-light); }
   .stat-card:hover { border-color: var(--omixa-violet-light); box-shadow: var(--shadow-sm); }
+  .step3:hover .step3-art svg { transform: translateY(-3px) scale(1.05); }
   .sample:hover svg { transform: translateY(-1px) scale(1.08); }
   .faq-item:hover { box-shadow: var(--shadow-md); }
 }
@@ -195,7 +196,6 @@ input, textarea, select { transition: border-color var(--dur-fast) var(--ease), 
   /* ---- Workspace: sections appear when clean.js un-hides them ---- */
   .work-card:not(.hidden) { animation: m-rise 420ms var(--ease-out) backwards; }
   #reportCard:not(.hidden), #results:not(.hidden), #recommendationsCard:not(.hidden), #proPanel:not(.hidden),
-  #validationGroup:not(.hidden) { animation: m-rise 400ms var(--ease-out) backwards; }
   .file-row { animation: m-slide-in 380ms var(--ease-out) 60ms backwards; }
   .file-icon { animation: m-pop 420ms var(--ease-out) 160ms backwards; }
   .work-card .stage.error, .alert:not(.hidden) { animation: m-drop 300ms var(--ease-out) backwards; }

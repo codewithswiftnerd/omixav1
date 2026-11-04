@@ -97,6 +97,14 @@ body.has-file .live-demo { display: none; }
 /* ---------- Confetti ---------- */
 .confetti { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 85; pointer-events: none; }
 
+/* ---------- Landing steps: a line that draws as the section scrolls into view ---------- */
+@media (min-width: 761px) {
+  html.i-ready .steps3 { position: relative; }
+  html.i-ready .steps3::before, html.i-ready .steps3::after { content: ""; position: absolute; left: 22px; right: calc(33.333% - 37px); top: 21px; height: 3px; border-radius: 3px; z-index: 1; pointer-events: none; }
+  html.i-ready .steps3::before { background: var(--omixa-violet-light); }
+  html.i-ready .steps3::after { background: var(--edge); transform-origin: left center; transform: scaleX(var(--p, 0)); }
+}
+
 /* ---------- Brand mark ---------- */
 @media (hover: hover) { .topnav .brand img { transition: transform var(--dur-base) var(--i-ease); } .topnav .brand:hover img { transform: rotate(-8deg) scale(1.08); } }
 
@@ -130,6 +138,7 @@ body.has-file .live-demo { display: none; }
 
   .drop-veil.on .drop-veil-card { animation: i-veil-card 320ms var(--i-ease) backwards, i-veil-ring 1.6s ease-in-out 320ms infinite; }
 
+  .steps3::after { transition: transform 120ms linear; }
 }
 
 @media (prefers-reduced-motion: reduce) {

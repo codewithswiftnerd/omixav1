@@ -19,7 +19,7 @@ import re
 from typing import Optional
 import pandas as pd
 
-from cleaning.phone_formats import COUNTRIES as _COUNTRIES, COUNTRY_ALIASES as _COUNTRY_ALIASES
+from cleaning.phone_formats import COUNTRIES as _COUNTRIES, COUNTRY_ALIASES as _COUNTRY_ALIASES, COUNTRY_ALPHA3 as _COUNTRY_ALPHA3
 from cleaning import currencies as _currencies
 
 # Country reference is built from cleaning/phone_formats.COUNTRIES.
@@ -189,6 +189,15 @@ def is_phone_column(name: str) -> bool:
 def is_gender_column(name: str) -> bool:
     lname = name.lower().strip()
     return lname in ("gender", "sex") or "gender" in lname
+
+
+def words_prove_boolean(unique_lowered) -> bool:
+    """True when the VALUES show the column is a yes/no flag even though its name does not: it holds both a
+    "yes"-type and a "no"-type word (Yes, Y, true / No, N, false) and everything else in it is 1 or 0. A column of
+    plain 1/0 codes never qualifies (no words), so numeric codes are still left alone."""
+    vals = set(unique_lowered)
+    words = vals - {"0", "1"}
+    return bool(words) and words <= BOOLEAN_WORDS and bool(words & TRUE_WORDS) and bool(words & FALSE_WORDS)
 
 
 def is_boolean_flag_column(name: str) -> bool:
@@ -361,13 +370,12 @@ def has_date_name(name: str) -> bool:
 MIN_DATE_PARSE_SHARE = 0.5
 
 
-_MONTH_RE = (r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|"
-             r"sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)")
-# 2024-03-09, 9/3/2024, 14-Mar-2024, 14 March 2024, March 14, 2024: shapes only a date has
+_MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*"
+# numeric dates (2024/03/09, 14-03-2024) and dates with a written month (April 2, 2024 / 02-Apr-2024 / 2 April 2024)
 _DATE_SHAPE_RE = re.compile(
     r"^(?:\d{1,4}[/\-.]\d{1,2}[/\-.]\d{1,4}"
-    r"|\d{1,2}[ \-/.]" + _MONTH_RE + r"\.?[ \-/.,]*\d{2,4}"
-    r"|" + _MONTH_RE + r"\.? +\d{1,2}(?:st|nd|rd|th)?,? +\d{4})$", re.I)
+    r"|\d{1,2}[ \-./]" + _MONTH + r"[ \-./,]+\d{2,4}"
+    r"|" + _MONTH + r"\.?[ \-./]+\d{1,2}(?:st|nd|rd|th)?,?[ \-./]+\d{2,4})$", re.IGNORECASE)
 
 
 def is_probable_date_column(name: str, series: pd.Series) -> bool:
@@ -627,17 +635,6 @@ def try_parse_float(cleaned: str) -> Optional[float]:
         return None
 
 
-@lru_cache(maxsize=1)
-def _alpha3_to_alpha2() -> dict:
-    try:
-        import json, os
-        path = os.path.join(os.path.dirname(__file__), "mapping", "reference", "countries.json")
-        with open(path, encoding="utf-8") as fh:
-            return {c["alpha3"].upper(): c["alpha2"].upper() for c in json.load(fh)["countries"]}
-    except Exception:
-        return {}
-
-
 def standardize_country_value(value: str) -> Optional[str]:
     """
     Maps a country CODE ("NG"), a common alternate name/abbreviation
@@ -661,11 +658,9 @@ def standardize_country_value(value: str) -> Optional[str]:
         return _COUNTRY_CODE_TO_NAME[code]
     if code in _COUNTRY_ALIASES:
         return _COUNTRY_CODE_TO_NAME[_COUNTRY_ALIASES[code]]
-    named = _COUNTRY_NAME_TO_CANONICAL.get(v.lower())
-    if named:
-        return named
-    a2 = _alpha3_to_alpha2().get(code)       # ISO 3-letter codes ("ETH", "GHA"), unambiguous by definition
-    return _COUNTRY_CODE_TO_NAME.get(a2) if a2 else None
+    if code in _COUNTRY_ALPHA3:
+        return _COUNTRY_CODE_TO_NAME[_COUNTRY_ALPHA3[code]]
+    return _COUNTRY_NAME_TO_CANONICAL.get(v.lower())
 
 
 def is_scientific_notation(value: object) -> bool:
@@ -855,19 +850,12 @@ def _canonical_number(cleaned: str):
     return int(f) if (f == int(f) and "." not in cleaned and "e" not in cleaned.lower()) else f
 
 
-_CODE_WITH_SEPARATOR_RE = re.compile(r"^[A-Za-z][-_/]\d+$")
-
-
 def normalize_numeric_cell(raw, number_format: str = "auto", number_words: bool = False, explicit_format: bool = False):
     """(status, value, reason). status: 'unchanged' (already a bare number), 'converted' (safe formatting
     removed), 'ambiguous' (could mean two numbers), 'not_numeric'. value is None unless converted."""
     if not isinstance(raw, str):
         return "unchanged", None, ""
     t = raw.strip()
-    if _CODE_WITH_SEPARATOR_RE.match(t):
-        # "R-01", "Q-3", "A_7": a letter, a separator and digits is a reference code. The letter must not be read
-        # as a currency symbol (R is the rand) and stripped, which turned respondent "R-01" into the number -1.
-        return "not_numeric", None, "looks like a reference code, not an amount"
     core = _currencies.strip_currency(t).strip()
     has_money = _currencies.has_currency(t)
     if not core:

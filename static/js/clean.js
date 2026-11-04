@@ -397,8 +397,7 @@ function selectedLeaveAsIs(){
   return Array.from(cols);
 }
 
-// Column types are never confirmed from this page any more (the validation table was removed), but the
-// review pop-up still sends the same shape to the server.
+// Column types are detected automatically; the read-only validation data still feeds the review list below.
 let validationConfig = { column_types: {} };
 
 function setStage(text, cls){
@@ -443,7 +442,8 @@ runBtn.addEventListener('click', async () => {
     if(window.OmixaPro) OmixaPro.showResults(procJson.summary);
     downloadBtn.classList.remove('hidden');
     resetBtn.classList.remove('hidden');
-    results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // the report card just collapsed: bring the result into view instead of leaving the reader mid-page
+    requestAnimationFrame(() => results.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }catch(err){
     setStage(err.message, 'error');
     setStep(lastJobId ? 'clean' : 'upload', 'err');
@@ -845,7 +845,7 @@ async function prepareReview(v){
   try{
     await loadReviewItems(v);
     updateReviewButton();
-    if(reviewItems.length && !reviewAutoShown){ reviewAutoShown = true; openReview(); }
+    // No pop-up on its own: it interrupted people (worst on a phone). The "Review flagged values" button opens it.
   }catch(_){ /* the button still works and retries */ }
 }
 
@@ -863,6 +863,7 @@ async function loadReviewItems(v){
   const byKey = new Map();
   results.forEach(({ column, json }) => json.rows.forEach(r => {
     if(r.value === null || r.value === undefined) return;          // empty cells are "missing", handled elsewhere
+    if(r.code === 'inconsistent_label') return;                     // MALE / male: the cleaner unifies these itself, not a wrong value
     if(r.code === 'needs_country') return;                          // a plausible number with no country: not an error
     const value = String(r.value), k = reviewKey(column, value);
     if(!byKey.has(k)) byKey.set(k, { column, value, count: 0, reason: r.reason, rows: [] });
@@ -953,17 +954,14 @@ const MAP_LABEL = { country: 'Countries', boolean: 'Yes / No', currency: 'Curren
 let mapState = {};   // key -> {column, category, enabled, output_format, formats, custom:[{from,to}], decisions:{original:{choice,value}}, preview}
 const mapKey = (col, cat) => JSON.stringify([col, cat]);
 
-function resetMapping(){ mapState = {}; updateMapButton(); }
-
-function setMapStatus(text){ const el = $('mapStatus'); if(el) el.textContent = text; }
+function resetMapping(){ mapState = {}; if(mapBtn) mapBtn.classList.add('hidden'); const r = $('proMapRow'); if(r) r.classList.add('hidden'); }
 
 function updateMapButton(){
-  if(!mapBtn || !(window.OmixaPro && OmixaPro.isPro())) return;
+  if(!mapBtn) return;
   const all = Object.values(mapState), on = all.filter(s => s.enabled).length;
-  const n = all.length;
-  setMapStatus(on ? `${on} column${on === 1 ? '' : 's'} chosen. Tap to change.`
-    : n ? `${n} column${n === 1 ? '' : 's'} can be standardized. Tap to choose.`
-    : 'No column in this file needs it.');
+  mapBtn.classList.toggle('hidden', !all.length);
+  const mapRow = $('proMapRow'); if(mapRow) mapRow.classList.toggle('hidden', !all.length);
+  mapBtn.textContent = on ? `Standardize values (${on} column${on === 1 ? '' : 's'} chosen)` : 'Standardize values';
 }
 
 async function mapFetch(body){
@@ -1043,11 +1041,7 @@ async function openMapping(){
 }
 function closeMapping(){ if(mapDialog.open) mapDialog.close(); else mapDialog.removeAttribute('open'); updateMapButton(); }
 
-if(mapBtn) mapBtn.addEventListener('click', () => {
-  if(!(window.OmixaPro && OmixaPro.isPro())) return;          // Free: the locked-feature notice handles the click
-  if(!Object.keys(mapState).length){ updateMapButton(); return; }
-  openMapping();
-});
+if(mapBtn) mapBtn.addEventListener('click', openMapping);
 if(mapDialog){
   const keyOf = el => el.dataset.key, origOf = el => JSON.parse(el.dataset.orig);
   mapDialog.addEventListener('change', e => {

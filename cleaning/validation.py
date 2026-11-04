@@ -261,6 +261,13 @@ def detect_type(name: str, series: pd.Series, config: Optional[dict] = None) -> 
     if name_says[IDENTIFIER] and code_like and not pd.api.types.is_numeric_dtype(dtype):
         return result(IDENTIFIER, 0.7, ["the column name looks like an identifier"])
 
+    # Letter-prefixed codes (R-01, A-1001, INV_22, T7) are identifiers, never amounts: the leading letter must not be
+    # read as a currency symbol (R = rand) and the "-" as a minus sign.
+    if str_vals and not (name_says[CURRENCY] or age_like(name)):
+        coded = sum(1 for v in str_vals if re.fullmatch(r"[A-Za-z]{1,4}[-_./#]?\d+", v.strip()))
+        if coded / len(str_vals) >= 0.6:
+            return result(IDENTIFIER, 0.85, ["values are letter-and-number codes, so they are identifiers, not amounts"])
+
     s_num = share(NUMERIC)
     money_symbols = any(_currencies.has_currency(v) for v in str_vals[:200])
     if s_num >= 0.6 or (name_says[CURRENCY] and s_num >= MIN_SHAPE_SHARE) or (age_like(name) and s_num >= MIN_SHAPE_SHARE):
