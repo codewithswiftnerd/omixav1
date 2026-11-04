@@ -267,6 +267,25 @@ def _localize_row_examples(report, *, kept_index, has_header: bool) -> None:
             ex["source_row"] = rec - 1 + off
 
 
+def _localize_row_examples(report, *, kept_index, has_header: bool) -> None:
+    """Row numbers in findings that quote rows (related-column contradictions). A report generated from the
+    cleaned frame counts positions in the CLEANED data; map them back to the row numbers of the file the user
+    uploaded (keeping the cleaned position as `cleaned_record`), so the before and after reports talk about
+    the same rows even when duplicates were removed in between. `source_row` is the spreadsheet row number
+    (counting the header row only when the file has one)."""
+    off = 2 if has_header else 1
+    for f in (report or {}).get("findings", []):
+        for ex in f.get("examples") or []:
+            rec = ex.get("record")
+            if not isinstance(rec, int):
+                continue
+            if kept_index is not None and 0 < rec <= len(kept_index) and isinstance(kept_index[rec - 1], int):
+                ex["cleaned_record"] = rec
+                rec = kept_index[rec - 1] + 1
+                ex["record"] = rec
+            ex["source_row"] = rec - 1 + off
+
+
 def _cleaned_keys(keys, cleaned_labels):
     """Duplicate key columns are named as in the uploaded file; the cleaned frame may have renamed them."""
     if not keys:
@@ -678,27 +697,3 @@ def _run_pipeline_impl(
         extra += [f"  - {w}" for w in ir["warnings"]]
         cleaning_summary["text"] += "\n".join(extra)
     return result
-
-
-def run_pipeline(*args, **kwargs) -> dict:
-    """Public entry point (signature and behaviour unchanged: see _run_pipeline_impl).
-
-    Scopes the user's `not_missing` option ("None" is a real value here) to THIS job only. The setting lives in a
-    ContextVar, so jobs running at the same time in other threads can never see it, and it is reset when the job
-    ends, whether it succeeds or raises."""
-    import inspect
-    from cleaning import detectors
-    from cleaning.options import parse_options
-    from cleaning import consistency
-    protected, consistency_cfg = [], {}
-    try:
-        raw = inspect.signature(_run_pipeline_impl).bind(*args, **kwargs).arguments.get("options")
-        parsed = parse_options(raw)
-        protected, consistency_cfg = parsed.get("not_missing", []), parsed.get("consistency", {})
-    except Exception:
-        pass          # a malformed option is rejected, with the proper message, by the implementation itself
-    with detectors.keep_as_values(protected), consistency.configured(consistency_cfg):
-        return _run_pipeline_impl(*args, **kwargs)
-
-
-run_pipeline.__doc__ = (run_pipeline.__doc__ or "") + "\n\n" + (_run_pipeline_impl.__doc__ or "")
