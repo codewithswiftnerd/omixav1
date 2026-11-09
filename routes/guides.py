@@ -252,6 +252,11 @@ for _slug in GUIDE_ORDER:
     guides_bp.add_url_rule(f"/{_slug}", endpoint=_slug, view_func=_make_view(_slug), methods=["GET"])
 
 
+@guides_bp.get("/privacy")
+def privacy():
+    return render_template("privacy.html", **product_facts())
+
+
 @guides_bp.get("/about")
 def about():
     return render_template("about.html", **product_facts())

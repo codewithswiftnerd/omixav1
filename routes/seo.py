@@ -18,11 +18,11 @@ seo_bp = Blueprint("seo", __name__)
 
 # path -> canonical path. Only pages that exist, render without sign-in, and carry real content.
 # "/clean" renders the same tool as "/", so it canonicalises to "/" and stays out of the sitemap.
-PUBLIC_PAGES = {"/": "/", "/clean": "/", "/pricing": "/pricing", "/about": "/about"}
+PUBLIC_PAGES = {"/": "/", "/clean": "/", "/pricing": "/pricing", "/about": "/about", "/privacy": "/privacy"}
 PUBLIC_PAGES.update({f"/{slug}": f"/{slug}" for slug in GUIDE_ORDER})
 
 # Pages listed in the sitemap = distinct canonical targets only (never "/clean").
-SITEMAP_PATHS = ("/", "/pricing", "/about") + tuple(f"/{slug}" for slug in GUIDE_ORDER)
+SITEMAP_PATHS = ("/", "/pricing", "/about", "/privacy") + tuple(f"/{slug}" for slug in GUIDE_ORDER)
 
 # Public contact details supplied by the Omixa team.
 CONTACT_EMAIL = Config.SUPPORT_EMAIL   # support@getomixa.com (OMIXA_SUPPORT_EMAIL overrides)

@@ -1,4 +1,4 @@
-<!doctype html>
+{% from "_social.html" import social_icons with context %}<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -87,11 +87,14 @@
         <div><h2>Contact</h2><ul>
           <li><a href="mailto:{{ contact_email }}">{{ contact_email }}</a></li>
           <li><a href="/contact">Contact form</a></li>
-          <li><a href="{{ social_x }}" rel="noopener me">X: @omixahq</a></li>
-          <li><a href="{{ social_tiktok }}" rel="noopener me">TikTok: @omixahq</a></li>
-          <li><a href="{{ social_facebook }}" rel="noopener me">Facebook: OMIXA</a></li></ul></div>
+          <li>{{ social_icons() }}</li></ul></div>
       </nav>
-      <p class="footer-copy">&copy; 2026 Omixa. Let's work messy data.</p>
+      <div class="footer-bottom">
+        <p class="footer-copy">&copy; 2026 Omixa. Let's work messy data.</p>
+        <ul class="footer-legal" aria-label="Legal">
+          <li><a href="/privacy">Privacy Policy</a></li>
+        </ul>
+      </div>
     </div>
   </footer>
 </div>

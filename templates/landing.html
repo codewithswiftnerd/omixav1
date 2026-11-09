@@ -8,7 +8,7 @@
   {# ---------- Hero + upload ---------- #}
   <section class="hero-wrap">
     <div class="hero-copy">
-      <h1><span class="w">Clean</span> <span class="w">messy</span> <span class="w">CSV</span> <span class="w">and</span> <span class="w">Excel</span> <span class="w">files</span> <span class="w grad-text">you</span> <span class="w grad-text">can</span> <span class="w grad-text">trust</span></h1>
+      <h1><span class="w">Clean</span> <span class="w">messy</span> <span class="w hl">CSV</span> <span class="w hl">and</span> <span class="w hl">Excel</span> <span class="w hl">files</span> <span class="w">you</span> <span class="w">can</span> <span class="w hl-alt">trust</span></h1>
       <p class="lead">Omixa finds duplicates, stray spaces and inconsistent formats, fixes what is safe, flags what is not, and gives you a cleaned copy with a data-quality report.</p>
     </div>
 
@@ -20,6 +20,7 @@
       {# Step 1: choose a file #}
       <div class="upload-card" id="uploadCard">
         <div class="drop dropzone" id="drop" role="button" tabindex="0" aria-label="Upload a CSV or Excel file">
+          <span class="drop-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V5"/><path d="M7.5 9.5 12 5l4.5 4.5"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg></span>
           <span class="btn-upload">Upload file</span>
           <p class="drop-or">or drop a file</p>
           <p class="drop-sub">CSV, XLSX or XLS · up to {{ free_mb }} MB free · {{ pro_mb }} MB with Pro · batches with Pro</p>

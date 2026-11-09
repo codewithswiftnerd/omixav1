@@ -26,6 +26,8 @@
   --omixa-canvas-soft: #f3f6f2;
   --omixa-tint: #f4eefd;
   --omixa-gradient: linear-gradient(90deg, var(--omixa-violet), var(--omixa-glow));
+  --omixa-gradient-highlight: linear-gradient(90deg, var(--omixa-violet), var(--omixa-glow), var(--omixa-violet));
+  --omixa-gradient-trust: linear-gradient(90deg, var(--omixa-indigo), var(--omixa-glow), var(--omixa-indigo));
   --omixa-gradient-deep: linear-gradient(180deg, var(--omixa-ink) 0%, var(--omixa-indigo-deep) 55%, var(--omixa-indigo) 100%);
 
   /* Legacy aliases so existing class names keep working */

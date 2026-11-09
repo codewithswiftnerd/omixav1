@@ -4,7 +4,7 @@
 //  - It never touches user data, uploads or API calls. The one exception is the page-wide drop target,
 //    which hands a dropped file to the existing #fileInput 'change' handler, exactly like choosing it by hand.
 //  - Nothing here is needed to read or use the page. Every module checks for what it needs and does nothing if absent.
-//  - Reduced motion: no aurora, tilt, magnet, ripple, scramble, confetti or looping demo. The demo shows its final state.
+//  - Reduced motion: no tilt, magnet, ripple, scramble, confetti or looping demo. The demo shows its final state.
 //  - Hover-driven effects only run on fine pointers (mouse/trackpad), never on touch.
 //  - Demo values below are labelled example data on the page and mirror real Omixa behaviour (see home.js).
 (function () {
@@ -46,58 +46,6 @@
     }
     setTimeout(function () { requestAnimationFrame(frame); }, delay || 0);
     setTimeout(finish, (delay || 0) + dur + 160);   // guarantees the true value even if rAF is throttled
-  }
-
-  // ---------------------------------------------------------------- aurora + scroll progress
-  function initAmbient() {
-    var bar = el('div', 'scroll-progress');
-    bar.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(bar);
-    var tickingBar = false;
-    function updateBar() {
-      var max = document.documentElement.scrollHeight - window.innerHeight;
-      bar.style.transform = 'scaleX(' + (max > 0 ? clamp(window.scrollY / max, 0, 1) : 0) + ')';
-      tickingBar = false;
-    }
-    window.addEventListener('scroll', function () { if (!tickingBar) { tickingBar = true; requestAnimationFrame(updateBar); } }, { passive: true });
-    window.addEventListener('resize', updateBar);
-    updateBar();
-
-    if (reduced()) return;
-    var wrap = el('div', 'aurora');
-    wrap.setAttribute('aria-hidden', 'true');
-    var blobs = [el('i'), el('i'), el('i')];
-    blobs.forEach(function (b) { wrap.appendChild(b); });
-    document.body.insertBefore(wrap, document.body.firstChild);
-
-    var W = window.innerWidth, H = window.innerHeight;
-    // base position (fraction of viewport), how far each blob follows the cursor, and scroll parallax
-    var cfg = [
-      { bx: 0.82, by: 0.14, follow: 0.10, par: 0.10 },
-      { bx: 0.08, by: 0.42, follow: -0.06, par: 0.06 },
-      { bx: 0.88, by: 0.82, follow: 0.04, par: 0.14 }
-    ];
-    var cur = cfg.map(function (c) { return { x: c.bx * W, y: c.by * H }; });
-    var mx = W / 2, my = H / 2, sy = window.scrollY, raf = 0;
-
-    function frame() {
-      var moving = false;
-      for (var i = 0; i < cfg.length; i++) {
-        var c = cfg[i];
-        var tx = c.bx * W + (mx - W / 2) * c.follow * 2;
-        var ty = c.by * H + (my - H / 2) * c.follow * 2 - sy * c.par;
-        cur[i].x += (tx - cur[i].x) * 0.06;
-        cur[i].y += (ty - cur[i].y) * 0.06;
-        if (Math.abs(tx - cur[i].x) > 0.15 || Math.abs(ty - cur[i].y) > 0.15) moving = true;
-        blobs[i].style.transform = 'translate3d(' + cur[i].x.toFixed(1) + 'px,' + cur[i].y.toFixed(1) + 'px,0)';
-      }
-      raf = moving ? requestAnimationFrame(frame) : 0;
-    }
-    function kick() { if (!raf) raf = requestAnimationFrame(frame); }
-    if (fine()) window.addEventListener('pointermove', function (e) { mx = e.clientX; my = e.clientY; kick(); }, { passive: true });
-    window.addEventListener('scroll', function () { sy = window.scrollY; kick(); }, { passive: true });
-    window.addEventListener('resize', function () { W = window.innerWidth; H = window.innerHeight; kick(); });
-    kick();
   }
 
   // ---------------------------------------------------------------- card spotlight + tilt + magnetic buttons
@@ -661,7 +609,6 @@
   function init() {
     root.classList.add('i-ready');
     initHeadline();
-    initAmbient();
     initPointerEffects();
     initRipple();
     initDemo();

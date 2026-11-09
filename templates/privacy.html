@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Privacy Policy | Omixa{% endblock %}
+{% block description %}How Omixa handles your files and account data: uploads are deleted automatically after {{ ttl_minutes }} minutes, and cell contents are never kept in our records.{% endblock %}
+{% block content %}
+<article class="guide-page legal-page">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('pages.landing') }}">Omixa</a> <span aria-hidden="true">/</span> <span>Privacy Policy</span></nav>
+  <h1>Privacy Policy</h1>
+  <p class="legal-meta">Last updated: 9 November 2026</p>
+  <p class="guide-lead">Omixa cleans CSV and Excel files. This page explains what happens to your files and your details when you use it, in plain language. Questions? Email <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>.</p>
+
+  <section>
+    <h2 id="files">Your files</h2>
+    <ul>
+      <li>Your file is stored temporarily so it can be processed, and is deleted automatically at most {{ ttl_minutes }} minutes after upload.</li>
+      <li>Omixa never edits the file you upload. It makes a separate cleaned copy for you to download.</li>
+      <li>Omixa Pro batch results are kept for {{ batch_hours }} hours so you can download them, then deleted.</li>
+      <li>We keep basic records about each run: file name, file size, row and column counts, quality scores and which cleaning rules ran. We do not keep your cell contents in these records.</li>
+      <li>Omixa Pro history keeps quality figures and change summaries, never your rows or example values.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2 id="account">Accounts</h2>
+    <p>Free cleaning needs no account. If you sign in for Omixa Pro, we store the details needed to run your account: your email address, your name (if your sign-in provides one), your plan and subscription status, and the Quality Profiles and history you save. Sign-in is handled by Google Firebase Authentication, including “Continue with Google”.</p>
+  </section>
+
+  <section>
+    <h2 id="payments">Payments</h2>
+    <p>Pro subscriptions are paid through Paystack. Payments happen on Paystack’s systems. Omixa does not see or store your card number.</p>
+  </section>
+
+  <section>
+    <h2 id="contact-form">Contact form and email</h2>
+    <p>If you write to us through the contact form or by email, we use your name, email address and message to reply to you. Omixa also sends account and service emails, such as sign-in and subscription messages.</p>
+  </section>
+
+  <section>
+    <h2 id="cookies">Cookies and similar technology</h2>
+    <p>Omixa sets a session cookie so you stay signed in, and security tokens that protect forms and sign-in. These are needed for the site to work. Fonts are loaded from Google Fonts, so your browser contacts Google’s servers to fetch them. To prevent abuse, such as spam through the contact form, we use your IP address to apply rate limits.</p>
+  </section>
+
+  <section>
+    <h2 id="sharing">Who we share data with</h2>
+    <p>We do not sell your data. We use a small number of service providers to run Omixa: hosting and file storage, Firebase (sign-in), Paystack (payments) and an email provider. They process data only to provide those services.</p>
+  </section>
+
+  <section>
+    <h2 id="choices">Your choices</h2>
+    <p>You can ask us to access, correct or delete the account details we hold about you by emailing <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>. Uploaded files are removed automatically on the schedule above.</p>
+  </section>
+
+  <section>
+    <h2 id="changes">Changes to this policy</h2>
+    <p>If we change how Omixa handles data, we will update this page and the date at the top.</p>
+  </section>
+</article>
+{% endblock %}

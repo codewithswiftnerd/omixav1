@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_social.html" import social_icons with context %}
 {% block title %}About Omixa: Spreadsheet Cleaning and Data Quality{% endblock %}
 {% block description %}Omixa cleans CSV and Excel files and reports on data quality. See who it is for, what it does today, how to try it free, and how to contact the team.{% endblock %}
 {% block content %}
@@ -33,7 +34,8 @@
   <section id="contact">
     <h2>Contact</h2>
     <p>Email <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>, or use the <a href="/contact">contact form</a>.</p>
-    <p>Follow Omixa on <a href="{{ social_x }}" rel="noopener me">X (@omixahq)</a>, <a href="{{ social_tiktok }}" rel="noopener me">TikTok (@omixahq)</a> and <a href="{{ social_facebook }}" rel="noopener me">Facebook (OMIXA)</a>.</p>
+    <p>Follow Omixa:</p>
+    {{ social_icons() }}
   </section>
 </article>
 {% endblock %}
