@@ -76,13 +76,15 @@ def test_wildcard_cors_never_sets_allow_credentials(client, monkeypatch):
     assert "Access-Control-Allow-Credentials" not in r.headers
 
 
-def test_login_csp_allows_firebase_google_popup_only_on_login(client):
+def test_login_csp_allows_firebase_only_on_login(client):
     login = client.get("/login").headers["Content-Security-Policy"]
-    assert "https://apis.google.com" in login and "https://www.gstatic.com" in login
+    assert "https://www.gstatic.com" in login
+    assert "apis.google.com" not in login and "accounts.google.com" not in login
     home = client.get("/").headers["Content-Security-Policy"]
     assert "apis.google.com" not in home and "gstatic.com" not in home.split("font-src")[0]
 
 
-def test_dashboard_page_has_pro_upsell_and_login_has_google_button(client):
+def test_dashboard_page_has_pro_upsell_and_login_is_email_only(client):
     assert b'id="proUpsell"' in client.get("/dashboard").data
-    assert b'id="googleBtn"' in client.get("/login").data
+    login = client.get("/login").data
+    assert b'id="authForm"' in login and b"googleBtn" not in login and b"Continue with Google" not in login

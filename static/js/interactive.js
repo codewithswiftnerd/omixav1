@@ -606,6 +606,19 @@
   }
 
   // ---------------------------------------------------------------- go
+  // ---------------------------------------------------------------- upload card: bounce in on scroll
+  function initUploadFloat() {
+    var card = document.getElementById('uploadCard');
+    if (!card || reduced() || !('IntersectionObserver' in window)) return;
+    card.setAttribute('data-float', '');
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) { card.classList.add('is-in'); io.disconnect(); }
+      });
+    }, { threshold: 0.25 });
+    io.observe(card);
+  }
+
   function init() {
     root.classList.add('i-ready');
     initHeadline();
@@ -620,6 +633,7 @@
     initConfetti();
     initPageHeading();
     initCardReveal();
+    initUploadFloat();
     initPriceCount();
     initScoreCount();
     initAuth();

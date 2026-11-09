@@ -104,6 +104,11 @@ body.has-file .live-demo { display: none; }
    Everything below moves. Skipped entirely under reduced motion.
    ============================================================ */
 @media (prefers-reduced-motion: no-preference) {
+  /* Upload card: waits just below, bounces up when scrolled into view, then floats gently */
+  html.i-ready .upload-card[data-float]:not(.is-in) { opacity: 0; transform: translateY(46px); }
+  html.i-ready .upload-card[data-float].is-in { animation: i-bounce 950ms var(--i-ease) both, i-float 4.6s ease-in-out 950ms infinite; }
+  @keyframes i-bounce { 0% { opacity: 0; transform: translateY(46px); } 45% { opacity: 1; transform: translateY(-16px); } 65% { transform: translateY(7px); } 82% { transform: translateY(-4px); } 100% { opacity: 1; transform: translateY(0); } }
+  @keyframes i-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
   @keyframes i-word { from { opacity: 0; transform: translateY(0.45em); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
   @keyframes i-sheen { from { background-position: 100% 0; } to { background-position: 0% 0; } }
   @keyframes i-ripple { to { transform: scale(1); opacity: 0; } }

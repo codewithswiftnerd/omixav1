@@ -19,9 +19,10 @@
 {% endfor %}{% endif %}
 <meta name="theme-color" content="#381593">
 <link rel="icon" href="/favicon.ico" sizes="any">
+{# Google only uses a favicon whose side is a multiple of 48 px, so those are the only PNGs linked (16/32 px live inside favicon.ico) #}
+<link rel="icon" type="image/png" sizes="48x48" href="{{ url_for('static', filename='favicon-48x48.png') }}">
+<link rel="icon" type="image/png" sizes="96x96" href="{{ url_for('static', filename='favicon-96x96.png') }}">
 <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='android-chrome-192x192.png') }}">
-<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
-<link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
 <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">

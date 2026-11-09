@@ -30,7 +30,7 @@ returns a page, so the Railway URLs appeared as duplicate results. `utils/canoni
 - Add `www.getomixa.com` to `OMIXA_REDIRECT_HOSTS` only if that name is also attached to this service.
 
 ### Favicon
-`/favicon.ico` (root, stable URL; 16/32/48 px ICO) plus 192, 32 and 16 px PNGs, all linked from `templates/base.html`,
+`/favicon.ico` (root, stable URL; 16/32/48 px ICO) plus 48, 96 and 192 px PNGs (Google only accepts multiples of 48), all linked from `templates/base.html`,
 all served without cookies, authentication, redirects or `noindex`. Source mark: `static/brand/omixa-icon.png`
 (identical to `android-chrome-192x192.png`). Google needs a square icon whose size is a multiple of 48 px and
 recrawls on its own schedule, so the globe may stay for days or weeks.
