@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Omixa: Clean CSV and Excel Files, Check Data Quality{% endblock %}
-{% block description %}Clean messy CSV and Excel files. Omixa finds duplicates and inconsistent formats, fixes what is safe, flags the rest, and reports data quality. Free, no account needed.{% endblock %}
+{% block title %}Omixa: Online Data Cleaning Tool for CSV and Excel Files{% endblock %}
+{% block description %}Omixa is an online data cleaning and standardisation tool. Turn messy CSV and Excel datasets into clean, consistent, analysis-ready data. Free, no account needed.{% endblock %}
 
 {% block page %}
 <div class="tool-page" id="tool">
@@ -9,7 +9,7 @@
   <section class="hero-wrap">
     <div class="hero-copy">
       <h1><span class="w">Clean</span> <span class="w">messy</span> <span class="w hl">CSV</span> <span class="w hl">and</span> <span class="w hl">Excel</span> <span class="w hl">files</span> <span class="w">you</span> <span class="w">can</span> <span class="w hl-alt">trust</span></h1>
-      <p class="lead">Omixa finds duplicates, stray spaces and inconsistent formats, fixes what is safe, flags what is not, and gives you a cleaned copy with a data-quality report.</p>
+      <p class="lead">Omixa is an online data cleaning and standardisation tool that helps you turn messy datasets into clean, consistent and analysis-ready data. It finds duplicates, stray spaces and inconsistent formats, fixes what is safe, flags what is not, and gives you a cleaned copy with a data-quality report.</p>
     </div>
 
     {# Decorative preview: a small example sheet that cleans itself (built by js/interactive.js; example data, not the visitor's) #}
@@ -71,7 +71,7 @@
           <div class="report-head">
             <div class="score-badge" id="scoreBadge"><span id="scoreNum">-</span></div>
             <div class="report-text">
-              <h2 id="reportTitle">Analyzing…</h2>
+              <h3 id="reportTitle">Analyzing…</h3>
               <p id="reportSub"></p>
             </div>
           </div>
@@ -84,7 +84,7 @@
 
           <dialog id="reviewDialog" class="m-dialog review-dialog" aria-labelledby="reviewTitle">
             <div class="m-dialog-body">
-              <h2 id="reviewTitle">Some values look wrong</h2>
+              <h3 id="reviewTitle">Some values look wrong</h3>
               <p>These values don’t fit their column (for example, words in a phone number column). Nothing is changed unless you choose. Your original file is never touched.</p>
             </div>
             <div class="rv-body" id="reviewBody"></div>
@@ -96,7 +96,7 @@
 
           <dialog id="mapDialog" class="m-dialog review-dialog" aria-labelledby="mapTitle">
             <div class="m-dialog-body">
-              <h2 id="mapTitle">Standardize values <span class="badge badge-plan-pro">Pro</span></h2>
+              <h3 id="mapTitle">Standardize values <span class="badge badge-plan-pro">Pro</span></h3>
               <p>Countries, yes/no flags, currency labels and category spellings can be made consistent. Tick a column to include it. Safe matches are applied automatically; anything uncertain is left unchanged unless you approve it. Nothing happens until you press “Clean my data”, and your original file is never touched.</p>
             </div>
             <div class="rv-body" id="mapBody"></div>
@@ -202,7 +202,7 @@
         <section class="hidden" id="results" aria-labelledby="resultsHeading">
           <div class="done-head">
             <div class="done-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" pathLength="1"/></svg></div>
-            <h2 id="resultsHeading">Cleaning finished</h2>
+            <h3 id="resultsHeading">Cleaning finished</h3>
             <p id="resultsSub">Here's what changed. Your file is ready.</p>
           </div>
           <div class="main-actions">

@@ -34,3 +34,20 @@ returns a page, so the Railway URLs appeared as duplicate results. `utils/canoni
 all served without cookies, authentication, redirects or `noindex`. Source mark: `static/brand/omixa-icon.png`
 (identical to `android-chrome-192x192.png`). Google needs a square icon whose size is a multiple of 48 px and
 recrawls on its own schedule, so the globe may stay for days or weeks.
+
+## Audit of 9 November 2026
+
+Changes made after a full crawl of every public route:
+
+* `/clean` used to render the same page as `/` at a second URL (Search Console: "Duplicate: Google chose different
+  canonical"). It is now a permanent 301 to `/`. Internal links to the tool point at `/#tool`, never at a redirect.
+* `www.<canonical host>` now 301s to the canonical origin, like the Railway hostnames (utils/canonical_host.py).
+* Homepage title, description and lead now say what the product is ("online data cleaning and standardisation tool").
+* Added Open Graph locale/image size/alt and Twitter title/description/image. JSON-LD entities now share `@id`s
+  (Organization, WebSite, SoftwareApplication). Still no ratings, reviews or invented data.
+* Tool-state headings that sit inside the upload widget (Analyzing, Cleaning finished, ...) are `h3`, so the page
+  outline reads h1 > h2 sections.
+* Two new guides: `common-data-quality-problems` and `data-cleaning-mistakes` (sitemap now has 14 URLs).
+
+Indexable: `/`, `/pricing`, `/about`, `/privacy` and the 10 guides. Everything else is `noindex` (login, dashboard,
+batch, profiles, sessions, contact, admin, 404s) or blocked in robots.txt (`/api/`, `/admin/`).

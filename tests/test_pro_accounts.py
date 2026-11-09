@@ -265,7 +265,7 @@ class ProTests(unittest.TestCase):
         self.assertEqual(self.c.get("/api/profiles/").status_code, 200)
 
     def test_pages_render_and_admin_counts(self):
-        for path in ("/", "/clean", "/pricing", "/login", "/dashboard", "/profiles/new", "/sessions/abc"):
+        for path in ("/", "/pricing", "/login", "/dashboard", "/profiles/new", "/sessions/abc"):
             self.assertEqual(self.c.get(path).status_code, 200, path)
         self.login()
         self.make_pro()

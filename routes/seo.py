@@ -17,11 +17,11 @@ from routes.guides import GUIDES, GUIDE_ORDER, guide_nav
 seo_bp = Blueprint("seo", __name__)
 
 # path -> canonical path. Only pages that exist, render without sign-in, and carry real content.
-# "/clean" renders the same tool as "/", so it canonicalises to "/" and stays out of the sitemap.
-PUBLIC_PAGES = {"/": "/", "/clean": "/", "/pricing": "/pricing", "/about": "/about", "/privacy": "/privacy"}
+# "/clean" is a 301 to "/" (see routes/workspace.py), so it is neither indexable nor in the sitemap.
+PUBLIC_PAGES = {"/": "/", "/pricing": "/pricing", "/about": "/about", "/privacy": "/privacy"}
 PUBLIC_PAGES.update({f"/{slug}": f"/{slug}" for slug in GUIDE_ORDER})
 
-# Pages listed in the sitemap = distinct canonical targets only (never "/clean").
+# Pages listed in the sitemap = distinct canonical targets only.
 SITEMAP_PATHS = ("/", "/pricing", "/about", "/privacy") + tuple(f"/{slug}" for slug in GUIDE_ORDER)
 
 # Public contact details supplied by the Omixa team.
@@ -71,14 +71,17 @@ def structured_data(path: str) -> list[dict] | None:
     if path != "/":
         return None
     return [
-        {"@context": "https://schema.org", "@type": "Organization", "name": "Omixa", "url": f"{origin}/",
+        {"@context": "https://schema.org", "@type": "Organization", "@id": f"{origin}/#organization", "name": "Omixa", "url": f"{origin}/",
          "logo": f"{origin}/static/brand/omixa-icon.png", "email": CONTACT_EMAIL,
          "contactPoint": {"@type": "ContactPoint", "contactType": "customer support", "email": CONTACT_EMAIL},
          "sameAs": [SOCIAL_X, SOCIAL_TIKTOK, SOCIAL_FACEBOOK]},
-        {"@context": "https://schema.org", "@type": "WebSite", "name": "Omixa", "url": f"{origin}/"},
-        {"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Omixa",
-         "url": f"{origin}/", "applicationCategory": "BusinessApplication", "operatingSystem": "Web browser",
-         "description": "Web app that cleans CSV and Excel files and reports on data quality.",
+        {"@context": "https://schema.org", "@type": "WebSite", "@id": f"{origin}/#website", "name": "Omixa", "url": f"{origin}/",
+         "inLanguage": "en", "publisher": {"@id": f"{origin}/#organization"}},
+        {"@context": "https://schema.org", "@type": "SoftwareApplication", "@id": f"{origin}/#software", "name": "Omixa",
+         "url": f"{origin}/", "applicationCategory": "BusinessApplication", "applicationSubCategory": "Data cleaning",
+         "operatingSystem": "Web browser", "publisher": {"@id": f"{origin}/#organization"},
+         "description": "Online data cleaning and standardisation tool that turns messy CSV and Excel datasets into clean, "
+                        "consistent, analysis-ready data and reports on data quality.",
          "featureList": list(SOFTWARE_FEATURES),
          "offers": {"@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "USD"}},
     ]

@@ -48,6 +48,15 @@ class RedirectTests(Base):
                 self.assertEqual(r.status_code, 301, (host, path))
                 self.assertEqual(r.headers["Location"], OFFICIAL + expect, (host, path))
 
+    def test_www_redirects_to_the_apex_domain_permanently(self):
+        r = self.get("/pricing?x=1", "www.getomixa.com")
+        self.assertEqual(r.status_code, 301)
+        self.assertEqual(r.headers["Location"], OFFICIAL + "/pricing?x=1")
+
+    def test_clean_redirects_to_home(self):
+        r = self.get("/clean")
+        self.assertEqual((r.status_code, r.headers["Location"]), (301, "/"))
+
     def test_head_requests_redirect_too(self):
         self.assertEqual(self.get("/pricing", RAILWAY[0], method="HEAD").status_code, 301)
 
@@ -56,7 +65,7 @@ class RedirectTests(Base):
             self.assertEqual(self.get("/pricing", host).status_code, 301, host)
 
     def test_official_domain_is_never_redirected_and_there_is_no_loop(self):
-        for path in ("/", "/pricing", "/about", "/clean", "/login", "/robots.txt", "/sitemap.xml", "/favicon.ico"):
+        for path in ("/", "/pricing", "/about", "/login", "/robots.txt", "/sitemap.xml", "/favicon.ico"):
             r = self.get(path)
             self.assertNotIn(r.status_code, (301, 302, 307, 308), path)
         target = self.get("/pricing?x=1", RAILWAY[1]).headers["Location"]
@@ -116,10 +125,10 @@ class DisabledTests(unittest.TestCase):
 
 
 class MetadataTests(Base):
-    PAGES = ("/", "/pricing", "/about", "/clean")
+    PAGES = ("/", "/pricing", "/about")
 
     def test_canonical_is_single_and_official_with_no_noindex(self):
-        canon = {"/": "/", "/pricing": "/pricing", "/about": "/about", "/clean": "/"}
+        canon = {"/": "/", "/pricing": "/pricing", "/about": "/about"}
         for path in self.PAGES:
             r = self.get(path)
             html = r.get_data(as_text=True)
@@ -132,7 +141,7 @@ class MetadataTests(Base):
     def test_homepage_title_description_og_theme_and_icons(self):
         html = self.get("/").get_data(as_text=True)
         self.assertEqual(len(re.findall(r"<title>", html)), 1)
-        self.assertIn("<title>Omixa: Clean CSV and Excel Files, Check Data Quality</title>", html)
+        self.assertIn("<title>Omixa: Online Data Cleaning Tool for CSV and Excel Files</title>", html)
         self.assertEqual(len(re.findall(r'<meta name="description"', html)), 1)
         self.assertEqual(len(re.findall(r'rel="canonical"', html)), 1)
         self.assertIn('<meta name="theme-color" content="#381593">', html)
