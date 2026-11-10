@@ -48,15 +48,6 @@ class RedirectTests(Base):
                 self.assertEqual(r.status_code, 301, (host, path))
                 self.assertEqual(r.headers["Location"], OFFICIAL + expect, (host, path))
 
-    def test_www_redirects_to_the_apex_domain_permanently(self):
-        r = self.get("/pricing?x=1", "www.getomixa.com")
-        self.assertEqual(r.status_code, 301)
-        self.assertEqual(r.headers["Location"], OFFICIAL + "/pricing?x=1")
-
-    def test_clean_redirects_to_home(self):
-        r = self.get("/clean")
-        self.assertEqual((r.status_code, r.headers["Location"]), (301, "/"))
-
     def test_head_requests_redirect_too(self):
         self.assertEqual(self.get("/pricing", RAILWAY[0], method="HEAD").status_code, 301)
 
@@ -65,7 +56,7 @@ class RedirectTests(Base):
             self.assertEqual(self.get("/pricing", host).status_code, 301, host)
 
     def test_official_domain_is_never_redirected_and_there_is_no_loop(self):
-        for path in ("/", "/pricing", "/about", "/login", "/robots.txt", "/sitemap.xml", "/favicon.ico"):
+        for path in ("/", "/pricing", "/about", "/clean", "/login", "/robots.txt", "/sitemap.xml", "/favicon.ico"):
             r = self.get(path)
             self.assertNotIn(r.status_code, (301, 302, 307, 308), path)
         target = self.get("/pricing?x=1", RAILWAY[1]).headers["Location"]
@@ -125,10 +116,10 @@ class DisabledTests(unittest.TestCase):
 
 
 class MetadataTests(Base):
-    PAGES = ("/", "/pricing", "/about")
+    PAGES = ("/", "/pricing", "/about", "/clean")
 
     def test_canonical_is_single_and_official_with_no_noindex(self):
-        canon = {"/": "/", "/pricing": "/pricing", "/about": "/about"}
+        canon = {"/": "/", "/pricing": "/pricing", "/about": "/about", "/clean": "/"}
         for path in self.PAGES:
             r = self.get(path)
             html = r.get_data(as_text=True)
@@ -141,14 +132,14 @@ class MetadataTests(Base):
     def test_homepage_title_description_og_theme_and_icons(self):
         html = self.get("/").get_data(as_text=True)
         self.assertEqual(len(re.findall(r"<title>", html)), 1)
-        self.assertIn("<title>Omixa: Online Data Cleaning Tool for CSV and Excel Files</title>", html)
+        self.assertIn("<title>Omixa: Clean CSV and Excel Files, Check Data Quality</title>", html)
         self.assertEqual(len(re.findall(r'<meta name="description"', html)), 1)
         self.assertEqual(len(re.findall(r'rel="canonical"', html)), 1)
         self.assertIn('<meta name="theme-color" content="#381593">', html)
         self.assertIn(f'<meta property="og:url" content="{OFFICIAL}/">', html)
         self.assertIn(f'<meta property="og:image" content="{OFFICIAL}/static/brand/omixa-logo-square.jpg">', html)
         self.assertIn('<link rel="icon" href="/favicon.ico" sizes="any">', html)
-        for size, name in (("48x48", "favicon-48x48.png"), ("96x96", "favicon-96x96.png"), ("192x192", "android-chrome-192x192.png")):
+        for size, name in (("192x192", "android-chrome-192x192.png"), ("32x32", "favicon-32x32.png"), ("16x16", "favicon-16x16.png")):
             self.assertRegex(html, rf'<link rel="icon" type="image/png" sizes="{size}" href="/static/{name}">')
         self.assertIn('rel="apple-touch-icon"', html)
 
@@ -178,8 +169,8 @@ class FaviconTests(Base):
 
     def test_every_linked_icon_resolves_to_a_square_png_or_ico(self):
         import struct
-        for name, side in (("android-chrome-192x192.png", 192), ("favicon-48x48.png", 48), ("favicon-96x96.png", 96),
-                           ("favicon-144x144.png", 144), ("apple-touch-icon.png", 180)):
+        for name, side in (("android-chrome-192x192.png", 192), ("favicon-32x32.png", 32), ("favicon-16x16.png", 16),
+                           ("apple-touch-icon.png", 180)):
             r = self.get("/static/" + name)
             self.assertEqual((r.status_code, r.mimetype), (200, "image/png"), name)
             self.assertEqual(struct.unpack(">II", r.data[16:24]), (side, side), name)

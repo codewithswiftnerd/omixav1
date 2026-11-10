@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Omixa: Online Data Cleaning Tool for CSV and Excel Files{% endblock %}
-{% block description %}Omixa is an online data cleaning and standardisation tool. Turn messy CSV and Excel datasets into clean, consistent, analysis-ready data. Free, no account needed.{% endblock %}
+{% block title %}Omixa: Clean CSV and Excel Files, Check Data Quality{% endblock %}
+{% block description %}Clean messy CSV and Excel files. Omixa finds duplicates and inconsistent formats, fixes what is safe, flags the rest, and reports data quality. Free, no account needed.{% endblock %}
 
 {% block page %}
 <div class="tool-page" id="tool">
@@ -9,7 +9,7 @@
   <section class="hero-wrap">
     <div class="hero-copy">
       <h1><span class="w">Clean</span> <span class="w">messy</span> <span class="w hl">CSV</span> <span class="w hl">and</span> <span class="w hl">Excel</span> <span class="w hl">files</span> <span class="w">you</span> <span class="w">can</span> <span class="w hl-alt">trust</span></h1>
-      <p class="lead">Omixa is an online data cleaning and standardisation tool that helps you turn messy datasets into clean, consistent and analysis-ready data. It finds duplicates, stray spaces and inconsistent formats, fixes what is safe, flags what is not, and gives you a cleaned copy with a data-quality report.</p>
+      <p class="lead">Omixa fixes duplicates, stray spaces and mixed formats in seconds, so you don't have to clean spreadsheets by hand. You get a tidy copy that's ready for analysis, and your original file is never changed.</p>
     </div>
 
     {# Decorative preview: a small example sheet that cleans itself (built by js/interactive.js; example data, not the visitor's) #}
@@ -71,7 +71,7 @@
           <div class="report-head">
             <div class="score-badge" id="scoreBadge"><span id="scoreNum">-</span></div>
             <div class="report-text">
-              <h3 id="reportTitle">Analyzing…</h3>
+              <h2 id="reportTitle">Analyzing…</h2>
               <p id="reportSub"></p>
             </div>
           </div>
@@ -84,7 +84,7 @@
 
           <dialog id="reviewDialog" class="m-dialog review-dialog" aria-labelledby="reviewTitle">
             <div class="m-dialog-body">
-              <h3 id="reviewTitle">Some values look wrong</h3>
+              <h2 id="reviewTitle">Some values look wrong</h2>
               <p>These values don’t fit their column (for example, words in a phone number column). Nothing is changed unless you choose. Your original file is never touched.</p>
             </div>
             <div class="rv-body" id="reviewBody"></div>
@@ -96,7 +96,7 @@
 
           <dialog id="mapDialog" class="m-dialog review-dialog" aria-labelledby="mapTitle">
             <div class="m-dialog-body">
-              <h3 id="mapTitle">Standardize values <span class="badge badge-plan-pro">Pro</span></h3>
+              <h2 id="mapTitle">Standardize values <span class="badge badge-plan-pro">Pro</span></h2>
               <p>Countries, yes/no flags, currency labels and category spellings can be made consistent. Tick a column to include it. Safe matches are applied automatically; anything uncertain is left unchanged unless you approve it. Nothing happens until you press “Clean my data”, and your original file is never touched.</p>
             </div>
             <div class="rv-body" id="mapBody"></div>
@@ -202,7 +202,7 @@
         <section class="hidden" id="results" aria-labelledby="resultsHeading">
           <div class="done-head">
             <div class="done-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" pathLength="1"/></svg></div>
-            <h3 id="resultsHeading">Cleaning finished</h3>
+            <h2 id="resultsHeading">Cleaning finished</h2>
             <p id="resultsSub">Here's what changed. Your file is ready.</p>
           </div>
           <div class="main-actions">
@@ -225,7 +225,8 @@
   {# ---------- Marketing ---------- #}
   <div class="marketing">
 
-    <section class="m-section" id="how-it-works">
+    <section class="band band-white" id="how-it-works">
+     <div class="m-section">
       <h2 class="m-title" data-reveal>Say goodbye to messy data<br>in <span class="grad-text">three steps</span></h2>
       <ol class="steps3" data-stagger>
         <li class="step3">
@@ -244,6 +245,7 @@
           <p>One click cleans it. Download the fixed file and see what changed.</p>
         </li>
       </ol>
+     </div>
     </section>
 
     <section class="quality" id="quality">
@@ -268,22 +270,27 @@
       </div>
     </section>
 
-    <section class="m-section trust">
+    <section class="band band-soft trust">
+     <div class="m-section">
       <div class="trust-grid" data-stagger>
         <div class="trust-item"><strong>No account for Free cleaning</strong><p>Upload and clean right away. An account is only needed for Omixa Pro.</p></div>
         <div class="trust-item"><strong>Temporary by design</strong><p>Uploaded files are deleted automatically, at most {{ ttl_minutes }} minutes after upload.</p></div>
         <div class="trust-item"><strong>You stay in control</strong><p>Risky changes are never made silently. Anything unclear is left for you to decide.</p></div>
       </div>
+     </div>
     </section>
 
-    <section class="m-section guides" id="guides">
+    <section class="band band-white guides" id="guides">
+     <div class="m-section">
       <h2 class="m-title" data-reveal>Guides for common data problems</h2>
       <ul class="guide-grid">
         {% for path, label in guide_nav %}<li><a href="{{ path }}"><strong>{{ label }}</strong></a></li>{% endfor %}
       </ul>
+     </div>
     </section>
 
-    <section class="m-section faq" id="faq">
+    <section class="band band-soft faq" id="faq">
+     <div class="m-section">
       <div class="faq-card" data-reveal>
         <h2 class="m-title">Frequently asked questions</h2>
         <details class="faq-item"><summary>What files can I upload?</summary><p>CSV, XLSX and XLS files, up to {{ free_mb }} MB on Free and {{ pro_mb }} MB with Omixa Pro. Macro-enabled workbooks (.xlsm) and other formats are rejected. Files with more than {{ max_rows }} rows or {{ max_cells }} cells are not processed.</p></details>
@@ -295,11 +302,14 @@
         <details class="faq-item"><summary>What happens to my file?</summary><p>Your file is stored temporarily so it can be processed, and removed automatically at most {{ ttl_minutes }} minutes after upload. Pro batch results are kept for {{ batch_hours }} hours so you can download them, then deleted. Omixa keeps basic records (file name, size, row counts, quality scores, which rules ran) but not your cell contents. Pro history keeps quality figures and change summaries, never your rows or example values.</p></details>
         <details class="faq-item"><summary>Does Omixa keep my Excel formatting?</summary><p>Partly. Omixa rebuilds the cleaned sheet and keeps values, other sheets, workbook properties, column widths, fonts, hidden columns and a frozen header row. It does not carry over formulas (you get the values), merged cells, hyperlinks, comments, conditional formatting, data validation, tables, row heights, fills or number formats. .xls files are returned as .xlsx.</p></details>
       </div>
+     </div>
     </section>
 
-    <section class="m-section cta">
+    <section class="band band-white cta">
+     <div class="m-section">
       <h2 class="m-title" data-reveal>Let's clean your data!</h2>
       <a class="btn-upload" href="#tool" id="ctaTop" data-reveal>Upload file</a>
+     </div>
     </section>
   </div>
 </div>

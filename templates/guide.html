@@ -6,7 +6,7 @@
   <nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('pages.landing') }}">Omixa</a> <span aria-hidden="true">/</span> <span>{{ g.nav }}</span></nav>
   <h1>{{ g.h1 }}</h1>
   <p class="guide-lead">{{ g.lead }}</p>
-  <p class="guide-cta-row"><a class="btn-upload" href="/#tool">Clean a file free</a><span class="hint">CSV, XLSX or XLS &middot; no account needed</span></p>
+  <p class="guide-cta-row"><a class="btn-upload" href="{{ url_for('workspace.index') }}">Clean a file free</a><span class="hint">CSV, XLSX or XLS &middot; no account needed</span></p>
 
   {% for heading, paras in g.sections %}
   <section>
@@ -36,6 +36,6 @@
     </ul>
   </section>
 
-  <p class="guide-cta-row"><a class="btn-upload" href="/#tool">Try Omixa on your file</a><a class="link-btn" href="/pricing">See Free and Pro plans</a></p>
+  <p class="guide-cta-row"><a class="btn-upload" href="{{ url_for('workspace.index') }}">Try Omixa on your file</a><a class="link-btn" href="/pricing">See Free and Pro plans</a></p>
 </article>
 {% endblock %}

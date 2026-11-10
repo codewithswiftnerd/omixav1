@@ -2,8 +2,8 @@
 // our server once; the server verifies it and starts the session. Nothing secret is stored here.
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
-  getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  sendPasswordResetEmail, updateProfile,
+  getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup,
+  GoogleAuthProvider, sendPasswordResetEmail, updateProfile,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 
 const $ = id => document.getElementById(id);
@@ -13,7 +13,7 @@ let cfg = null;
 try { cfg = JSON.parse(document.getElementById('fb-config').textContent); } catch (e) { cfg = null; }
 if (!cfg || !cfg.apiKey) {
   say('Sign-in is not set up on this server yet (missing Firebase web config).', 'error');
-  document.querySelectorAll('#authForm input, #authForm button').forEach(el => el.disabled = true);
+  document.querySelectorAll('#authForm input, #authForm button, #googleBtn').forEach(el => el.disabled = true);
 } else {
   const auth = getAuth(initializeApp(cfg));
   let mode = 'signin';
@@ -23,7 +23,7 @@ if (!cfg || !cfg.apiKey) {
   async function finish(user) {
     const token = await user.getIdToken();
     const r = await Omixa.api('/api/auth/session', { method: 'POST', body: { idToken: token } });
-    if (!r.ok) { say(r.json.error || (r.status >= 500 ? 'You signed in, but our server could not start your session. Please try again shortly.' : 'We could not verify your sign-in. Please try again.'), 'error'); return; }
+    if (!r.ok) { say(r.json.error || (r.status >= 500 ? 'Signed in with Google, but our server could not start your session. Please try again shortly.' : 'We could not verify your sign-in. Please try again.'), 'error'); return; }
     window.location.href = next;
   }
   function friendly(e) {
@@ -35,6 +35,9 @@ if (!cfg || !cfg.apiKey) {
     if (c.includes('weak-password')) return 'Choose a password of at least 6 characters.';
     if (c.includes('user-disabled')) return 'This account has been disabled. Contact support if you think this is a mistake.';
     if (c.includes('account-exists-with-different-credential')) return 'This email is already registered with a different sign-in method. Sign in with your email and password instead.';
+    if (c.includes('popup-closed') || c.includes('cancelled-popup-request')) return 'The Google window was closed before sign-in finished. Tap the button to try again.';
+    if (c.includes('popup-blocked')) return 'Your browser blocked the Google sign-in window. Allow pop-ups for this site, then try again.';
+    if (c.includes('unauthorized-domain')) return 'Google sign-in is not enabled for this website address yet. Add this domain under Firebase > Authentication > Settings > Authorized domains.';
     if (c.includes('operation-not-allowed')) return 'This sign-in method is not turned on yet. Enable it under Firebase > Authentication > Sign-in method.';
     if (c.includes('network-request-failed')) return 'Network problem. Check your connection and try again.';
     if (c.includes('too-many-requests')) return 'Too many attempts. Please wait a few minutes and try again.';
@@ -66,6 +69,19 @@ if (!cfg || !cfg.apiKey) {
       await finish(cred.user);
     } catch (err) { say(friendly(err), 'error'); }
     finally { submitBtn.removeAttribute('aria-busy'); }
+  });
+  $('googleBtn').addEventListener('click', async () => {
+    say('');
+    const gb = $('googleBtn');
+    if (gb.getAttribute('aria-busy') === 'true') return;
+    gb.setAttribute('aria-busy', 'true');
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const cred = await signInWithPopup(auth, provider);
+      await finish(cred.user);
+    } catch (err) { say(friendly(err), 'error'); }
+    finally { gb.removeAttribute('aria-busy'); }
   });
   $('resetLink').addEventListener('click', async e => {
     e.preventDefault();

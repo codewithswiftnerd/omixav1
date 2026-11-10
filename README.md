@@ -85,7 +85,7 @@ Before sharing a deployed link with anyone: set `OMIXA_SECRET_KEY`
 `config.py`), and set `OMIXA_ADMIN_USERNAME` /
 `OMIXA_ADMIN_PASSWORD_HASH` if you want the `/admin` dashboard
 reachable (see "Security" below for both). `Config.MAX_CONTENT_LENGTH`
-(`OMIXA_MAX_UPLOAD_MB` env var) caps uploads at 10MB by default, bump
+(`OMIXA_MAX_UPLOAD_MB` env var) caps uploads at 25MB by default, bump
 that if you expect larger files.
 
 Storage note for multi-instance deploys: job temp files
@@ -406,14 +406,14 @@ completeness is never credited for imputed values; imputed cells also surface as
 ## Free and Pro
 
 **Free = "Clean my file."** The whole cleaning engine, quality score, issue detection, before/after
-preview and cleaned download. No account needed for Free cleaning. Only cap: upload size (`OMIXA_FREE_MAX_UPLOAD_MB`, 2).
+preview and cleaned download. No account needed for Free cleaning. Only cap: upload size (`OMIXA_FREE_MAX_UPLOAD_MB`, 10).
 
 **Pro = "Help me establish, maintain and prove that my data is trustworthy."** $5/month or $50/year:
 Quality Profiles, profile PASS/WARNING/FAIL checks, column-level scores and dimension analysis,
-what-changed report, change log, PDF quality report, saved history, **batch processing** (see `docs/ARCHITECTURE.md`). Uploads up to 5 MB per file, 5 MB per batch.
+what-changed report, change log, PDF quality report, saved history, **batch processing** (see `docs/ARCHITECTURE.md`). Uploads up to 25 MB.
 
 ### Setup
-1. Firebase: enable Email/Password sign-in; create a service account. Set `FIREBASE_SERVICE_ACCOUNT_JSON`,
+1. Firebase: enable Email/Password and Google sign-in; create a service account. Set `FIREBASE_SERVICE_ACCOUNT_JSON`,
    `FIREBASE_PROJECT_ID` and the public `FIREBASE_WEB_CONFIG_JSON`. Deploy `firestore.rules` and `firestore.indexes.json`.
 2. Paystack: create two plans (monthly, yearly) in NGN, set `PAYSTACK_PLAN_MONTHLY/ANNUAL` and `PAYSTACK_SECRET_KEY`.
    Add the webhook URL `https://YOUR-DOMAIN/api/billing/webhook` in the Paystack dashboard.

@@ -35,9 +35,11 @@ class SignInHardening(unittest.TestCase):
         self.assertEqual(self._sign_in().status_code, 403)
         self.assertIsNone(self.store.get_user("u1"))
 
-    def test_flag_allows_verified_password(self):
+    def test_flag_allows_verified_password_and_google(self):
         Config.REQUIRE_VERIFIED_EMAIL = True
         self.claims["email_verified"] = True
+        self.assertEqual(self._sign_in().status_code, 200)
+        self.claims.update(uid="u2", provider="google.com", email_verified=False)
         self.assertEqual(self._sign_in().status_code, 200)
 
     def test_signin_drops_admin_flag_and_keeps_anonymous_sid(self):

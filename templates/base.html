@@ -13,23 +13,15 @@
 <meta property="og:description" content="{{ self.description() }}">
 <meta property="og:url" content="{{ seo_canonical }}">
 <meta property="og:image" content="{{ seo_origin }}{{ url_for('static', filename='brand/omixa-logo-square.jpg') }}">
-<meta property="og:locale" content="en_US">
-<meta property="og:image:width" content="1067">
-<meta property="og:image:height" content="1067">
-<meta property="og:image:alt" content="Omixa logo">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="{{ self.og_title() }}">
-<meta name="twitter:description" content="{{ self.description() }}">
-<meta name="twitter:image" content="{{ seo_origin }}{{ url_for('static', filename='brand/omixa-logo-square.jpg') }}">
 {% endif %}
 {% if seo_jsonld %}{% for block in seo_jsonld %}<script type="application/ld+json">{{ block | tojson }}</script>
 {% endfor %}{% endif %}
 <meta name="theme-color" content="#381593">
 <link rel="icon" href="/favicon.ico" sizes="any">
-{# Google only uses a favicon whose side is a multiple of 48 px, so those are the only PNGs linked (16/32 px live inside favicon.ico) #}
-<link rel="icon" type="image/png" sizes="48x48" href="{{ url_for('static', filename='favicon-48x48.png') }}">
-<link rel="icon" type="image/png" sizes="96x96" href="{{ url_for('static', filename='favicon-96x96.png') }}">
 <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='android-chrome-192x192.png') }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
+<link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
 <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -56,7 +48,7 @@
       <a href="{{ url_for('pages.landing') }}#faq">FAQ</a>
       <a href="/pricing">Pricing</a>
       <a href="/login" id="navAuth">Sign in</a>
-      <a class="nav-cta" href="/#tool">Clean a file</a>
+      <a class="nav-cta" href="{{ url_for('workspace.index') }}">Clean a file</a>
     </nav>
 
     <button class="hamburger" id="hamburgerBtn" aria-label="Menu" aria-expanded="false" aria-controls="navLinks">
@@ -88,7 +80,7 @@
       <p class="footer-tag">Trustworthy · Innovative · Professional</p>
       <nav class="footer-cols" aria-label="Footer">
         <div><h2>Product</h2><ul>
-          <li><a href="/#tool">Clean a file</a></li>
+          <li><a href="{{ url_for('workspace.index') }}">Clean a file</a></li>
           <li><a href="/pricing">Pricing</a></li>
           <li><a href="/about">About Omixa</a></li></ul></div>
         <div><h2>Guides</h2><ul>{% for path, label in guide_nav %}<li><a href="{{ path }}">{{ label }}</a></li>{% endfor %}</ul></div>

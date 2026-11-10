@@ -44,13 +44,14 @@ def test_sitemap_lists_only_canonical_public_pages(client, monkeypatch):
     assert r.status_code == 200 and r.mimetype == "application/xml"
     locs = re.findall(r"<loc>(.*?)</loc>", r.get_data(as_text=True))
     assert locs == [f"https://omixa.example{p}" for p in seo.SITEMAP_PATHS]
-    assert len(locs) == len(set(locs)) == len(seo.SITEMAP_PATHS)
+    assert len(locs) == len(set(locs)) == 11
     paths = {u.replace("https://omixa.example", "") for u in locs}
     for bad in ("/clean", "/login", "/dashboard", "/admin", "/api", "/sessions", "/profiles", "/batch"):
         assert bad not in paths and not any(p.startswith(bad + "/") for p in paths)
 
 
-@pytest.mark.parametrize("path,canon", [("/", "https://omixa.example/"), ("/pricing", "https://omixa.example/pricing")])
+@pytest.mark.parametrize("path,canon", [("/", "https://omixa.example/"), ("/pricing", "https://omixa.example/pricing"),
+                                         ("/clean", "https://omixa.example/")])
 def test_public_pages_are_indexable_with_one_canonical(client, monkeypatch, path, canon):
     _prod(monkeypatch)
     r = client.get(path)
@@ -105,6 +106,7 @@ def test_structured_data_is_home_only_valid_json_and_has_no_invented_claims(clie
     assert app_block["offers"]["price"] == "0"
     assert "ld+json" not in client.get("/pricing").get_data(as_text=True)
     assert "ld+json" not in client.get("/about").get_data(as_text=True)
+    assert "ld+json" not in client.get("/clean").get_data(as_text=True)
 
 
 def test_robots_and_sitemap_do_not_start_a_session(client, monkeypatch):
@@ -131,7 +133,7 @@ def test_content_pages_render_with_one_h1_canonical_and_unique_meta(client, monk
     assert re.findall(r'<link rel="canonical" href="([^"]+)"', h) == [f"https://omixa.example{path}"]
     assert "{" not in re.search(r"<title>(.*?)</title>", h).group(1)
     assert "{free_mb}" not in h and "{ttl_minutes}" not in h and "{pro_mb}" not in h
-    assert 'href="/#tool"' in h                                    # every content page links to the tool (never to a redirect)
+    assert 'href="/clean"' in h                                    # every content page links to the tool
     if path != "/about":
         ld = json.loads(re.search(r'<script type="application/ld\+json">(.*?)</script>', h, re.S).group(1))
         assert ld["@type"] == "BreadcrumbList" and ld["itemListElement"][1]["item"].endswith(path)
@@ -175,29 +177,3 @@ def test_google_verification_file_is_served_exactly_and_without_a_session(client
     assert r.get_data(as_text=True) == "google-site-verification: googlef87d1a0bfb7e854c.html"
     assert "Set-Cookie" not in r.headers and "X-Robots-Tag" not in r.headers
     assert "googlef87d1a0bfb7e854c" not in client.get("/sitemap.xml").get_data(as_text=True)
-
-
-def test_clean_is_a_permanent_redirect_to_home_not_a_duplicate_page(client, monkeypatch):
-    _prod(monkeypatch)
-    r = client.get("/clean")
-    assert r.status_code == 301 and r.headers["Location"].rstrip("/") in ("", "/", "http://localhost") or r.headers["Location"].endswith("/")
-    assert "/clean" not in seo.PUBLIC_PAGES and "/clean" not in seo.SITEMAP_PATHS
-
-
-def test_homepage_targets_the_primary_keyword_and_has_full_social_metadata(client, monkeypatch):
-    _prod(monkeypatch)
-    h = client.get("/").get_data(as_text=True)
-    title = re.search(r"<title>(.*?)</title>", h).group(1)
-    assert "Data Cleaning Tool" in title and len(title) <= 60
-    assert "online data cleaning and standardisation tool" in h
-    for needle in ('property="og:locale"', 'property="og:image:width"', 'property="og:image:alt"',
-                   'name="twitter:title"', 'name="twitter:description"', 'name="twitter:image"'):
-        assert needle in h, needle
-    blocks = [json.loads(b) for b in re.findall(r'<script type="application/ld\+json">(.*?)</script>', h, re.S)]
-    ids = {b.get("@id") for b in blocks}
-    assert any(i and i.endswith("#organization") for i in ids) and any(i and i.endswith("#software") for i in ids)
-
-
-def test_new_guides_are_listed_once_and_link_to_each_other():
-    assert "common-data-quality-problems" in seo.GUIDE_ORDER and "data-cleaning-mistakes" in seo.GUIDE_ORDER
-    assert len(seo.GUIDE_ORDER) == len(set(seo.GUIDE_ORDER))

@@ -3,6 +3,7 @@ Accounts API (additive; does not touch upload/clean/export/profile or Pro billin
 
 POST /api/auth/signup           {name, email, password}  -> {token, user}
 POST /api/auth/login            {email, password}        -> {token, user}
+POST /api/auth/google           {credential}             -> {token, user}   (needs GOOGLE_CLIENT_ID)
 POST /api/auth/forgot-password  {email}                  -> {message}
 POST /api/auth/reset-password   {token, password}        -> {message}
 GET  /api/auth/me               Authorization: Bearer <token> -> {user}
@@ -92,6 +93,36 @@ def login():
     if not user or not user.get("password_hash") or not check_password_hash(user["password_hash"], password):
         # Same message for both cases so emails can't be probed
         return jsonify({"error": "Incorrect email or password"}), 401
+    return _auth_ok(user)
+
+
+@auth_bp.route("/auth/google", methods=["POST"])
+def google_login():
+    client_id = os.environ.get("GOOGLE_CLIENT_ID")
+    if not client_id:
+        return jsonify({"error": "Google sign-in is not configured on the server"}), 503
+
+    credential = _body().get("credential") or _body().get("id_token")
+    if not credential:
+        return jsonify({"error": "Missing Google credential"}), 400
+
+    try:
+        url = "https://oauth2.googleapis.com/tokeninfo?" + urllib.parse.urlencode({"id_token": credential})
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            info = json.loads(resp.read().decode())
+    except Exception:
+        return jsonify({"error": "Google sign-in failed. Please try again."}), 401
+
+    if info.get("aud") != client_id or info.get("email_verified") not in (True, "true"):
+        return jsonify({"error": "Google sign-in failed. Please try again."}), 401
+
+    email = info["email"].lower()
+    user = user_store.get_by_email(email)
+    if not user:
+        user = user_store.create_user(email, info.get("name") or email.split("@")[0], google_id=info.get("sub"))
+    elif not user.get("google_id"):
+        user_store.link_google(user["id"], info.get("sub"))
+        user = user_store.get_by_id(user["id"])
     return _auth_ok(user)
 
 

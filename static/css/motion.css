@@ -40,7 +40,7 @@
 .btn:active:not(:disabled), .btn-main:active:not(:disabled), .btn-upload:active, .nav-cta:active,
 .sample:active, .tab:active, .btn-ghost:active, .link-btn:active { transform: scale(0.97); }
 .btn-primary:active:not(:disabled) { transform: translateY(0) scale(0.98); }
-.btn-main, .btn-upload { transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease); }
+.btn-main, .btn-upload { transition: background-color var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease); }
 .btn-ghost, .link-btn, .topnav-links a, .tab {
   transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
     border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
@@ -70,11 +70,10 @@
 }
 .step3-art svg, .sample svg { transition: transform var(--dur-base) var(--ease-out); }
 @media (hover: hover) {
-  .trust-item:hover, .price-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--omixa-violet-light); }
+  .price-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--omixa-violet-light); }
   .stat-card:hover { border-color: var(--omixa-violet-light); box-shadow: var(--shadow-sm); }
   .step3:hover .step3-art svg { transform: translateY(-3px) scale(1.05); }
   .sample:hover svg { transform: translateY(-1px) scale(1.08); }
-  .faq-item:hover { box-shadow: var(--shadow-md); }
 }
 
 /* ---------- Navigation ---------- */
@@ -102,8 +101,7 @@ details > summary { transition: background-color var(--dur-fast) var(--ease); }
 }
 
 /* ---------- Tabs (landing "Professional quality") ---------- */
-.tab.active { box-shadow: 0 4px 14px rgba(14, 5, 36, 0.28); }
-.tab { transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), box-shadow var(--dur-base) var(--ease), transform var(--dur-fast) var(--ease); }
+.tab { transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease); }
 
 /* Example caption under the before/after demo (it is illustration, never a real run) */
 .ba-note { margin: 14px auto 0; max-width: 460px; font-size: 0.85rem; color: rgba(255, 255, 255, 0.72); }
@@ -116,8 +114,6 @@ input, textarea, select { transition: border-color var(--dur-fast) var(--ease), 
 
 /* ---------- Upload zone states ---------- */
 .tool-card .dropzone { transition: background-color var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease), transform var(--dur-base) var(--ease-out); }
-.tool-card .dropzone.drag { transform: scale(1.01); }
-.tool-card .dropzone.drag .btn-upload { transform: translateY(-2px) scale(1.03); box-shadow: 0 10px 24px rgba(165, 84, 247, 0.35); }
 .step .dot { transition: background-color var(--dur-base) var(--ease), color var(--dur-base) var(--ease), transform var(--dur-base) var(--ease-out); }
 .step.active .dot { transform: scale(1.12); }
 
@@ -136,7 +132,7 @@ input, textarea, select { transition: border-color var(--dur-fast) var(--ease), 
 @media (max-width: 640px) { .toast-region { right: 16px; left: 16px; width: auto; } }
 
 /* ---------- Confirm dialog (Omixa.confirm in motion.js, built on <dialog>) ---------- */
-.m-dialog { border: 0; padding: 0; border-radius: var(--radius-lg); background: var(--white); color: var(--text-primary);
+.m-dialog { border: 0; padding: 0; border-radius: var(--r-lg); background: var(--white); color: var(--text-primary);
   box-shadow: var(--shadow-lg); width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); }
 .m-dialog::backdrop { background: rgba(14, 5, 36, 0.5); }
 .m-dialog-body { padding: 24px 24px 8px; }

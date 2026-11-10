@@ -13,8 +13,6 @@ Intent map (one page per intent, no overlap):
   data-quality-assessment       -> scoring and reporting spreadsheet quality
   standardize-spreadsheet-data  -> consistent dates, phones, emails, categories, names
   prepare-data-for-research     -> getting a dataset ready for analysis, with a change record
-  common-data-quality-problems  -> what typically goes wrong in spreadsheet data and how to fix it
-  data-cleaning-mistakes        -> errors that quietly damage analysis and what to do instead
 """
 from flask import Blueprint, abort, render_template
 
@@ -45,7 +43,7 @@ GUIDES = {
             ("Is it free to clean a CSV file with Omixa?", "Yes. Cleaning one file at a time is free and needs no account. Omixa Pro adds batch processing, Quality Profiles and PDF quality reports."),
             ("Will Omixa change my data without asking?", "Only safe, well-defined fixes are applied by default. Filling gaps with estimates is off unless you turn it on, and anything ambiguous is flagged for your review."),
             ("What happens to my file after cleaning?", "It is removed automatically, at most {ttl_minutes} minutes after upload. Omixa keeps basic records such as file name, size, row counts and quality scores, not your cell contents.")],
-        "related": ["remove-duplicate-rows", "handle-missing-values", "standardize-spreadsheet-data", "common-data-quality-problems"],
+        "related": ["remove-duplicate-rows", "handle-missing-values", "standardize-spreadsheet-data"],
     },
     "clean-excel-files": {
         "nav": "Clean Excel files",
@@ -93,7 +91,7 @@ GUIDES = {
             ("Which duplicate is kept?", "The first occurrence stays. Later identical rows are removed and logged."),
             ("Will Omixa remove people who share a name?", "No. Matching names are not treated as duplicates. Only exact repeated rows are removed automatically."),
             ("Can I see what was removed?", "Yes. The change log lists each rule that ran and how many cells or rows it changed, and removals are recorded individually.")],
-        "related": ["clean-csv-files", "data-quality-assessment", "standardize-spreadsheet-data", "data-cleaning-mistakes"],
+        "related": ["clean-csv-files", "data-quality-assessment", "standardize-spreadsheet-data"],
     },
     "handle-missing-values": {
         "nav": "Handle missing values",
@@ -117,7 +115,7 @@ GUIDES = {
             ("Does Omixa fill in missing values automatically?", "No. Filling gaps with estimates is off by default and only happens if you choose it."),
             ("Which placeholders count as missing?", "Empty cells and common placeholders such as N/A, null, a dash, TBD and similar worded markers."),
             ("Will placeholder conversion be recorded?", "Yes. Every conversion appears in the audit log, so you can see exactly what was treated as missing.")],
-        "related": ["data-quality-assessment", "data-validation", "prepare-data-for-research", "data-cleaning-mistakes"],
+        "related": ["data-quality-assessment", "data-validation", "prepare-data-for-research"],
     },
     "data-validation": {
         "nav": "Data validation",
@@ -165,7 +163,7 @@ GUIDES = {
             ("What does the quality score measure?", "How many cells in each column are clean, weighted by how much each column matters, adjusted for duplicate rows and serious unresolved findings."),
             ("Is the report available on the Free plan?", "Free includes a data-quality score and issue detection. Pro adds column-level scores, a change report and a PDF quality report."),
             ("Does my data get stored?", "Files are deleted automatically, at most {ttl_minutes} minutes after upload. Pro history keeps quality figures and change summaries, never your rows or example values.")],
-        "related": ["data-validation", "remove-duplicate-rows", "prepare-data-for-research", "common-data-quality-problems"],
+        "related": ["data-validation", "remove-duplicate-rows", "prepare-data-for-research"],
     },
     "standardize-spreadsheet-data": {
         "nav": "Standardize spreadsheet data",
@@ -213,67 +211,6 @@ GUIDES = {
             ("Can I show how my data was cleaned?", "The change log and before and after preview record the rules applied. Pro adds a PDF quality report."),
             ("Do I need an account?", "Not for Free cleaning. Pro features need an account.")],
         "related": ["handle-missing-values", "data-quality-assessment", "clean-excel-files"],
-    },
-    "common-data-quality-problems": {
-        "nav": "Common data quality problems",
-        "title": "Common Data Quality Problems and How to Fix Them | Omixa",
-        "description": "The data quality problems that break spreadsheet analysis: inconsistent values, duplicates, missing data, wrong formats and impossible values, and how to fix each.",
-        "h1": "Common data quality problems in spreadsheets, and how to fix them",
-        "lead": "Most bad analysis starts with bad data, and most bad data fails in the same handful of ways. Knowing what to look for makes a messy file much quicker to fix, whether you clean it by hand or with a tool.",
-        "sections": [
-            ("Inconsistent values", [
-                "The same thing written several ways is the most common problem: Lagos, lagos and LAGOS, or Male, M and male. Counts, filters and pivot tables treat each spelling as a different value, so totals split across categories that should be one. Stray spaces cause the same effect invisibly: \"Lagos \" with a trailing space is not equal to \"Lagos\".",
-                "The fix is to decide on one form for each value and apply it everywhere. Omixa trims spaces and standardises capitalisation, and in Omixa Pro you can map variant spellings to the value you want."]),
-            ("Duplicate rows", [
-                "Exports that run twice, files merged from several sources and copy-and-paste mistakes all create repeated rows. Duplicates inflate counts, totals and averages. Remove exact repeats, but be careful with near-duplicates: two rows with the same name can be two different people.",
-                "Omixa removes exact duplicate rows, keeps the first occurrence and logs each removal. Near-duplicates are listed for you to review, not deleted."]),
-            ("Missing data and placeholders", [
-                "Gaps appear as empty cells, but also as N/A, null, none, a dash or a zero standing in for unknown. A tool that only recognises empty cells will treat these placeholders as real values. Decide what each gap means before deciding whether to leave it, remove the row or fill it."]),
-            ("Wrong formats", [
-                "Numbers stored as text will not sum. Dates written as 03/04/2025 can mean 3 April or 4 March. Phone numbers with mixed punctuation will not match each other, and currency symbols inside number cells stop calculations working.",
-                "Standardising a format is safe when the meaning is clear. When it is ambiguous, such as a day-first versus month-first date, the safe move is to flag the value for a person to decide. Omixa leaves ambiguous values as uploaded and flags them."]),
-            ("Impossible or out-of-range values", [
-                "Ages of 250, dates in the future for events that have already happened, and words in a phone number column are all signs of entry errors or broken exports. These are validation problems: the value does not fit what the column should hold. They usually need a human decision, not an automatic correction."]),
-            ("Structure problems", [
-                "Merged header cells, several tables on one sheet, subtotal rows inside the data, and columns that mix types make a file hard to analyse however clean the individual values are. These are best fixed at the source, before the file is exported."]),
-        ],
-        "steps": ["Open the file and scan each column for variant spellings, spaces and placeholders.", "Count duplicate rows and check whether they are exact repeats.", "Check formats: numbers, dates, phone numbers and emails.", "Look for values that cannot be right for their column.", "Fix the safe problems, flag the ambiguous ones, and keep the original file untouched."],
-        "limits": "Omixa checks values within the data. It does not fix structural problems such as merged header cells, and it cannot tell whether a value is true, only whether it is consistent and plausible.",
-        "faq": [
-            ("Which data quality problem is the most common?", "Inconsistent values and stray spaces, because they come from people typing the same thing differently and from exports that pad fields. They are also the easiest to fix once you can see them."),
-            ("How can I check data quality quickly?", "Upload the file to Omixa for a data-quality score and a list of what was found, or scan each column by hand for variant spellings, blanks, duplicates and values that do not fit."),
-            ("Should I fix everything automatically?", "No. Fix the clear, well-defined problems automatically and review anything ambiguous yourself. A wrong automatic fix is harder to spot than the original mess.")],
-        "related": ["data-quality-assessment", "data-validation", "data-cleaning-mistakes"],
-    },
-    "data-cleaning-mistakes": {
-        "nav": "Data cleaning mistakes to avoid",
-        "title": "Data Cleaning Mistakes to Avoid | Omixa",
-        "description": "Seven data cleaning mistakes that quietly damage analysis, from overwriting the original file to guessing ambiguous dates, and what to do instead.",
-        "h1": "Data cleaning mistakes to avoid",
-        "lead": "Cleaning data feels like housekeeping, but the choices you make change your results. These are the mistakes that do the most damage, because they usually go unnoticed until someone questions the numbers.",
-        "sections": [
-            ("Overwriting your original file", [
-                "If you clean in place and save, the raw data is gone and so is your ability to check what changed. Always work on a copy and keep the original as your source of truth. Omixa never edits the file you upload and writes a separate cleaned copy."]),
-            ("Filling blanks with guesses", [
-                "Replacing missing values with an average or a default makes a dataset look complete, but it adds information that was never collected and can distort results. Fill gaps only when you have a reason you can explain, and record it. Omixa does not fill gaps with estimates unless you turn that on."]),
-            ("Removing duplicates by name alone", [
-                "Two customers called Ada Okafor are not necessarily one customer. Treat only fully identical rows as exact duplicates, and review partial matches by hand. Deleting real records is worse than leaving a duplicate in."]),
-            ("Guessing ambiguous dates", [
-                "A date such as 03/04/2025 is 3 April in some systems and 4 March in others. Converting the whole column on a guess silently corrupts the half that was read the other way. Check the source convention, or flag the ambiguous values for review."]),
-            ("Fixing things by hand, cell by cell", [
-                "Manual edits are slow, easy to get wrong and impossible to repeat on next month's file. Use rules that apply the same fix to every matching value, so the result is consistent and you can run it again."]),
-            ("Cleaning without a record", [
-                "If you cannot say what changed, you cannot defend the results. Keep a change log of each rule applied and how many cells it changed. Omixa gives you a before and after preview and a change log with every clean."]),
-            ("Treating a clean file as a correct file", [
-                "Clean means consistent and well-formed. It does not mean true. A neatly formatted column of wrong values is still wrong, so cleaning does not replace checking your data against its source."]),
-        ],
-        "steps": ["Copy the original file and keep it unchanged.", "List the problems before fixing any of them.", "Apply safe, rule-based fixes to every matching value.", "Flag ambiguous values and decide them deliberately.", "Save the cleaned file together with the change log."],
-        "limits": "A cleaning tool applies rules. It cannot know the meaning of your data, so decisions about ambiguous values stay with you.",
-        "faq": [
-            ("What is the biggest data cleaning mistake?", "Losing the original data. Without it you cannot check your work or recover from a wrong fix."),
-            ("Is it ever fine to fill in missing values?", "Yes, when you have a clear reason and you record it. The mistake is doing it by default to make the file look complete."),
-            ("How do I avoid mistakes when cleaning data?", "Work on a copy, use repeatable rules, flag what is ambiguous, and keep a change log. Omixa follows these habits by default.")],
-        "related": ["common-data-quality-problems", "handle-missing-values", "prepare-data-for-research"],
     },
 }
 

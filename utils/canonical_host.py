@@ -41,13 +41,6 @@ def canonical_host() -> str:
     return _host(urlsplit(Config.PUBLIC_BASE_URL).netloc) if Config.PUBLIC_BASE_URL else ""
 
 
-def _duplicate_hosts() -> tuple[str, ...]:
-    """Hostnames that must 301 to the canonical origin: the Railway allowlist plus www.<canonical host>."""
-    canon = canonical_host()
-    extra = (f"www.{canon}",) if canon and not canon.startswith("www.") else ()
-    return tuple(Config.REDIRECT_HOSTS) + extra
-
-
 def is_enabled() -> bool:
     return bool(Config.IS_PRODUCTION and Config.PUBLIC_BASE_URL and canonical_host())
 
@@ -57,7 +50,7 @@ def redirect_target() -> str | None:
     if not is_enabled() or request.method not in ("GET", "HEAD"):
         return None
     host = _host(request.host)
-    if host == canonical_host() or host not in _duplicate_hosts():
+    if host == canonical_host() or host not in Config.REDIRECT_HOSTS:
         return None
     if request.path in EXEMPT_PATHS:
         return None
@@ -78,7 +71,7 @@ def init_app(app) -> None:
     def _noindex_off_canonical(response):
         # Only the allowlisted duplicate hostnames. Never "every host that is not the canonical one": a typo in
         # OMIXA_PUBLIC_BASE_URL must not be able to noindex the real site.
-        if is_enabled() and _host(request.host) in _duplicate_hosts() and _host(request.host) != canonical_host():
+        if is_enabled() and _host(request.host) in Config.REDIRECT_HOSTS and _host(request.host) != canonical_host():
             response.headers["X-Robots-Tag"] = "noindex, nofollow"
         return response
 

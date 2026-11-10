@@ -4,7 +4,8 @@
 //  - It never touches user data, uploads or API calls. The one exception is the page-wide drop target,
 //    which hands a dropped file to the existing #fileInput 'change' handler, exactly like choosing it by hand.
 //  - Nothing here is needed to read or use the page. Every module checks for what it needs and does nothing if absent.
-//  - Reduced motion: no tilt, magnet, ripple, scramble, confetti or looping demo. The demo shows its final state.
+//  - Reduced motion: no tilt, ripple, scramble, confetti or looping demo. The demo shows its final state.
+//  - The landing/tool card is deliberately still: no spotlight, tilt or magnetic buttons (those remain on Pro/inner-page cards only).
 //  - Hover-driven effects only run on fine pointers (mouse/trackpad), never on touch.
 //  - Demo values below are labelled example data on the page and mirror real Omixa behaviour (see home.js).
 (function () {
@@ -50,8 +51,8 @@
 
   // ---------------------------------------------------------------- card spotlight + tilt + magnetic buttons
   // Hosts are found from the event target, so cards that the app renders later (reports, history) work too.
-  var SPOT_SEL = '.tool-card, .trust-item, .price-card, .live-demo, .stat-card, .card, .auth-card';
-  var TILT = { '.tool-card': { ax: 3.2, ay: 4.4, lift: 0 }, '.price-card': { ax: 2.2, ay: 3, lift: -3 }, '.stat-card': { ax: 1.8, ay: 2.4, lift: -2 } };
+  var SPOT_SEL = '.price-card, .stat-card, .card, .auth-card';
+  var TILT = { '.price-card': { ax: 2.2, ay: 3, lift: -3 }, '.stat-card': { ax: 1.8, ay: 2.4, lift: -2 } };
   var TILT_SEL = Object.keys(TILT).join(', ');
   var MAGNET_SEL = '.btn-upload, .btn-main';
   function initPointerEffects() {
@@ -63,7 +64,7 @@
       tiltEl.style.transform = '';
       tiltEl = null;
     }
-    function magnets() { return Array.prototype.slice.call(document.querySelectorAll(MAGNET_SEL)); }
+    function magnets() { return []; }   // magnetic pull is switched off: buttons stay where they are
     function cfgFor(node) {
       for (var k in TILT) if (node.matches(k)) return TILT[k];
       return null;
@@ -131,7 +132,7 @@
   function initRipple() {
     if (reduced()) return;
     document.addEventListener('pointerdown', function (e) {
-      var b = e.target && e.target.closest ? e.target.closest('.btn-upload, .btn-main, .btn, .tab') : null;
+      var b = e.target && e.target.closest ? e.target.closest('.btn') : null;
       if (!b || b.disabled) return;
       var r = b.getBoundingClientRect();
       var size = Math.max(r.width, r.height) * 2;
@@ -606,19 +607,6 @@
   }
 
   // ---------------------------------------------------------------- go
-  // ---------------------------------------------------------------- upload card: bounce in on scroll
-  function initUploadFloat() {
-    var card = document.getElementById('uploadCard');
-    if (!card || reduced() || !('IntersectionObserver' in window)) return;
-    card.setAttribute('data-float', '');
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) {
-        if (en.isIntersecting) { card.classList.add('is-in'); io.disconnect(); }
-      });
-    }, { threshold: 0.25 });
-    io.observe(card);
-  }
-
   function init() {
     root.classList.add('i-ready');
     initHeadline();
@@ -633,7 +621,6 @@
     initConfetti();
     initPageHeading();
     initCardReveal();
-    initUploadFloat();
     initPriceCount();
     initScoreCount();
     initAuth();
