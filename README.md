@@ -85,7 +85,7 @@ Before sharing a deployed link with anyone: set `OMIXA_SECRET_KEY`
 `config.py`), and set `OMIXA_ADMIN_USERNAME` /
 `OMIXA_ADMIN_PASSWORD_HASH` if you want the `/admin` dashboard
 reachable (see "Security" below for both). `Config.MAX_CONTENT_LENGTH`
-(`OMIXA_MAX_UPLOAD_MB` env var) caps uploads at 25MB by default, bump
+(`OMIXA_MAX_UPLOAD_MB` env var) caps request bodies at 6MB by default (Free 2 MB, Pro 5 MB, a whole batch 5 MB), bump
 that if you expect larger files.
 
 Storage note for multi-instance deploys: job temp files
@@ -406,11 +406,11 @@ completeness is never credited for imputed values; imputed cells also surface as
 ## Free and Pro
 
 **Free = "Clean my file."** The whole cleaning engine, quality score, issue detection, before/after
-preview and cleaned download. No account needed for Free cleaning. Only cap: upload size (`OMIXA_FREE_MAX_UPLOAD_MB`, 10).
+preview and cleaned download. No account needed for Free cleaning. Only cap: upload size (`OMIXA_FREE_MAX_UPLOAD_MB`, 2).
 
 **Pro = "Help me establish, maintain and prove that my data is trustworthy."** $5/month or $50/year:
 Quality Profiles, profile PASS/WARNING/FAIL checks, column-level scores and dimension analysis,
-what-changed report, change log, PDF quality report, saved history, **batch processing** (see `docs/ARCHITECTURE.md`). Uploads up to 25 MB.
+what-changed report, change log, PDF quality report, saved history, **batch processing** (see `docs/ARCHITECTURE.md`). Uploads up to 5 MB, and a batch totals at most 5 MB.
 
 ### Setup
 1. Firebase: enable Email/Password and Google sign-in; create a service account. Set `FIREBASE_SERVICE_ACCOUNT_JSON`,

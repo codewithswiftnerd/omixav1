@@ -102,7 +102,9 @@ class Config:
 
     # Hard ceiling for any single request body (the per-plan limits FREE/PRO_MAX_UPLOAD_MB are enforced
     # below it). The batch endpoint has its own, larger body limit: see app.OmixaRequest.
-    MAX_CONTENT_LENGTH = int(os.environ.get("OMIXA_MAX_UPLOAD_MB", "25")) * 1024 * 1024
+    # Kept just above the largest plan limit (Pro, 5 MB) so multipart overhead never trips it before the
+    # friendly per-plan message in routes/upload.py does.
+    MAX_CONTENT_LENGTH = int(os.environ.get("OMIXA_MAX_UPLOAD_MB", "6")) * 1024 * 1024
 
     ALLOWED_EXTENSIONS = {"csv", "xlsx", "xls"}
 
@@ -169,8 +171,8 @@ class Config:
 
     # --- Plans -----------------------------------------------------------
     # Free users get the whole cleaning engine; the limits below are the only caps.
-    FREE_MAX_UPLOAD_MB = int(os.environ.get("OMIXA_FREE_MAX_UPLOAD_MB", "10"))
-    PRO_MAX_UPLOAD_MB = int(os.environ.get("OMIXA_PRO_MAX_UPLOAD_MB", "25"))
+    FREE_MAX_UPLOAD_MB = int(os.environ.get("OMIXA_FREE_MAX_UPLOAD_MB", "2"))
+    PRO_MAX_UPLOAD_MB = int(os.environ.get("OMIXA_PRO_MAX_UPLOAD_MB", "5"))
 
     # --- Firebase (server side: Admin SDK; secrets never reach the browser) -------
     # Either FIREBASE_SERVICE_ACCOUNT_JSON (the JSON itself) or GOOGLE_APPLICATION_CREDENTIALS (a path).
@@ -271,7 +273,7 @@ class Config:
 
     # ---- Pro batch processing (all server-enforced; every value is overridable by env) ----
     BATCH_MAX_FILES = int(os.environ.get("OMIXA_BATCH_MAX_FILES", "20"))
-    BATCH_MAX_TOTAL_MB = int(os.environ.get("OMIXA_BATCH_MAX_TOTAL_MB", "100"))
+    BATCH_MAX_TOTAL_MB = int(os.environ.get("OMIXA_BATCH_MAX_TOTAL_MB", "5"))
     # 0 = fall back to the Pro per-file upload limit (PRO_MAX_UPLOAD_MB)
     BATCH_MAX_FILE_MB = int(os.environ.get("OMIXA_BATCH_MAX_FILE_MB", "0"))
     # 0 = fall back to MAX_CELLS

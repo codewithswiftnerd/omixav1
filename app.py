@@ -290,7 +290,7 @@ def create_app():
 
     @app.errorhandler(413)
     def too_large(e):
-        mb = Config.MAX_CONTENT_LENGTH // (1024 * 1024)
+        mb = Config.PRO_MAX_UPLOAD_MB
         message = f"File too large, the limit is {mb}MB."
         if _wants_json():
             return jsonify({"error": message}), 413

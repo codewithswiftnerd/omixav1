@@ -5,7 +5,7 @@
   const app = document.getElementById('batchApp');
   if (!app) return;
   const $ = id => document.getElementById(id), esc = Omixa.esc;
-  const MB = 1024 * 1024, maxFiles = +app.dataset.maxFiles, maxFileMb = +app.dataset.maxFileMb;
+  const MB = 1024 * 1024, maxFiles = +app.dataset.maxFiles, maxFileMb = +app.dataset.maxFileMb, maxTotalMb = +app.dataset.maxTotalMb;
   const ok = n => /\.(csv|xlsx|xls)$/i.test(n);
   let chosen = [], batchId = null, timer = null, view = null;
   const analyses = {};        // job_id -> full analysis (loaded when the user customizes a file)
@@ -67,7 +67,10 @@
       const bad = !ok(f.name) ? 'Unsupported type' : f.size > maxFileMb * MB ? 'Too large' : '';
       return `<li><span>${esc(f.name)} · ${size(f.size)}</span>${bad ? `<strong>${bad}</strong>` : '<span>✓</span>'}</li>`;
     }).join('');
-    $('startBatch').disabled = !chosen.some(f => ok(f.name));
+    // The server enforces the batch total too (routes/batches.py); this just tells the user before uploading.
+    const total = chosen.filter(f => ok(f.name)).reduce((n, f) => n + f.size, 0), over = !!maxTotalMb && total > maxTotalMb * MB;
+    if (over) $('batchMsg').textContent = 'These files add up to ' + size(total) + '. A batch can be at most ' + maxTotalMb + ' MB in total, so please remove some.';
+    $('startBatch').disabled = over || !chosen.some(f => ok(f.name));
   }
   function addFiles(list) {
     const have = new Set(chosen.map(f => f.name + f.size));
