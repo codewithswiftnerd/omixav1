@@ -85,7 +85,7 @@
   background: var(--omixa-violet); transform: scaleX(0); transform-origin: left center;
   transition: transform var(--dur-base) var(--ease-out);
 }
-.topnav-links a:not(.nav-cta):hover::after, .topnav-links a[aria-current]:not(.nav-cta)::after { transform: scaleX(1); }
+/* no underline indicator: the current link is shown by colour only */
 .topnav-links a[aria-current]:not(.nav-cta) { color: var(--omixa-indigo); }
 
 /* ---------- Disclosure blocks (FAQ + "advanced" folds) ---------- */
