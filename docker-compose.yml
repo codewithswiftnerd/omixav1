@@ -1,6 +1,4 @@
-# Local production-like stack: Postgres + Redis + MinIO (S3) + web + worker.
-# `docker compose up --build`, then open http://localhost:8080
-# Dev credentials below are for local use only. Never reuse them anywhere real.
+
 services:
   postgres:
     image: postgres:16
