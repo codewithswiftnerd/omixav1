@@ -115,6 +115,26 @@
       : '<p class="hint">No errors logged.</p>';
   }
 
+  async function loadFeedback() {
+    const rating = $('feedbackFilter').value;
+    const res = await fetch('/admin/api/feedback' + (rating ? '?rating=' + encodeURIComponent(rating) : ''), { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const sm = data.summary || {};
+    $('feedbackSummary').textContent = sm.count
+      ? sm.count + ' review' + (sm.count === 1 ? '' : 's') + ', average ' + sm.average + ' / 5'
+      : 'No feedback yet.';
+    const items = data.items || [];
+    const stars = (n) => '\u2605'.repeat(n) + '\u2606'.repeat(5 - n);
+    $('feedbackList').innerHTML = items.length
+      ? '<table><thead><tr><th>When</th><th>Rating</th><th>About</th><th>Feedback</th><th>From</th></tr></thead><tbody>' +
+        items.map((f) => `<tr><td>${fmtDate(f.ts)}</td><td title="${f.rating} / 5">${stars(f.rating)}</td><td>${esc(f.category)}</td>` +
+          `<td style="white-space:pre-wrap">${esc(f.message)}</td>` +
+          `<td>${esc(f.name || '')}${f.email ? '<br><span class="mono-sm">' + esc(f.email) + '</span>' : (f.name ? '' : '\u2013')}</td></tr>`).join('') +
+        '</tbody></table>'
+      : '';
+  }
+
   async function loadLogins() {
     const res = await fetch('/admin/api/logins', { credentials: 'same-origin' });
     if (!res.ok) return;
@@ -128,10 +148,11 @@
   }
 
   async function refreshAll() {
-    await Promise.all([loadStats(), loadUsers(), loadJobs(), loadErrors(), loadLogins()]);
+    await Promise.all([loadStats(), loadUsers(), loadJobs(), loadErrors(), loadFeedback(), loadLogins()]);
   }
 
   $('windowSelect').addEventListener('change', loadStats);
+  $('feedbackFilter').addEventListener('change', loadFeedback);
   $('jobSearch').addEventListener('input', debounce(loadJobs, 300));
   $('statusFilter').addEventListener('change', loadJobs);
   $('formatFilter').addEventListener('change', loadJobs);

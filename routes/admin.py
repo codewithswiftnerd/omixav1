@@ -155,6 +155,23 @@ def api_errors():
     return jsonify({"errors": metadata_db.recent_errors(limit=30)}), 200
 
 
+@admin_bp.get("/api/feedback")
+@admin_required
+def api_feedback():
+    """Visitor feedback (newest first) plus rating totals. Optional ?rating=1..5 filter."""
+    try:
+        limit = min(max(int(request.args.get("limit", 25)), 1), 100)
+        offset = max(int(request.args.get("offset", 0)), 0)
+        rating = int(request.args["rating"]) if request.args.get("rating") else None
+    except ValueError:
+        return jsonify({"error": "'limit', 'offset' and 'rating' must be integers"}), 400
+    if rating is not None and not 1 <= rating <= 5:
+        return jsonify({"error": "'rating' must be between 1 and 5"}), 400
+    items, total = metadata_db.list_feedback(rating=rating, limit=limit, offset=offset)
+    return jsonify({"items": items, "total": total, "limit": limit, "offset": offset,
+                    "summary": metadata_db.feedback_summary()}), 200
+
+
 @admin_bp.get("/api/logins")
 @admin_required
 def api_logins():

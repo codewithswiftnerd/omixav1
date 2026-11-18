@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Send feedback{% endblock %}
+{% block description %}Tell the Omixa team how cleaning your CSV and Excel files went, report a problem or suggest an improvement.{% endblock %}
+{% block content %}
+<article class="guide-page">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('pages.landing') }}">Omixa</a> <span aria-hidden="true">/</span> <span>Feedback</span></nav>
+  <h1>Send feedback</h1>
+  <p class="guide-lead">How is Omixa working for you? Rate your experience and tell us what went well or what we should fix. Every message is read by the team. For questions that need a reply, please use the <a href="/contact">contact form</a>.</p>
+
+  <form id="feedbackForm" class="card contact-card" novalidate>
+    <fieldset class="field rating-field" id="fRatingField">
+      <legend>Your rating</legend>
+      <div class="rating" role="radiogroup" aria-label="Rating from 1 to 5 stars">
+        {% for n in (5, 4, 3, 2, 1) %}
+        <input type="radio" name="rating" id="fRating{{ n }}" value="{{ n }}" class="rating-input">
+        <label for="fRating{{ n }}" class="rating-star" title="{{ n }} star{{ 's' if n > 1 else '' }}"><span aria-hidden="true">&#9733;</span><span class="sr-only">{{ n }} star{{ 's' if n > 1 else '' }}</span></label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div class="field"><label for="fCategory">What is it about?</label>
+      <select id="fCategory" name="category" required>
+        {% for key, label in categories.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="fMessage">Your feedback</label><textarea id="fMessage" name="message" rows="6" maxlength="{{ message_max }}" required></textarea>
+      <div class="hint"><span id="fCount">0</span> / {{ message_max }}</div></div>
+    <div class="field"><label for="fName">Name <span class="hint">(optional)</span></label><input id="fName" name="name" type="text" autocomplete="name" maxlength="80"></div>
+    <div class="field"><label for="fEmail">Email <span class="hint">(optional, only if you would like us to follow up)</span></label><input id="fEmail" name="email" type="email" autocomplete="email" maxlength="254"></div>
+    <div class="contact-hp" aria-hidden="true"><label for="fWebsite">Leave this field empty</label><input id="fWebsite" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+    <input type="hidden" id="fToken" value="{{ form_token }}">
+    <button type="submit" class="btn btn-primary" id="fSubmit">Send feedback</button>
+    <div id="fStatus" class="alert hidden" role="alert" aria-live="polite"></div>
+  </form>
+</article>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/feedback.js') }}"></script>{% endblock %}

@@ -649,6 +649,18 @@ pre, code { max-width: 100%; overflow-x: auto; }
 .contact-card .alert { margin: 16px 0 0; }
 .contact-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 
+/* Feedback form: star rating (CSS only; markup is 5..1 and row-reverse shows 1..5) */
+.rating-field { border: none; padding: 0; margin: 0 0 18px; min-width: 0; }
+.rating-field legend { font-weight: 700; font-size: 0.9rem; margin-bottom: 8px; padding: 0; }
+.rating { display: inline-flex; flex-direction: row-reverse; gap: 4px; }
+.rating-input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.rating-star { font-size: 2.1rem; line-height: 1; cursor: pointer; color: var(--gray-200); transition: color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease); }
+.rating-star:hover, .rating-star:hover ~ .rating-star,
+.rating-input:checked ~ .rating-star { color: var(--omixa-violet); }
+.rating-star:hover { transform: scale(1.08); }
+.rating-input:focus-visible + .rating-star { outline: 2px solid var(--omixa-glow); outline-offset: 3px; border-radius: 6px; }
+.rating-field[aria-invalid] .rating-star, .rating-field .field-error { margin-top: 6px; }
+
 /* ---- standardize values dialog (reuses the review pop-up look) ---- */
 .mp-bar { display: flex; gap: 10px 14px; align-items: center; flex-wrap: wrap; margin: 4px 0 10px; font-size: .86rem; }
 .mp-bar label { display: inline-flex; gap: 6px; align-items: center; }

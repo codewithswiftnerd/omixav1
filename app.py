@@ -35,6 +35,7 @@ from routes.cleaning import cleaning_bp
 from routes.batches import batches_bp
 from routes.guides import guides_bp
 from routes.contact import contact_bp
+from routes.feedback import feedback_bp
 from routes.seo import seo_bp, seo_context, is_indexable_path
 from utils.security import check_rate_limit
 from utils import mailer, observability, redis_client
@@ -115,6 +116,7 @@ def create_app():
     app.register_blueprint(pages_bp)
     app.register_blueprint(workspace_bp)
     app.register_blueprint(contact_bp)   # /contact page + POST /api/contact
+    app.register_blueprint(feedback_bp)  # /feedback page + POST /api/feedback
     app.register_blueprint(guides_bp)   # /<guide-slug>, /about
     app.register_blueprint(seo_bp)   # /robots.txt, /sitemap.xml
 

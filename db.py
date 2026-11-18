@@ -124,6 +124,19 @@ CREATE TABLE IF NOT EXISTS usage_daily (
     bytes_uploaded BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (day, principal)
 );
+
+CREATE TABLE IF NOT EXISTS feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL NOT NULL,
+    rating INTEGER NOT NULL,
+    category TEXT NOT NULL,
+    message TEXT NOT NULL,
+    name TEXT,
+    email TEXT,
+    owner_uid TEXT,
+    request_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_ts ON feedback(ts);
 """
 
 
@@ -989,3 +1002,58 @@ def finalize_batch(batch_id: str, status: str) -> bool:
         cur.execute("UPDATE batches SET status=?, finalized=1, completed_at=?, updated_at=? "
                     "WHERE batch_id=? AND finalized=0", (status, now, now, batch_id))
         return cur.rowcount > 0
+
+
+# --------------------------------------------------------------------
+# Visitor feedback / reviews (routes/feedback.py, shown in /admin)
+# --------------------------------------------------------------------
+# Unlike the job metadata above this is text the visitor chose to write, plus an email only if they
+# volunteered one. It is read by the admin dashboard only and is never shown publicly.
+
+def add_feedback(rating: int, category: str, message: str, name: Optional[str] = None,
+                 email: Optional[str] = None, owner_uid: Optional[str] = None,
+                 request_id: Optional[str] = None) -> None:
+    """Store one piece of feedback. Errors PROPAGATE on purpose: the route only tells the visitor
+    "thanks" when the row was really saved."""
+    with _cursor() as cur:
+        cur.execute(
+            "INSERT INTO feedback (ts, rating, category, message, name, email, owner_uid, request_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (time.time(), rating, category, message, name or None, email or None, owner_uid, request_id))
+
+
+def list_feedback(rating: Optional[int] = None, limit: int = 25, offset: int = 0) -> tuple[list[dict], int]:
+    """(rows newest first, total matching). Never raises: the admin page just shows nothing."""
+    where, params = "", []
+    if rating:
+        where, params = "WHERE rating = ?", [rating]
+    try:
+        with _cursor() as cur:
+            cur.execute(f"SELECT COUNT(*) AS n FROM feedback {where}", params)
+            row = cur.fetchone()
+            total = int(row["n"] if hasattr(row, "keys") else row[0])
+            cur.execute(f"SELECT id, ts, rating, category, message, name, email FROM feedback {where} "
+                        "ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?", params + [limit, offset])
+            return [dict(r) for r in cur.fetchall()], total
+    except _DB_ERRORS:
+        logger.exception("db: list_feedback failed")
+        return [], 0
+
+
+def feedback_summary() -> dict:
+    """{count, average, distribution: {"1": n, ... "5": n}}"""
+    out = {"count": 0, "average": None, "distribution": {str(i): 0 for i in range(1, 6)}}
+    try:
+        with _cursor() as cur:
+            cur.execute("SELECT rating, COUNT(*) AS n FROM feedback GROUP BY rating")
+            for r in cur.fetchall():
+                r = dict(r)
+                if str(r["rating"]) in out["distribution"]:
+                    out["distribution"][str(r["rating"])] = int(r["n"])
+    except _DB_ERRORS:
+        logger.exception("db: feedback_summary failed")
+        return out
+    out["count"] = sum(out["distribution"].values())
+    if out["count"]:
+        out["average"] = round(sum(int(k) * v for k, v in out["distribution"].items()) / out["count"], 2)
+    return out
